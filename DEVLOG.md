@@ -44,14 +44,21 @@
   理解を助ける構成に整理。**このページを更新する際もスコア計算コードを
   そのまま貼らないこと(strict)**。閾値・重みの変更が必要なら、gen_find.py 側の
   `score()` 実装と、このページの数式・計算例の両方を同時に手で書き換える運用。
-- **67035bf find.html: 日付ボックスの iOS はみ出し対策と曜日ラベル表示**
+- **67035bf find.html: 日付ボックスの iOS はみ出し対策と曜日ラベル表示 (暫定)**
   1) iOS Safari で `input[type=date]` の内部カレンダー UI が親ラベル幅を突き抜けて
   カード外にはみ出る問題を修正。`.searchcard label{min-width:0}` と
   `.searchcard input,select{min-width:0;max-width:100%}` を追加(flex 子要素の
-  デフォルト `min-width:auto` を無効にする定番回避策)。
-  2) `input[type=date]` は曜日を表示しないため、日付欄直下に「(木曜日)」の
-  span.dow を追加。change イベントで自動更新、土=青/日=赤で色分け
-  (index.html と同じ配色)。
+  デフォルト `min-width:auto` を無効にする定番回避策)。この対策は継続適用。
+  2) 曜日を span.dow で補足していたが、実機で反映されないケースがあり、
+  次コミット 36fd34f で **select 方式** に置き換えた(span.dow / updateDow /
+  .dow CSS は削除)。
+- **36fd34f find.html: 日付入力を input[type=date] → select 方式(index.htmlと統一)**
+  「日付ボックスに曜日が反映されない」問題を、**index.html と同じ select 方式**
+  (「07/25(土) 今日」形式の option を今日から15日先まで16個並べる) で解決。
+  option の文言そのものに月/日+曜日を埋め込むので、iOS/Android/PC すべてで
+  確実に曜日が表示される。実装ロジックは index.html の初期化ブロック
+  (`for(let i=0;i<16;i++)... o.textContent=md(d)+"("+WJA[d.getDay()]+")"+...`) を
+  ほぼそのまま踏襲。WJA="日月火水木金土"、i===0 に「今日」、i===1 に「明日」を後置。
 - **40f6029 icons: v2.00向けに背景を対角線形グラデに変更(色相は同じネイビー)**
   scripts/gen_icons.py の背景描画を縦線形（横ライン走査）→ 対角線形（`x+y`の
   等高線走査）に変更。カラー定数を `GRAD_TOP/BOTTOM` → `GRAD_TL/BR` にリネームし、
@@ -80,6 +87,11 @@
   再現しにくく(Blink は素直に width:100% を守る)、iOS Safari の実機テストで
   発覚することが多い。flex 子孫要素で input を使うときは、常に min-width:0 と
   max-width:100% をセットにするのが安全。
+- 日付選択は **input[type=date] を使わず、select に option を並べる方式** で
+  index.html と find.html を統一している。理由は (a) 曜日が全プラットフォームで
+  確実に出ること、(b) 予報範囲(今日〜15日先)を選択肢そのもので明示できること、
+  (c) iOS の内部レンダリング揺れを完全に回避できること。将来的に他ページで
+  日付選択を追加するときも、この方式を踏襲すること。
 - `word-break:keep-all` は日本語CJK文字での改行を抑制するプロパティ。
   `white-space:nowrap` と `overflow-wrap:break-word` は仕様上両立しないため、
   「基本1行・max-width超過時のみ折り返し」を実現するには keep-all で書く必要がある。
