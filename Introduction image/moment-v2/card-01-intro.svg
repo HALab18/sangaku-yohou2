@@ -38,7 +38,7 @@
   <!-- バージョンバッジ (右上) -->
   <g transform="translate(920, 90)">
     <rect x="-90" y="-30" width="180" height="60" rx="30" fill="url(#badgeGrad)"/>
-    <text x="0" y="8" font-size="26" font-weight="700" fill="#fff" text-anchor="middle" letter-spacing="1">ver 2.00</text>
+    <text x="0" y="8" font-size="26" font-weight="700" fill="#fff" text-anchor="middle" letter-spacing="1">ver 2.01</text>
   </g>
 
   <!-- ロゴマーク (山アイコン) -->
