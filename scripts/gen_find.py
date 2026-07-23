@@ -113,6 +113,17 @@ th:nth-child(2),td.nm{box-shadow:inset -1px 0 0 var(--line)}
 td.nm a{color:var(--link);font-weight:700;text-decoration:none}
 td.nm a:hover{text-decoration:underline}
 td.nm small{display:block;color:#8a94a8;font-size:.82em;font-weight:400}
+/* 結果ブロックの見出しと注記 (メイン表 / 足切り表を分ける) */
+h3.results-h{margin:18px 0 4px;font-size:1em;color:var(--night);font-weight:700}
+h3.results-h.caution{color:#b26b00}
+h3.results-h .rcount{color:#556;font-weight:500;font-size:.9em;margin-left:6px}
+.rnote{margin:4px 0 0;font-size:.82em;color:#5b6b8a}
+.rnote.caution{color:#b26b00;background:#fff8e6;border-left:4px solid #b26b00;padding:6px 10px;border-radius:0 4px 4px 0}
+.rnote a{color:var(--link)}
+/* 足切り表: 見出し帯とスタート色をオレンジ系に、スコアの星は薄めに */
+.tbl.caution table th{background:#b26b00}
+.tbl.caution .stars{opacity:.55}
+td.reason{color:#b26b00;font-weight:700;font-size:.85em;white-space:nowrap;text-align:left}
 /* 天気アイコン: index.html と同じSVG(#wx-sun 等)を参照。emoji のOS依存表示ズレを回避 */
 .wxico{width:1.9em;height:1.9em;display:block;margin:0 auto 2px}
 .wxlbl{color:#556;font-size:.82em}
@@ -307,10 +318,27 @@ footer a{color:var(--link)}
   elRegion.addEventListener("change",fillPrefs);
   elPref.addEventListener("change",updateHint);
 
-  // ---- Open-Meteo (daily・単日) ----
-  var DAILY="weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,"+
-    "precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,"+
-    "sunshine_duration,daylight_duration,snowfall_sum";
+  // ---- 稜線風速の補間 (index.html / mountain_weather.py と同一ロジック) ----
+  // 山頂標高を挟む上下2気圧面の風速を線形補間して「稜線風速」を推定する。
+  // LEVELS[i]=[気圧面hPa, 標準高度m]。 500m台の里山から3800m級までを 6面でカバー。
+  var LEVELS=[[925,760],[900,990],[850,1460],[800,1950],[700,3010],[600,4200]];
+  function bracket(elev){
+    for(var i=0;i<LEVELS.length-1;i++){
+      var lo=LEVELS[i], hi=LEVELS[i+1];
+      if(elev>=lo[1]&&elev<=hi[1])return {lo:lo,hi:hi,t:(elev-lo[1])/(hi[1]-lo[1])};
+    }
+    return elev<LEVELS[0][1]
+      ? {lo:LEVELS[0],hi:LEVELS[0],t:0}
+      : {lo:LEVELS[LEVELS.length-1],hi:LEVELS[LEVELS.length-1],t:0};
+  }
+  // 対象時間帯: 7:00〜15:59 (hour 7〜15 の 9時間、登山コアタイム)
+  function inRange(t){var h=parseInt(t.slice(11,13),10);return h>=7&&h<=15}
+
+  // ---- Open-Meteo (daily は積雪のみ、hourly で7-15時集計) ----
+  var DAILY="snowfall_sum";
+  var HOURLY="weather_code,temperature_2m,precipitation,precipitation_probability,"+
+    "sunshine_duration,wind_speed_925hPa,wind_speed_900hPa,wind_speed_850hPa,"+
+    "wind_speed_800hPa,wind_speed_700hPa,wind_speed_600hPa";
   async function apiJson(url,params,retries){
     retries=retries||3;var lastErr;
     for(var a=1;a<=retries;a++){
@@ -327,39 +355,84 @@ footer a{color:var(--link)}
       latitude:ms.map(function(m){return m.lat}).join(","),
       longitude:ms.map(function(m){return m.lon}).join(","),
       elevation:ms.map(function(m){return m.el}).join(","),
-      daily:DAILY,timezone:"Asia/Tokyo",wind_speed_unit:"ms",
+      daily:DAILY,hourly:HOURLY,timezone:"Asia/Tokyo",wind_speed_unit:"ms",
       start_date:date,end_date:date
     };
     var data=await apiJson("https://api.open-meteo.com/v1/forecast",params);
     return Array.isArray(data)?data:[data]; // 単一地点はオブジェクトで返る
   }
 
-  // ---- 簡易スコア(0-100)。晴天度を最重視 ----
-  function score(d){
-    var g=function(k){return d.daily&&d.daily[k]?d.daily[k][0]:null};
-    var sun=g("sunshine_duration"),day=g("daylight_duration");
-    var sunFrac=(sun!=null&&day)?Math.max(0,Math.min(1,sun/day)):null;
-    var code=g("weather_code"),pprob=g("precipitation_probability_max"),
-        psum=g("precipitation_sum"),wmax=g("wind_speed_10m_max"),
-        gust=g("wind_gusts_10m_max"),snow=g("snowfall_sum"),
-        tmax=g("temperature_2m_max"),tmin=g("temperature_2m_min");
+  // ---- 安全性優先スコア(0-100)。稜線風と降水を最重視、対象時間帯 7-15時 ----
+  // 重み: ①晴天度-28 / ②降水-30 / ③稜線風-32 / ④雪寒気-10  (合計-100)
+  function score(d, mt){
+    var hr=d.hourly, times=(hr&&hr.time)||[], N=times.length;
+    // 7-15時 の hourly 値を集計するヘルパ
+    function agg(key, mode){
+      var arr=hr&&hr[key]; if(!arr)return null;
+      var vs=[], sum=0;
+      for(var i=0;i<N;i++){
+        if(!inRange(times[i]))continue;
+        var v=arr[i]; if(v==null)continue;
+        vs.push(v); sum+=v;
+      }
+      if(!vs.length)return null;
+      if(mode==="sum")return sum;
+      if(mode==="max")return Math.max.apply(null,vs);
+      if(mode==="min")return Math.min.apply(null,vs);
+      return null;
+    }
+    // 稜線風速: 山頂標高を挟む2気圧面を bracket() で選び、各時刻を線形補間して max
+    var bra=bracket(mt.el), ridgeWmax=null;
+    var loArr=hr&&hr["wind_speed_"+bra.lo[0]+"hPa"];
+    var hiArr=hr&&hr["wind_speed_"+bra.hi[0]+"hPa"];
+    if(loArr&&hiArr){
+      var mv=0, has=false;
+      for(var i=0;i<N;i++){
+        if(!inRange(times[i]))continue;
+        var lo=loArr[i], hi=hiArr[i];
+        if(lo==null||hi==null)continue;
+        var v=lo*(1-bra.t)+hi*bra.t;
+        if(v>mv)mv=v; has=true;
+      }
+      if(has)ridgeWmax=mv;
+    }
+    // 日照率: 7-15時 の sunshine_duration 合計 / (9h × 3600s)
+    var sunSum=agg("sunshine_duration","sum");
+    var sunFrac=sunSum==null?null:Math.max(0,Math.min(1,sunSum/(9*3600)));
+    // 天気コードは 7-15時 の worst(max) を代表値に(悪天を必ず拾う)
+    var code=agg("weather_code","max");
+    var pprob=agg("precipitation_probability","max");
+    var psum=agg("precipitation","sum");
+    var tmin=agg("temperature_2m","min");
+    var tmax=agg("temperature_2m","max");
+    var snow=d.daily&&d.daily.snowfall_sum?d.daily.snowfall_sum[0]:null;
     var s=100;
-    // ① 晴天度(最重要): 日照率が主。取れない時は天気コードで代替
-    if(sunFrac!=null)s-=(1-sunFrac)*45;
-    else if(code!=null)s-=code<=1?0:code===2?12:code===3?28:35;
+    // ① 晴天度 (最大 -28)
+    if(sunFrac!=null)s-=(1-sunFrac)*28;
+    else if(code!=null)s-=code<=1?0:code===2?8:code===3?18:22;
     // 天気コードの悪天(雨雪雷)を軽く上乗せ
-    if(code!=null){if(code>=95)s-=12;else if(code>=71&&code<=86)s-=8;else if(code>=51&&code<=82)s-=6}
-    // ② 降水
+    if(code!=null){if(code>=95)s-=8;else if(code>=71&&code<=86)s-=5;else if(code>=51&&code<=82)s-=4}
+    // ② 降水 (最大 -30) - 確率と量で 15点ずつ
     if(pprob!=null)s-=pprob/100*15;
-    if(psum!=null)s-=Math.min(psum,10)/10*10;
-    // ③ 風(稜線の目安。地表10m値なので相対比較用)
-    if(wmax!=null)s-=Math.max(0,Math.min(1,(wmax-4)/12))*15;
-    if(gust!=null)s-=Math.max(0,Math.min(1,(gust-8)/22))*5;
-    // ④ 雪・寒気
+    if(psum!=null)s-=Math.min(psum,10)/10*15;
+    // ③ 稜線風 (最大 -32) - 6m/s以下=0、18m/s以上=最大
+    if(ridgeWmax!=null)s-=Math.max(0,Math.min(1,(ridgeWmax-6)/12))*32;
+    // ④ 雪・寒気 (最大 -10)
     if(snow!=null&&snow>0)s-=Math.min(snow,5)/5*5;
     if(tmin!=null&&tmin<-5)s-=Math.min((-5-tmin),15)/15*5;
     return {v:Math.round(Math.max(0,Math.min(100,s))),sunFrac:sunFrac,code:code,pprob:pprob,
-      wmax:wmax,tmax:tmax,tmin:tmin};
+      psum:psum,ridgeWmax:ridgeWmax,tmax:tmax,tmin:tmin};
+  }
+  // 安全性の足切り: 稜線風速 >=18m/s または 降水量 >=10mm のいずれかで別表送り
+  function isDangerous(s){
+    return (s.ridgeWmax!=null&&s.ridgeWmax>=18)||(s.psum!=null&&s.psum>=10);
+  }
+  // 足切り理由のラベル (足切り表の「理由」列に表示)
+  function reasonLabel(s){
+    var parts=[];
+    if(s.ridgeWmax!=null&&s.ridgeWmax>=18)parts.push("稜線風 "+Math.round(s.ridgeWmax)+"m/s");
+    if(s.psum!=null&&s.psum>=10)parts.push("降水量 "+Math.round(s.psum)+"mm");
+    return parts.join(" / ");
   }
 
   function stars(v){var n=Math.max(1,Math.round(v/20));return "★★★★★".slice(0,n)+"☆☆☆☆☆".slice(0,5-n)}
@@ -386,7 +459,7 @@ footer a{color:var(--link)}
           elStatus.textContent="予報を取得中… ("+(ci+1)+"/"+chunks.length+")";
           var arr=await fetchChunk(chunks[ci],date);
           for(var j=0;j<chunks[ci].length;j++){
-            var mt=chunks[ci][j],sc=arr[j]?score(arr[j]):null;
+            var mt=chunks[ci][j],sc=arr[j]?score(arr[j],mt):null;
             if(sc)rows.push({mt:mt,sc:sc});
           }
         }
@@ -394,35 +467,68 @@ footer a{color:var(--link)}
         try{sessionStorage.setItem(key,JSON.stringify(rows))}catch(e){}
       }
       render(rows,date);
-      elStatus.textContent=r+(p?" / "+p:"")+" の "+date+" — "+rows.length+"座を晴天度順に表示";
+      // 足切り分離した内訳をステータスに出す
+      var safeN=rows.filter(function(x){return !isDangerous(x.sc)}).length;
+      var cautionN=rows.length-safeN;
+      elStatus.textContent=r+(p?" / "+p:"")+" の "+date+" — 登れそう "+safeN+"座"+
+        (cautionN?" / 要慎重 "+cautionN+"座":"");
     }catch(e){
       elStatus.className="err";elStatus.textContent=String(e.message||e);
     }finally{elGo.disabled=false}
   }
 
+  // 表 1行分の HTML (メイン/足切り共通、caution=true で「理由」列を出す)
+  function rowHtml(row,i,date,caution){
+    var m=row.mt,s=row.sc;
+    var href="../index.html#"+encodeURIComponent(m.n)+"/"+date;
+    var wx=dispWx(s);
+    var oc=' onclick="sessionStorage.setItem(\'pw_from_find\',\'1\')"';
+    var reason=caution?'<td class="reason">⚠ '+esc(reasonLabel(s))+'</td>':'';
+    return '<tr>'+
+      '<td class="rank">'+(i+1)+'</td>'+
+      '<td class="nm"><a href="'+href+'"'+oc+'>'+esc(m.n)+'</a><small>'+esc(m.pref)+' / '+m.el+'m</small></td>'+
+      reason+
+      '<td>'+(wx.ic?'<svg class="wxico" aria-hidden="true"><use href="#'+wx.ic+'"/></svg>':"-")+
+            '<span class="wxlbl">'+esc(wx.lb)+'</span></td>'+
+      '<td class="num">'+pct(s.sunFrac)+'</td>'+
+      '<td class="num">'+fnum(s.tmax,"")+' / '+fnum(s.tmin,"℃")+'</td>'+
+      '<td class="num">'+fnum(s.ridgeWmax,"m/s")+'</td>'+
+      '<td class="num">'+(s.pprob==null?"-":Math.round(s.pprob)+"%")+'</td>'+
+      '<td class="sc '+scClass(s.v)+'">'+s.v+'<span class="stars">'+stars(s.v)+'</span></td>'+
+      '</tr>';
+  }
+
+  function tableHtml(rows,date,caution){
+    var head='<tr><th>#</th><th>山名</th>'+
+      (caution?'<th>理由</th>':'')+
+      '<th>天気</th><th>日照</th><th>気温</th><th>稜線風</th><th>降水</th><th>スコア</th></tr>';
+    var body='';
+    rows.forEach(function(row,i){body+=rowHtml(row,i,date,caution)});
+    return '<div class="tbl'+(caution?' caution':'')+'"><table><thead>'+head+
+      '</thead><tbody>'+body+'</tbody></table></div>';
+  }
+
   function render(rows,date){
-    var h='<div class="tbl"><table><thead><tr>'+
-      '<th>#</th><th>山名</th><th>天気</th><th>日照</th><th>気温</th><th>風</th><th>降水</th><th>スコア</th>'+
-      '</tr></thead><tbody>';
-    rows.forEach(function(row,i){
-      var m=row.mt,s=row.sc;
-      var href="../index.html#"+encodeURIComponent(m.n)+"/"+date;
-      var wx=dispWx(s);
-      // クリック時に「find経由」フラグをセット → 詳細ページ側で「一覧に戻る」を表示
-      var oc=' onclick="sessionStorage.setItem(\'pw_from_find\',\'1\')"';
-      h+='<tr>'+
-        '<td class="rank">'+(i+1)+'</td>'+
-        '<td class="nm"><a href="'+href+'"'+oc+'>'+esc(m.n)+'</a><small>'+esc(m.pref)+' / '+m.el+'m</small></td>'+
-        '<td>'+(wx.ic?'<svg class="wxico" aria-hidden="true"><use href="#'+wx.ic+'"/></svg>':"-")+
-              '<span class="wxlbl">'+esc(wx.lb)+'</span></td>'+
-        '<td class="num">'+pct(s.sunFrac)+'</td>'+
-        '<td class="num">'+fnum(s.tmax,"")+' / '+fnum(s.tmin,"℃")+'</td>'+
-        '<td class="num">'+fnum(s.wmax,"m/s")+'</td>'+
-        '<td class="num">'+(s.pprob==null?"-":s.pprob+"%")+'</td>'+
-        '<td class="sc '+scClass(s.v)+'">'+s.v+'<span class="stars">'+stars(s.v)+'</span></td>'+
-        '</tr>';
-    });
-    h+='</tbody></table></div>';
+    var safe=[],caution=[];
+    rows.forEach(function(x){(isDangerous(x.sc)?caution:safe).push(x)});
+    var h='';
+    // ① メイン表: 登れそうな山 (該当ゼロなら「見つかりませんでした」表示)
+    if(safe.length){
+      h+='<h3 class="results-h">登れそうな山 <span class="rcount">('+safe.length+'座)</span></h3>';
+      h+=tableHtml(safe,date,false);
+    }else{
+      h+='<h3 class="results-h">登れそうな山は見つかりませんでした</h3>'+
+         '<p class="rnote">この日は選択エリアの全山が下記の安全性足切りに該当しました。日を変えてお試しください。</p>';
+    }
+    // ② 足切り表: 該当ゼロなら表示しない
+    if(caution.length){
+      h+='<h3 class="results-h caution">⚠ 慎重に判断が必要 <span class="rcount">('+caution.length+'座)</span></h3>';
+      h+='<p class="rnote caution">稜線風速 18m/s 以上、または 7-15時 の降水量 10mm 以上。'+
+         '登山に不適格の可能性が高いため、参考として下位に表示しています。</p>';
+      h+=tableHtml(caution,date,true);
+    }
+    h+='<p class="rnote">※ スコアは <b>登山コアタイム 7:00〜15:59</b> の気象値で算定しています。'+
+       '<a href="find-score.html">計算方法の詳細</a></p>';
     elResults.innerHTML=h;
   }
 
