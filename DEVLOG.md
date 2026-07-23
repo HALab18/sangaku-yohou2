@@ -12,6 +12,11 @@
 ベースに **2026-07-23 に新規分離**。v1 は変更を一切反映せず従来のまま運用継続、
 横断検索機能（Open-Meteoへのリクエスト増）はこちらのリポジトリのみで開発を続ける方針。
 公開URL: https://halab18.github.io/sangaku-yohou2/ 。GitHub Pages 設定済み・公開確認済み。
+**ローカル作業フォルダは `sangaku-yohou`（v1）とは別**: `C:\Users\JDL\dev\sangaku-yohou2`
+（v1の `C:\Users\JDL\dev\sangaku-yohou` とは独立したgitリポジトリ）。自宅PC等で作業を再開する場合は
+まずこのフォルダで `git clone https://github.com/HALab18/sangaku-yohou2.git` するか、既にクローン
+済みなら `git pull` してから開始。GitHub側のデフォルトブランチは `master`（`main` は削除済み）。
+未コミット・未pushの変更なし（最新commit: `b15840b`）。
 
 - **v1との違いは「天気で山さがし」機能のみ**。既存の山頂気象予報（index.html本体・CLI）は無改変。
   機能詳細（日和スコアの設計・チャンク分割等）は下記 07-23 の旧ログ参照。
