@@ -120,10 +120,12 @@ input:focus,select:focus{outline:2px solid var(--night);outline-offset:1px}
   background:#fff url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2076%2052'%3E%3Cpath%20d='M4%2048L28%208%2040%2027%2050%2014%2072%2048Z'%20fill='none'%20stroke='%23a9b6cc'%20stroke-width='7'%20stroke-linejoin='round'/%3E%3Cpath%20d='M21.5%2019L28%208l6.5%2011-3.3-3.4-3.2%204-3.2-4Z'%20fill='%23a9b6cc'/%3E%3Cpath%20d='M45.8%2020.5L50%2014l4.2%206.5-2.2-2.3-2%202.6-2-2.6Z'%20fill='%23a9b6cc'/%3E%3C/svg%3E") no-repeat 13px 50%/19px 13px}
 .frow{display:flex;gap:12px}
 .frow>.f{flex:1;min-width:0}
+/* 開始日selectと表示間隔segは横並びなので同一の固定高さで揃える(selectのネイティブ描画差を吸収) */
+.frow select,.frow .seg{height:48px}
 .seg{display:flex;border:1.5px solid var(--field);border-radius:10px;overflow:hidden;background:#fff}
 .seg label{flex:1;margin:0;position:relative}
 .seg input{position:absolute;opacity:0;width:0;height:0}
-.seg span{display:flex;justify-content:center;align-items:center;padding:11px 2px;
+.seg span{display:flex;justify-content:center;align-items:center;height:100%;padding:0 2px;
   font-size:14px;font-weight:600;color:#667;cursor:pointer;transition:background .15s}
 .seg label+label span{border-left:1.5px solid var(--field)}
 .seg input:checked+span{background:var(--sel);color:var(--night);font-weight:700}
