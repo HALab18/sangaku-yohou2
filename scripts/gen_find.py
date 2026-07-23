@@ -95,13 +95,19 @@ table{border-collapse:collapse;width:100%}
 th{background:var(--slate);color:#fff;padding:6px 8px;font-weight:600;font-size:.86em;white-space:nowrap;position:sticky;top:0;z-index:2}
 td{padding:8px;border-bottom:1px solid var(--line);text-align:center;background:#fff;white-space:nowrap}
 tr:nth-child(even) td{background:#eef1f6}
-/* 山名列: 日本語CJKは基本改行させず1行で表示(word-break:keep-all)、極端に長い山名(9文字以上)だけ
-   max-width を超えた時に折り返しを許容(overflow-wrap:break-word)。td共通の white-space:nowrap は
-   normal に戻す(white-space:nowrap と overflow-wrap:anywhere は仕様上両立しないため)。 */
-td.nm{text-align:left;white-space:normal;min-width:6em;max-width:11em;word-break:keep-all;overflow-wrap:break-word}
-/* 山名セル内の右端にスコアを配置(山名の脇に常に見える)。色は赤で統一 */
-td.nm .nmrow{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
-td.nm .scb{font-weight:800;font-size:1.05em;font-variant-numeric:tabular-nums;flex-shrink:0;line-height:1;color:#b3261e}
+/* 山名列: max-width を超える極端に長い山名(カムイエクウチカウシヤマ 等)は改行を許容する。
+   word-break:keep-all を外し、overflow-wrap:anywhere で任意位置で折り返せるようにする。
+   短い山名は max-width に収まるため改行されない。td共通の white-space:nowrap は normal に戻す。 */
+td.nm{text-align:left;white-space:normal;min-width:6em;max-width:11em;overflow-wrap:anywhere;line-break:anywhere}
+/* 山名セル内の右端にスコアを配置(山名の脇に常に見える)。山名が2行になっても位置がブレないよう
+   align-items:flex-start にして「常に1行目の高さの右上」に固定する。 */
+td.nm .nmrow{display:flex;justify-content:space-between;align-items:flex-start;gap:6px}
+td.nm .scb{font-weight:800;font-size:1.05em;font-variant-numeric:tabular-nums;flex-shrink:0;line-height:1.2}
+/* スコアの色は A/B/C ランクに合わせて色分け (find-score.html の閾値と一致):
+   A(70-100)=緑 / B(45-69)=橙 / C(0-44)=赤。視認性重視で濃いめの色を選ぶ。 */
+td.nm .scb.rank-a{color:#1f7a34}
+td.nm .scb.rank-b{color:#b26b00}
+td.nm .scb.rank-c{color:#b3261e}
 /* スマホで横スクロール時にどの山を見ているか分かるよう、ランク列(#)と山名列を左端に固定する
    (index.htmlの日付列 sticky-left と同じ考え方)。ランク列を固定幅にして山名列の left オフセット
    を予測可能にした。角の交差セル(th)は元々 z-index:2、tdは z-index:1 で thの下に潜る。 */
@@ -123,6 +129,17 @@ h3.results-h .rcount{color:#556;font-weight:500;font-size:.9em;margin-left:6px}
 .rnote{margin:4px 0 0;font-size:.82em;color:#5b6b8a}
 .rnote.caution{color:#b26b00;background:#fff8e6;border-left:4px solid #b26b00;padding:6px 10px;border-radius:0 4px 4px 0}
 .rnote a{color:var(--link)}
+/* 表の下に置く「各列の意味」凡例。ユーザーが「気温が2つあるが説明がない」等で
+   迷わないよう、列ごとの意味と単位・対象時間帯を短い1行で列挙する。 */
+.legend{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:14px 0 6px;font-size:.85em;color:#44506b}
+.legend h4{margin:0 0 6px;font-size:.95em;color:var(--night);font-weight:700}
+.legend dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 10px}
+.legend dt{font-weight:700;color:var(--night);white-space:nowrap}
+.legend dd{margin:0}
+.legend .rk{display:inline-block;padding:1px 7px;border-radius:10px;font-weight:700;font-size:.85em;margin-right:4px}
+.legend .rk-a{background:#d8efe1;color:#1c5b3f}
+.legend .rk-b{background:#fdeec9;color:#7b5e00}
+.legend .rk-c{background:#f9d9cf;color:#a03415}
 /* 足切り表: 見出し帯をオレンジ系にして通常表と視覚的に差別化 */
 .tbl.caution table th{background:#b26b00}
 td.reason{color:#b26b00;font-weight:700;font-size:.85em;white-space:nowrap;text-align:left}
@@ -234,28 +251,35 @@ footer a{color:var(--link)}
    71:"雪(弱)",73:"雪",75:"雪(強)",77:"霧雪",80:"にわか雨",81:"にわか雨",82:"にわか雨(強)",
    85:"にわか雪",86:"にわか雪(強)",95:"雷雨",96:"雷雨(雹)",99:"雷雨(激しい雹)"};
   function wlabel(c){return c==null?"-":(WMO[c]||("code"+c))}
-  // 天気列は「日照率」ベースで表示する。daily.weather_code は24hのmax値で、短時間の霧/
-  // 霧雨が晴主体の日を乗っ取り「曇り なのに日照97%」のような矛盾を生むため主指標にしない。
-  // 降水リスクは別列(降水確率)に任せる。日照率が取れない時だけ weather_code で代替。
-  // ic は index.html と共通のSVGシンボルID(#wx-sun 等)。emojiのOS依存表示ズレを避ける。
+  // 天気列は 7-15時 の予報を「悪天優先 → 日照率」の順で判定する。
+  //   1) 悪天(雷雨/雪/雨) が対象時間帯にある(weather_code >= 51 かつ降水量 >= 0.1mm、
+  //      あるいは code>=71 の雪・雷)場合は、雨/雪/雷のアイコンで明示する。
+  //      → 「雨が降る予報の日が『曇りがち』としか表示されない」誤解を防ぐ。
+  //   2) 悪天でなければ日照率で「よく晴れ〜曇りがち」を判定。
+  //   3) 日照率も weather_code もない場合は "-"。
+  // 対象時間帯は score() 側の agg() と一致する 7-15時 で、code=max, psum=sum。
   function dispWx(s){
-    var f=s.sunFrac;
-    if(f==null){
-      var c=s.code,ic;
-      if(c==null)ic=null;
-      else if(c>=95)ic="wx-thunder";
-      else if(c>=71&&c<=77||c===85||c===86)ic="wx-snow";
-      else if(c>=51&&c<=67||c>=80&&c<=82)ic="wx-rain";
-      else if(c===45||c===48)ic="wx-fog";
-      else if(c===3)ic="wx-cloud";
-      else if(c===2)ic="wx-suncloud";
-      else ic="wx-sun";
-      return {ic:ic,lb:wlabel(c)};
+    var c=s.code, psum=s.psum, f=s.sunFrac;
+    // 1) 悪天優先: 対象時間帯に雨・雪・雷の予報がある(降水量が実質ゼロの場合は除外)
+    if(c!=null){
+      var wet=(psum!=null && psum>=0.1);
+      if(c>=95)                              return {ic:"wx-thunder", lb:"雷雨"};
+      if((c>=71&&c<=77)||c===85||c===86)     return {ic:"wx-snow",    lb:"雪"};
+      if(wet && ((c>=51&&c<=67)||(c>=80&&c<=82))) return {ic:"wx-rain", lb:"雨"};
     }
-    if(f>=0.80)return {ic:"wx-sun",     lb:"よく晴れ"};
-    if(f>=0.55)return {ic:"wx-suncloud",lb:"晴れ"};
-    if(f>=0.30)return {ic:"wx-suncloud",lb:"時々晴れ"};
-    return       {ic:"wx-cloud",  lb:"曇りがち"};
+    // 2) 日照率ベース (index.html と同じ「よく晴れ / 晴れ / 時々晴れ / 曇りがち」)
+    if(f!=null){
+      if(f>=0.80)return {ic:"wx-sun",     lb:"よく晴れ"};
+      if(f>=0.55)return {ic:"wx-suncloud",lb:"晴れ"};
+      if(f>=0.30)return {ic:"wx-suncloud",lb:"時々晴れ"};
+      return       {ic:"wx-cloud",  lb:"曇りがち"};
+    }
+    // 3) 日照率フォールバック: weather_code のみで大分類
+    if(c==null)return {ic:null,lb:"-"};
+    if(c===45||c===48)return {ic:"wx-fog",     lb:"霧"};
+    if(c===3)         return {ic:"wx-cloud",   lb:"曇り"};
+    if(c===2)         return {ic:"wx-suncloud",lb:"晴れ時々曇り"};
+    return             {ic:"wx-sun",     lb:wlabel(c)};
   }
 
   var elRegion=document.getElementById("region"),elPref=document.getElementById("pref"),
@@ -263,7 +287,7 @@ footer a{color:var(--link)}
       elHint=document.getElementById("hint"),elStatus=document.getElementById("status"),
       elResults=document.getElementById("results");
 
-  // ---- 日付の選択肢 (今日〜15日先の16個・曜日つき) ----
+  // ---- 日付の選択肢 (今日〜13日先の14個・曜日つき) ----
   // index.html と同じ方式: <select> に「07/25(土) 今日」形式の option を並べる。
   // input[type=date] だと iOS/PCで曜日が出ない・実装差でカードから溢れるなどの問題が
   // あったため、明示的に「日付+曜日」を全部option文言に埋め込む方式に統一。
@@ -272,7 +296,7 @@ footer a{color:var(--link)}
   function md(d){return String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0")}
   (function(){
     var today=new Date();today.setHours(0,0,0,0);
-    for(var i=0;i<16;i++){
+    for(var i=0;i<14;i++){
       var d=new Date(today);d.setDate(d.getDate()+i);
       var o=document.createElement("option");
       o.value=iso(d);
@@ -287,6 +311,11 @@ footer a{color:var(--link)}
     if(!c)return;
     var o=document.createElement("option");o.value=r;o.textContent=r+" ("+c+"座)";elRegion.appendChild(o);
   });
+  // デフォルトのエリアは東北にする (山域が広くバランスよく散らばっており、初見のユーザーが
+  // 「まず何か動かして結果を見る」ための入口として適切)。東北が未定義の場合は先頭のまま。
+  if(Array.prototype.some.call(elRegion.options,function(o){return o.value==="東北"})){
+    elRegion.value="東北";
+  }
   // 北海道は都道府県=1(北海道)なので県絞り込み不要。それ以外は県まで選ばないと検索させない
   // (Open-Meteo 側の負荷軽減が目的)。
   var NO_PREF_REGIONS={"北海道":true};
@@ -453,6 +482,10 @@ footer a{color:var(--link)}
   function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
   function pct(f){return f==null?"-":Math.round(f*100)+"%"}
   function fnum(v,u){return v==null?"-":Math.round(v)+u}
+  // 降水量は「小雨(0.1〜0.9mm)」を丸めて 0mm と表示してしまうと誤解を招くため、小数1桁で表示する
+  function pmm(v){if(v==null)return "-";if(v<0.05)return "0.0mm";return v.toFixed(1)+"mm"}
+  // スコアの A/B/C ランク色分け (find-score.html の閾値と一致: A>=70 / B>=45 / C<45)
+  function rankOf(v){return v>=70?"a":v>=45?"b":"c"}
 
   // ---- 検索実行 ----
   function cacheKey(r,p,date){return "find:"+r+":"+p+":"+date}
@@ -503,7 +536,7 @@ footer a{color:var(--link)}
       '<td class="nm">'+
         '<div class="nmrow">'+
           '<a href="'+href+'"'+oc+'>'+esc(m.n)+'</a>'+
-          '<span class="scb">'+s.v+'</span>'+
+          '<span class="scb rank-'+rankOf(s.v)+'">'+s.v+'</span>'+
         '</div>'+
         '<small>'+esc(m.pref)+' / '+m.el+'m</small>'+
       '</td>'+
@@ -514,18 +547,40 @@ footer a{color:var(--link)}
       '<td class="num">'+fnum(s.tmax,"")+' / '+fnum(s.tmin,"℃")+'</td>'+
       '<td class="num">'+fnum(s.ridgeWmax,"m/s")+'</td>'+
       '<td class="num">'+(s.pprob==null?"-":Math.round(s.pprob)+"%")+'</td>'+
+      '<td class="num">'+pmm(s.psum)+'</td>'+
       '</tr>';
   }
 
   function tableHtml(rows,date,caution){
     var head='<tr><th>#</th><th>山名 / スコア</th>'+
       (caution?'<th>理由</th>':'')+
-      '<th>天気</th><th>日照</th><th>気温</th><th>稜線風</th><th>降水</th></tr>';
+      '<th>天気</th><th>日照</th><th>気温</th><th>稜線風</th><th>降水確率</th><th>降水量</th></tr>';
     var body='';
     rows.forEach(function(row,i){body+=rowHtml(row,i,date,caution)});
     return '<div class="tbl'+(caution?' caution':'')+'"><table><thead>'+head+
       '</thead><tbody>'+body+'</tbody></table></div>';
   }
+
+  // 表の下に置く「各列の意味」凡例 (対象時間帯・単位・スコア色分けの説明つき)
+  var LEGEND_HTML=(
+    '<div class="legend"><h4>表の見方</h4>'+
+    '<dl>'+
+    '<dt>スコア</dt><dd>0〜100 の総合コンディション値 (大きいほど良い)。'+
+      '<span class="rk rk-a">A</span>70〜100 '+
+      '<span class="rk rk-b">B</span>45〜69 '+
+      '<span class="rk rk-c">C</span>0〜44 '+
+      '色は山名脇のスコアに反映(<a href="find-score.html">計算方法</a>)</dd>'+
+    '<dt>天気</dt><dd>7〜15時 の代表天気。雷雨/雪/雨の予報がある日はそれを優先表示、'+
+      'それ以外は日照率で「よく晴れ・晴れ・時々晴れ・曇りがち」を判定</dd>'+
+    '<dt>日照</dt><dd>7〜15時 のうち日照が見込まれる時間の割合 (0〜100%)</dd>'+
+    '<dt>気温</dt><dd>7〜15時 の <b>最高 / 最低</b> 気温 (℃)。'+
+      '山頂への標高補正は<b>していない</b>ため、実際の山頂気温はこれより低い(標高100mで約0.6℃低下)</dd>'+
+    '<dt>稜線風</dt><dd>山頂標高で推定した稜線風速の 7〜15時 最大値 (m/s)。'+
+      '地表10mではなく気圧面から線形補間した値</dd>'+
+    '<dt>降水確率</dt><dd>7〜15時 の1時間ごとの降水確率の最大値 (%)</dd>'+
+    '<dt>降水量</dt><dd>7〜15時 の降水量の合計 (mm)。'+
+      'スコアと足切り(⚠ 慎重に判断が必要)に直接影響する</dd>'+
+    '</dl></div>');
 
   function render(rows,date){
     var safe=[],caution=[];
@@ -548,6 +603,9 @@ footer a{color:var(--link)}
     }
     h+='<p class="rnote">※ スコアは <b>登山コアタイム 7:00〜15:59</b> の気象値で算定しています。'+
        '<a href="find-score.html">計算方法の詳細</a></p>';
+    // 表下部に「各列の意味」凡例。気温が2つある/天気の判定基準など、初見でも列の意味が
+    // 分かるようにする。1回だけ表示(メイン表と足切り表のどちらか(または両方)が出た時)。
+    h+=LEGEND_HTML;
     elResults.innerHTML=h;
   }
 
