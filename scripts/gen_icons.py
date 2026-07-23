@@ -7,7 +7,8 @@ index.html の .logomark SVG (viewBox 0 0 76 52) を忠実に再現:
   外形:   M4 48 L28 8 L40 27 L50 14 L72 48 Z  (stroke #fff / stroke-width 3.5 / round-join)
   雪(左): M21.5 19 L28 8 L34.5 19 L31.2 15.6 L28 19.6 L24.8 15.6 Z (fill)
   雪(右): M45.8 20.5 L50 14 L54.2 20.5 L52 18.2 L50 20.8 L48 18.2 Z (fill)
-背景はヒーローと同じネイビー系の縦グラデ(#33456b → #1e2d4a / --night)。
+背景はヒーローと同じネイビー系だが、v2.00 では対角線形グラデ(左上=明るめ #4A6DA5 →
+右下=深い #141D38)にしてレンジを広げた。基本色相(ネイビー)は同じまま、グラデを効かせている。
 iOS が自動で角丸にするためフルブリード正方形・不透過で出力する。
 
 ロゴマークを変えたら index.html の上記パスを直してここに反映 → `python scripts/gen_icons.py`。
@@ -24,8 +25,8 @@ SNOW_L = [(21.5, 19), (28, 8), (34.5, 19), (31.2, 15.6), (28, 19.6), (24.8, 15.6
 SNOW_R = [(45.8, 20.5), (50, 14), (54.2, 20.5), (52, 18.2), (50, 20.8), (48, 18.2)]
 VB_W, VB_H = 76, 52
 
-GRAD_TOP = (0x33, 0x45, 0x6B)     # ヒーロー上空のやや明るいネイビー
-GRAD_BOTTOM = (0x1E, 0x2D, 0x4A)  # --night
+GRAD_TL = (0x4A, 0x6D, 0xA5)  # 左上: 現状の GRAD_TOP より明るく彩度も上げたネイビー
+GRAD_BR = (0x14, 0x1D, 0x38)  # 右下: --night(#1e2d4a) より深いネイビー
 
 
 def make_icon(size, mark_ratio, stroke_svg, out_name):
@@ -34,11 +35,15 @@ def make_icon(size, mark_ratio, stroke_svg, out_name):
     img = Image.new("RGB", (S, S))
     d = ImageDraw.Draw(img)
 
-    # 縦グラデーション背景
-    for y in range(S):
-        t = y / (S - 1)
-        c = tuple(round(a + (b - a) * t) for a, b in zip(GRAD_TOP, GRAD_BOTTOM))
-        d.line([(0, y), (S, y)], fill=c)
+    # 対角線形グラデーション背景。x+y の等高線に沿って色を補間する
+    # (左上→右下の対角と垂直な線が同色になる)。t=0が左上、t=1が右下。
+    N = 2 * (S - 1)
+    for k in range(N + 1):
+        t = k / N
+        c = tuple(round(a + (b - a) * t) for a, b in zip(GRAD_TL, GRAD_BR))
+        x0 = max(0, k - (S - 1)); y0 = k - x0
+        x1 = min(S - 1, k);       y1 = k - x1
+        d.line([(x0, y0), (x1, y1)], fill=c)
 
     # マークの配置: 幅 mark_ratio、光学的中央(わずかに上)に置く
     scale = S * mark_ratio / VB_W
