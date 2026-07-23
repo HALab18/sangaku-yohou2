@@ -58,6 +58,17 @@ tr:nth-child(even) td{background:#eef1f6}
    max-width を超えた時に折り返しを許容(overflow-wrap:break-word)。td共通の white-space:nowrap は
    normal に戻す(white-space:nowrap と overflow-wrap:anywhere は仕様上両立しないため)。 */
 td.nm{text-align:left;white-space:normal;min-width:8em;max-width:16em;word-break:keep-all;overflow-wrap:break-word}
+/* スマホで横スクロール時にどの山を見ているか分かるよう、ランク列(#)と山名列を左端に固定する
+   (index.htmlの日付列 sticky-left と同じ考え方)。ランク列を固定幅にして山名列の left オフセット
+   を予測可能にした。角の交差セル(th)は元々 z-index:2、tdは z-index:1 で thの下に潜る。 */
+th:first-child,td.rank{width:34px;min-width:34px;max-width:34px;padding-left:6px;padding-right:6px}
+th:first-child,td.rank{position:sticky;left:0}
+th:nth-child(2),td.nm{position:sticky;left:34px}
+td.rank,td.nm{z-index:1}
+/* 偶数行の背景色が透けないよう明示 (sticky で親の背景が引き継がれないため) */
+tr:nth-child(even) td.rank,tr:nth-child(even) td.nm{background:#eef1f6}
+/* 山名列の右端に境界線 (横スクロール時に固定範囲の右端が視認しやすい) */
+th:nth-child(2),td.nm{box-shadow:inset -1px 0 0 var(--line)}
 td.nm a{color:var(--link);font-weight:700;text-decoration:none}
 td.nm a:hover{text-decoration:underline}
 td.nm small{display:block;color:#8a94a8;font-size:.82em;font-weight:400}
