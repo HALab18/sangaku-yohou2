@@ -144,9 +144,13 @@ button:disabled{background:#9aa7bd;cursor:wait}
 #gps:hover{background:var(--sel)}
 #gps:disabled{background:#fff;color:#9aa7bd}
 .listlink .mk{width:14px;height:10px;margin-right:4px;vertical-align:-.5px}
-.backfind{margin:0 0 10px;font-size:.9em}
-.backfind a{color:var(--link);text-decoration:none;font-weight:600}
-.backfind a:hover{text-decoration:underline}
+/* 「天気で山さがし」からの遷移時に予報カード先頭に出す戻りボタン。
+   プレーンリンクだと見落とされやすいので、ピル型の塗りボタン(--btn 系)にして目立たせる。 */
+.backfind{margin:0 0 14px}
+.backfind a{display:inline-block;padding:9px 22px;background:var(--btn);color:#fff;
+  border-radius:999px;font-size:.9em;font-weight:700;text-decoration:none;
+  box-shadow:0 2px 6px rgba(30,45,74,.14)}
+.backfind a:hover{background:var(--btn-d)}
 .hint{color:#999;font-size:.8em;text-align:center;margin:12px 0 0}
 .hint a{color:var(--link)}
 
