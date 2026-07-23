@@ -103,10 +103,12 @@ main{max-width:1080px;margin:0 auto;padding:26px 14px 8px 22px}
   box-shadow:0 2px 12px rgba(30,45,74,.10);scroll-margin-top:12px}
 form{display:flex;flex-direction:column;gap:14px}
 .f{display:flex;flex-direction:column;gap:5px;font-size:.82em;font-weight:600;color:#556;margin:0}
-.lrow{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.lrow{display:flex;align-items:baseline;gap:5px 10px;flex-wrap:wrap}
+.llabel{white-space:nowrap}
 .lrow .listlink{color:var(--link);font-weight:600;text-decoration:none;white-space:nowrap}
 .lrow .listlink:hover{text-decoration:underline}
-.linkgrp{display:flex;gap:12px;flex-wrap:wrap}
+/* 「天気で山さがし」は右端に固定(左脇のリンク群と離す) */
+.lrow .findlink{margin-left:auto}
 input,select{font-size:16px;padding:11px 12px;border:1.5px solid var(--field);border-radius:10px;
   background:#fff;width:100%;font-family:inherit}
 input:focus,select:focus{outline:2px solid var(--night);outline-offset:1px}
@@ -193,6 +195,8 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
 .sat{color:#1857a4;font-weight:600}.sun{color:#c0392b;font-weight:600}
 .ew{color:#a03415;font-weight:700;font-size:.85em;white-space:nowrap}
 .wxnote{display:block;font-size:.78em;color:#6b7280;margin-top:2px;line-height:1.3}
+.wxico{width:1.15em;height:1.15em;vertical-align:-.22em;margin-right:1px}
+.wxconn{color:#6b7280;font-size:.82em;margin:0 .18em;white-space:nowrap}
 .ewnote{background:#f9d9cf;border-left:5px solid #a03415;padding:8px 12px;
   border-radius:0 6px 6px 0;margin:6px 0 14px;font-size:.9em}
 .notice{background:#edf2f9;border-left:5px solid var(--slate);color:#44506b;padding:10px 12px;
@@ -225,6 +229,30 @@ footer a{color:var(--link)}
     <path d="M4 48 L28 8 L40 27 L50 14 L72 48 Z" fill="none" stroke="currentColor" stroke-width="7" stroke-linejoin="round"/>
     <path d="M21.5 19 L28 8 L34.5 19 L31.2 15.6 L28 19.6 L24.8 15.6 Z" fill="currentColor"/>
     <path d="M45.8 20.5 L50 14 L54.2 20.5 L52 18.2 L50 20.8 L48 18.2 Z" fill="currentColor"/>
+  </symbol>
+  <!-- 天気アイコン(配色付き線画)。日内変化フレーズ/詳細表の天気列で使用。晴=橙/雲=灰/雨=青/雪=水色/雷=橙 -->
+  <symbol id="wx-sun" viewBox="0 0 24 24" fill="none" stroke="#f5a623" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="4.2" fill="#f5a623" stroke="none"/>
+    <path d="M12 2v2.6M12 19.4V22M2 12h2.6M19.4 12H22M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M19.4 4.6l-1.8 1.8M6.4 17.6l-1.8 1.8"/>
+  </symbol>
+  <symbol id="wx-cloud" viewBox="0 0 24 24" fill="none" stroke="#8b93a3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.5 18.5h8.6a3.9 3.9 0 0 0 .4-7.78 5.6 5.6 0 0 0-10.75-1.35A3.85 3.85 0 0 0 7.5 18.5Z"/>
+  </symbol>
+  <symbol id="wx-fog" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.3 13.5h8.6a3.9 3.9 0 0 0 .4-7.78A5.6 5.6 0 0 0 5.55 4.37 3.85 3.85 0 0 0 7.3 13.5Z" stroke="#8b93a3"/>
+    <path d="M5 18h9M8 21.3h8" stroke="#aab2c0"/>
+  </symbol>
+  <symbol id="wx-rain" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.3 14.5h8.6a3.9 3.9 0 0 0 .4-7.78A5.6 5.6 0 0 0 5.55 5.37 3.85 3.85 0 0 0 7.3 14.5Z" stroke="#8b93a3"/>
+    <path d="M8.5 17.5 7 21M12.5 17.5 11 21M16.5 17.5 15 21" stroke="#3f83d6"/>
+  </symbol>
+  <symbol id="wx-snow" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.3 14.5h8.6a3.9 3.9 0 0 0 .4-7.78A5.6 5.6 0 0 0 5.55 5.37 3.85 3.85 0 0 0 7.3 14.5Z" stroke="#8b93a3"/>
+    <g fill="#4aa5e0" stroke="none"><circle cx="8.5" cy="18.6" r="1.05"/><circle cx="12" cy="20.4" r="1.05"/><circle cx="15.5" cy="18.6" r="1.05"/></g>
+  </symbol>
+  <symbol id="wx-thunder" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.3 13.5h8.6a3.9 3.9 0 0 0 .4-7.78A5.6 5.6 0 0 0 5.55 4.37 3.85 3.85 0 0 0 7.3 13.5Z" stroke="#8b93a3"/>
+    <path d="M12.5 15.5 9.5 20h3l-1 3" stroke="#f5a623"/>
   </symbol>
 </svg>
 
@@ -308,11 +336,11 @@ footer a{color:var(--link)}
 <div class="formcard entry">
 <form id="f">
   <label class="f mfield">
-    <span class="lrow">山名（直接入力もできます）<span class="linkgrp">
-      <a class="listlink" href="docs/find.html">天気で山さがし ▸</a>
+    <span class="lrow"><span class="llabel">山名（直接入力可能）</span>
       <a class="listlink" href="docs/point.html">座標を指定 ▸</a>
       <a class="listlink" href="docs/mountains.html"><svg class="mk" aria-hidden="true"><use href="#mkico"/></svg>対応山リスト ▸</a>
-    </span></span>
+      <a class="listlink findlink" href="docs/find.html">天気で山さがし ▸</a>
+    </span>
     <input id="mname" placeholder="例: 燕岳" required autocomplete="off">
     <div id="sugg" hidden></div>
   </label>
@@ -390,6 +418,7 @@ const WX_WINDOW=[4,17]; // 集約する時間帯窓(両端含む)
 const SAFETY_OVERRIDE=new Set([65,66,67,75,82,85,86,95,96,99]); // 窓内に1hでもあれば日代表に昇格(安全側)
 const PRECIP_CATS=new Set(["fog","drizzle","rain","showers","snow","snowshowers","thunder"]);
 const CAT_LABEL={fog:"霧",drizzle:"霧雨",rain:"雨",showers:"にわか雨",snow:"雪",snowshowers:"にわか雪",thunder:"雷雨"};
+const WLABEL2CAT=Object.fromEntries(Object.entries(CAT_LABEL).map(([c,l])=>[l,c])); // 逆引き(注記の重複防止用)
 const TOD_ORDER=["明け方","朝","昼前","昼過ぎ","夕方"];
 const timeOfDay=hr=>hr<=6?"明け方":hr<=9?"朝":hr<=11?"昼前":hr<=14?"昼過ぎ":"夕方";
 function timingLabel(hours){
@@ -398,12 +427,12 @@ function timingLabel(hours){
   if(labels.length>=2)return`${labels[0]}〜${labels[labels.length-1]}`;
   return labels[0];
 }
-function addPrecipNotes(win,repCat,notes,skipHours){
+function addPrecipNotes(win,repCat,notes,skipHours,excludeCats=new Set()){
   const seen=new Map();
   for(const e of win){
     if(skipHours.has(e.hour))continue;
     const cat=WCAT(e.code);
-    if(cat===repCat||!PRECIP_CATS.has(cat))continue;
+    if(cat===repCat||!PRECIP_CATS.has(cat)||excludeCats.has(cat))continue;
     if(!seen.has(cat))seen.set(cat,[]);
     seen.get(cat).push(e.hour);
   }
@@ -422,14 +451,20 @@ function summarizeDailyWeather(times,codes){
     let win=entries.filter(e=>e.hour>=WX_WINDOW[0]&&e.hour<=WX_WINDOW[1]);
     if(!win.length)win=entries; // 保険: 窓が空なら全時間
     const notes=[];
+    // フレーズを先に決め、フレーズに出す降水カテゴリは注記から除外(重複防止)。3つ目以降の降水系だけ注記に残る。
+    let phrase=dayWeatherPhrase(win);
+    const phraseCats=new Set();
+    if(phrase)for(const s of phrase)if(s.label&&WLABEL2CAT[s.label])phraseCats.add(WLABEL2CAT[s.label]);
     // 第1層: 安全オーバーライド(悪天は無条件で日代表)
     const overrides=win.filter(e=>SAFETY_OVERRIDE.has(e.code));
     if(overrides.length){
       overrides.sort((a,b)=>WSEV(b.code)-WSEV(a.code));
       const rep=overrides[0].code,repCat=WCAT(rep);
       // 代表(悪天)自身の時間注記は付けない: 天気列に既に出るため冗長。他の降水系のみ注記に残す。
-      addPrecipNotes(win,repCat,notes,new Set(overrides.map(e=>e.hour)));
-      result.push({date,code:rep,notes});
+      addPrecipNotes(win,repCat,notes,new Set(overrides.map(e=>e.hour)),phraseCats);
+      // 単一天気の日は従来の詳細ラベル(快晴/弱/強等)を維持しアイコンだけ付ける
+      if(phrase&&phrase.length===1)phrase=singleCodePhrase(rep);
+      result.push({date,code:rep,notes,phrase});
       continue;
     }
     // 第2層: 日中の時間帯多数決(同数なら重症度が高い方)
@@ -446,11 +481,74 @@ function summarizeDailyWeather(times,codes){
     let repCode=null,best=-1,bestSev=-1;
     for(const[code,cnt]of codeCount){const sev=WSEV(code);if(cnt>best||(cnt===best&&sev>bestSev)){repCode=code;best=cnt;bestSev=sev;}}
     // 第3層: 代表でない降水系は注記に降格
-    addPrecipNotes(win,repCat,notes,new Set());
-    result.push({date,code:repCode,notes});
+    addPrecipNotes(win,repCat,notes,new Set(),phraseCats);
+    // 単一天気の日は従来の詳細ラベル(快晴/晴れ時々曇り/弱/強等)を維持しアイコンだけ付ける
+    if(phrase&&phrase.length===1)phrase=singleCodePhrase(repCode);
+    result.push({date,code:repCode,notes,phrase});
   }
   return result;
 }
+// ---- 日内変化フレーズ (のち/時々/一時。scripts/mountain_weather.py の day_weather_phrase と同一ロジック) ----
+// 気象庁 予報用語準拠: 前半後半で優勢が入れ替わる=のち / 断続的<1/2=時々 / 連続的<1/4=一時。
+// カテゴリ→[表示ラベル, アイコンID]。partly は晴れに畳む(真の曇天は cloudy が拾う)。詳細表は弱/強を wcode で別表示。
+const WBASE={clear:["晴れ","wx-sun"],partly:["晴れ","wx-sun"],cloudy:["曇り","wx-cloud"],
+ fog:["霧","wx-fog"],drizzle:["霧雨","wx-rain"],rain:["雨","wx-rain"],showers:["にわか雨","wx-rain"],
+ snow:["雪","wx-snow"],snowshowers:["にわか雪","wx-snow"],thunder:["雷雨","wx-thunder"]};
+const wbaseLabel=c=>WBASE[WCAT(c)]?WBASE[WCAT(c)][0]:null;
+const wbaseIcon=c=>WBASE[WCAT(c)]?WBASE[WCAT(c)][1]:null;
+const LABEL_ICON=Object.fromEntries(Object.values(WBASE).map(([l,i])=>[l,i]));
+// win=[{hour,code}] → セグメント配列 [{label,icon}|{conn}] (最大2天気+接続語1)。窓が空なら null。
+function dayWeatherPhrase(win){
+  const seq=win.filter(e=>wbaseLabel(e.code)!=null)
+    .map(e=>({hour:e.hour,label:wbaseLabel(e.code),sev:WSEV(e.code),code:e.code}))
+    .sort((a,b)=>a.hour-b.hour);
+  const N=seq.length;
+  if(!N)return null;
+  const seg=label=>({label,icon:LABEL_ICON[label]});
+  const dominant=sub=>{ // 最多ラベル(同数は重症度が高い方)
+    const cnt=new Map(),sv=new Map();
+    for(const e of sub){cnt.set(e.label,(cnt.get(e.label)||0)+1);sv.set(e.label,Math.max(sv.get(e.label)??-1,e.sev));}
+    let best=null,bc=-1,bs=-1;
+    for(const[l,c]of cnt){const s=sv.get(l);if(c>bc||(c===bc&&s>bs)){best=l;bc=c;bs=s;}}
+    return best;
+  };
+  if(new Set(seq.map(e=>e.label)).size===1)return[seg(seq[0].label)]; // 単一天気
+  // 安全側: 窓内の悪天(最悪)は必ずフレーズに残す
+  const sevHours=seq.filter(e=>SAFETY_OVERRIDE.has(e.code));
+  const severeLabel=sevHours.length?sevHours.reduce((a,b)=>b.sev>a.sev?b:a).label:null;
+  // 第1優先: 前半/後半で優勢が入れ替われば「のち」
+  const half=Math.ceil(N/2);
+  const domA=dominant(seq.slice(0,half)),domB=dominant(seq.slice(half));
+  if(domA!==domB&&(severeLabel==null||severeLabel===domA||severeLabel===domB))
+    return[seg(domA),{conn:"のち"},seg(domB)];
+  // 第2: 主天気P + 副次S を「一時/時々」で連結
+  const P=dominant(seq);
+  let S=null;
+  if(severeLabel!=null&&severeLabel!==P)S=severeLabel; // 悪天は最優先で副次に採用
+  else{
+    const cnt=new Map(),sv=new Map();
+    for(const e of seq){if(e.label===P)continue;cnt.set(e.label,(cnt.get(e.label)||0)+1);sv.set(e.label,Math.max(sv.get(e.label)??-1,e.sev));}
+    let bc=-1,bs=-1;for(const[l,c]of cnt){const s=sv.get(l);if(c>bc||(c===bc&&s>bs)){S=l;bc=c;bs=s;}}
+  }
+  if(S==null)return[seg(P)];
+  const share=seq.filter(e=>e.label===S).length/N;
+  let runs=0,prev=false;for(const e of seq){const is=e.label===S;if(is&&!prev)runs++;prev=is;} // Sの連続塊数
+  const conn=(runs===1&&share<0.25)?"一時":"時々";
+  return[seg(P),{conn},seg(S)];
+}
+// フレーズ→HTML(アイコン+ラベル)。日別サマリ用。
+// 単一天気の日の表示フレーズを作る。code=2("晴れ時々曇り")だけは複合ラベルなので
+// 晴れ/曇り2アイコンに分解する(他コードはWMOラベル1つ+カテゴリアイコン1つで足りる)。
+function singleCodePhrase(code){
+  if(code===2)return[{label:"晴れ",icon:"wx-sun"},{conn:"時々"},{label:"曇り",icon:"wx-cloud"}];
+  return[{label:wcode(code),icon:wbaseIcon(code)}];
+}
+const wxPhraseHtml=ph=>!ph||!ph.length?"-":ph.map(s=>s.conn!==undefined
+  ?`<span class="wxconn">${s.conn}</span>`
+  :(s.icon?`<svg class="wxico" aria-hidden="true"><use href="#${s.icon}"/></svg>`:"")+esc(s.label)).join("");
+// 単一コード→アイコン+詳細ラベル(弱/強)。3h/1h詳細表用。
+const wxCodeIcon=c=>{if(c==null)return"-";const ic=wbaseIcon(c);
+  return(ic?`<svg class="wxico" aria-hidden="true"><use href="#${ic}"/></svg>`:"")+wcode(c);};
 const wxnote=n=>n&&n.length?`<span class="wxnote">${n.map(esc).join(" / ")}</span>`:"";
 const f0=(v,none="-")=>v==null?none:Math.round(v).toString();
 const f1=v=>v==null?"-":v.toFixed(1);
@@ -616,14 +714,14 @@ async function run(mt){
     const ws=wsArr.length?Math.max(...wsArr):null;
     const wd2=rw.find(x=>x[0]===ws)?.[1];
     const dep=idxs.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
-    pastRows.push({d:new Date(dt2),code:wxByDate.get(ds)?.code??d.weather_code[di],notes:wxByDate.get(ds)?.notes||[],tmin:d.temperature_2m_min[di],tmax:d.temperature_2m_max[di],
+    pastRows.push({d:new Date(dt2),code:wxByDate.get(ds)?.code??d.weather_code[di],notes:wxByDate.get(ds)?.notes||[],phrase:wxByDate.get(ds)?.phrase,tmin:d.temperature_2m_min[di],tmax:d.temperature_2m_max[di],
       ws,wd:wd2,pr:d.precipitation_sum[di],sf:d.snowfall_sum?.[di],
       depth:dep.length?Math.max(...dep):null});
   }
   if(pastRows.length){
     htmlOut+=`<h2>直近の実況(モデル解析値・過去${pastRows.length}日)</h2><div class="tbl"><table>
       <tr><th>日付</th><th>天気</th><th>山頂気温</th><th>稜線風max(5-17時)</th><th>降水量</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
-    for(const r of pastRows)htmlOut+=`<tr><td>${md(r.d)}${wj(r.d)}</td><td>${wcode(r.code)}${wxnote(r.notes)}</td>
+    for(const r of pastRows)htmlOut+=`<tr><td>${md(r.d)}${wj(r.d)}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
       <td>${f0(r.tmin)}〜${f0(r.tmax)}℃</td><td>${wdir(r.wd)} ${f1(r.ws)}m/s</td>
       <td>${r.pr==null?"-":r.pr.toFixed(1)}mm</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
     htmlOut+=`</table></div><ul class="meta"><li>※モデル解析値であり観測所の実測ではありません。現地の最新情報を優先してください</li></ul>`;
@@ -669,7 +767,7 @@ async function run(mt){
       if(best==null||order[v[0]]<order[best[0]])best=v;
     }
     const dep=idxs.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
-    rows.push({d:new Date(dt2),idx:dayIdxV,eve:evening,code:wxByDate.get(ds)?.code??d.weather_code[di],notes:wxByDate.get(ds)?.notes||[],
+    rows.push({d:new Date(dt2),idx:dayIdxV,eve:evening,code:wxByDate.get(ds)?.code??d.weather_code[di],notes:wxByDate.get(ds)?.notes||[],phrase:wxByDate.get(ds)?.phrase,
       tmin:d.temperature_2m_min[di],tmax:d.temperature_2m_max[di],
       ws:wsMax,wd:wdMax,pr:d.precipitation_sum[di],prob:d.precipitation_probability_max[di],
       sf:d.snowfall_sum?.[di],depth:dep.length?Math.max(...dep):null,
@@ -677,7 +775,7 @@ async function run(mt){
   }
   htmlOut+=`<h2>16日間の見通し</h2><div class="tbl"><table>
     <tr><th>日付</th><th>指数</th><th>天気</th><th>眺望(朝)</th><th>山頂気温</th><th>稜線風max(5-17時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
-  for(const r of rows)htmlOut+=`<tr><td>${md(r.d)}${wj(r.d)}</td><td>${IDX[r.idx]}${r.eve?'<span class="ew"> ⚠夕方</span>':""}</td><td>${wcode(r.code)}${wxnote(r.notes)}</td>
+  for(const r of rows)htmlOut+=`<tr><td>${md(r.d)}${wj(r.d)}</td><td>${IDX[r.idx]}${r.eve?'<span class="ew"> ⚠夕方</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
     <td>${r.view}</td><td>${f0(r.tmin)}〜${f0(r.tmax)}℃</td><td>${wdir(r.wd)} ${f1(r.ws)}m/s</td>
     <td>${r.pr==null?"-":r.pr.toFixed(1)}mm</td><td>${f0(r.prob)}%</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
   htmlOut+=`</table></div>`;
@@ -724,7 +822,7 @@ async function run(mt){
       const bi=blockIndex(ws3,pr3,cape3,thD);
       const depArr=blk.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
       const sfBlk=blk.reduce((s,i)=>s+(h.snowfall?.[i]||0),0);
-      htmlOut+=`<tr><td>${String(sh).padStart(2,"0")}時</td><td>${IDX[bi]}</td><td>${wcode(h.weather_code[i0])}</td><td>${view}</td>
+      htmlOut+=`<tr><td>${String(sh).padStart(2,"0")}時</td><td>${IDX[bi]}</td><td>${wxCodeIcon(h.weather_code[i0])}</td><td>${view}</td>
         <td>${temp==null?"-":temp.toFixed(1)}℃</td><td>${f0(feel)}℃</td><td>${wdir(wd2)} ${f1(ws)}m/s</td>
         <td>${f0(gust)}m/s</td><td>${pr.toFixed(1)}mm</td><td>${f0(prob)}%</td><td>${f0(cape)}</td>
         <td>${cl}</td><td>${visTxt}</td>${hasSnow?`<td>${snowCell(depArr.length?Math.max(...depArr):null,sfBlk)}</td>`:""}</tr>`;
