@@ -37,9 +37,6 @@ tr:nth-child(even) td{background:#eef1f6}
   border-radius:0 6px 6px 0;margin:14px 0;font-size:.95em}
 .point a{color:var(--link)}
 code{background:#eef1f6;padding:1px 6px;border-radius:4px;font-size:.9em;font-family:"Consolas","Menlo",monospace}
-pre{background:#f0f3f8;border-left:3px solid var(--slate);padding:10px 14px;overflow-x:auto;
-  border-radius:0 6px 6px 0;font-size:.85em;font-family:"Consolas","Menlo",monospace;line-height:1.5}
-pre .cm{color:#7a8398}
 .sc-a{color:var(--a);font-weight:700}
 .sc-b{color:var(--b);font-weight:700}
 .sc-c{color:var(--c);font-weight:700}
@@ -287,42 +284,7 @@ footer a{color:var(--link)}
 <span class="badge badge-a">A</span> <span class="stars">★★★★★</span></p>
 </div>
 
-<h2>8. コード本体 (JavaScript)</h2>
-
-<p>実際のスコア計算は下記のコード <b>1 つに集約</b>されています。行数にして 20 行未満。
-上の数式表と対応させて読めます。</p>
-
-<pre><span class="cm">// score(d): Open-Meteo の daily レスポンスから 0〜100 のスコアを返す</span>
-var s = 100;
-
-<span class="cm">// ① 晴天度 (最大 -45)</span>
-if (sunFrac != null)  s -= (1 - sunFrac) * 45;
-else if (code != null) s -= code &lt;= 1 ? 0
-                          : code === 2 ? 12
-                          : code === 3 ? 28 : 35;
-<span class="cm">// 悪天コードの上乗せ</span>
-if (code &gt;= 95)               s -= 12;   <span class="cm">// 雷雨</span>
-else if (code &gt;= 71 &amp;&amp; code &lt;= 86) s -= 8;    <span class="cm">// 雪</span>
-else if (code &gt;= 51 &amp;&amp; code &lt;= 82) s -= 6;    <span class="cm">// 雨</span>
-
-<span class="cm">// ② 降水 (最大 -25)</span>
-if (pprob != null) s -= pprob / 100 * 15;
-if (psum  != null) s -= Math.min(psum, 10) / 10 * 10;
-
-<span class="cm">// ③ 風 (最大 -20、地表10m 基準の相対比較)</span>
-if (wmax != null) s -= clamp((wmax - 4) / 12, 0, 1) * 15;
-if (gust != null) s -= clamp((gust - 8) / 22, 0, 1) *  5;
-
-<span class="cm">// ④ 雪・寒気 (最大 -10)</span>
-if (snow != null &amp;&amp; snow &gt; 0)   s -= Math.min(snow, 5) / 5 * 5;
-if (tmin != null &amp;&amp; tmin &lt; -5)  s -= Math.min(-5 - tmin, 15) / 15 * 5;
-
-return Math.round(Math.max(0, Math.min(100, s)));</pre>
-
-<p>ソースは <a href="https://github.com/HALab18/sangaku-yohou2/blob/master/scripts/gen_find.py">scripts/gen_find.py</a> の
-<code>score()</code> 関数(生成テンプレート内)にあります。閾値や重みの根拠を含めて、コミット履歴からも辿れます。</p>
-
-<h2>9. このスコアで気をつけてほしいこと</h2>
+<h2>8. このスコアで気をつけてほしいこと</h2>
 
 <div class="notice">
 <b>これは「山日和探しの入口」用の簡易スコアです</b>。次の点に注意してください:
