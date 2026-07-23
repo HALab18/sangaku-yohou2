@@ -99,12 +99,9 @@ tr:nth-child(even) td{background:#eef1f6}
    max-width を超えた時に折り返しを許容(overflow-wrap:break-word)。td共通の white-space:nowrap は
    normal に戻す(white-space:nowrap と overflow-wrap:anywhere は仕様上両立しないため)。 */
 td.nm{text-align:left;white-space:normal;min-width:6em;max-width:11em;word-break:keep-all;overflow-wrap:break-word}
-/* 山名セル内の右端にスコアを配置(山名の脇に常に見える)。星表示は廃止して数字色分けのみ */
+/* 山名セル内の右端にスコアを配置(山名の脇に常に見える)。色は赤で統一 */
 td.nm .nmrow{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
-td.nm .scb{font-weight:800;font-size:1.05em;font-variant-numeric:tabular-nums;flex-shrink:0;line-height:1}
-td.nm .scb.sc-a{color:#1f7a34}
-td.nm .scb.sc-b{color:#b26b00}
-td.nm .scb.sc-c{color:#b3261e}
+td.nm .scb{font-weight:800;font-size:1.05em;font-variant-numeric:tabular-nums;flex-shrink:0;line-height:1;color:#b3261e}
 /* スマホで横スクロール時にどの山を見ているか分かるよう、ランク列(#)と山名列を左端に固定する
    (index.htmlの日付列 sticky-left と同じ考え方)。ランク列を固定幅にして山名列の left オフセット
    を予測可能にした。角の交差セル(th)は元々 z-index:2、tdは z-index:1 で thの下に潜る。 */
@@ -134,7 +131,6 @@ td.reason{color:#b26b00;font-weight:700;font-size:.85em;white-space:nowrap;text-
 .wxlbl{color:#556;font-size:.82em}
 .num{font-variant-numeric:tabular-nums}
 .rank{color:#8a94a8;font-variant-numeric:tabular-nums}
-.sc-a{color:#1f7a34}.sc-b{color:#b26b00}.sc-c{color:#b3261e}
 
 footer{color:#888;font-size:.82em;margin-top:26px;border-top:1px solid var(--line);padding-top:10px;padding-bottom:16px}
 footer a{color:var(--link)}
@@ -454,7 +450,6 @@ footer a{color:var(--link)}
     return parts.join(" / ");
   }
 
-  function scClass(v){return v>=70?"sc-a":v>=45?"sc-b":"sc-c"}
   function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
   function pct(f){return f==null?"-":Math.round(f*100)+"%"}
   function fnum(v,u){return v==null?"-":Math.round(v)+u}
@@ -508,7 +503,7 @@ footer a{color:var(--link)}
       '<td class="nm">'+
         '<div class="nmrow">'+
           '<a href="'+href+'"'+oc+'>'+esc(m.n)+'</a>'+
-          '<span class="scb '+scClass(s.v)+'">'+s.v+'</span>'+
+          '<span class="scb">'+s.v+'</span>'+
         '</div>'+
         '<small>'+esc(m.pref)+' / '+m.el+'m</small>'+
       '</td>'+
