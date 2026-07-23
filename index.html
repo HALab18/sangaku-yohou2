@@ -47,15 +47,20 @@ h1{margin:0;font-size:2.15em;font-weight:800;letter-spacing:.05em;color:#fff;
   text-shadow:0 1px 8px rgba(0,0,0,.55)}
 .hero-sub{margin:14px 0 0;font-size:.85em;color:#c9d3e5;line-height:2;
   text-shadow:0 1px 6px rgba(0,0,0,.55)}
-.hero-cta{margin-top:auto;padding-top:30px;display:flex;flex-direction:column;align-items:center;gap:4px;
+.hero-cta{margin-top:auto;padding-top:30px;display:flex;flex-direction:column;align-items:center;
   color:#fff;text-decoration:none;font-weight:700;font-size:.95em;letter-spacing:.08em}
 .hero-cta .btnface{padding:13px 36px;border-radius:999px;background:rgba(255,255,255,.13);
   border:1.5px solid rgba(255,255,255,.6);backdrop-filter:blur(3px);transition:background .2s}
 .hero-cta .mk{width:20px;height:14px;margin-right:9px;vertical-align:-2px;color:#fff}
 .hero-cta:hover .btnface,.hero-cta:focus-visible .btnface{background:rgba(255,255,255,.3)}
-.hero-cta .chev{font-size:1.5em;line-height:1;animation:bob 1.8s ease-in-out infinite}
+/* 副次ボタン: 主目的の「予報をチェックする」より控えめな配色で find.html への入口 */
+.hero-find{margin-top:10px;color:#c9d3e5;text-decoration:none;font-weight:600;font-size:.85em;letter-spacing:.06em}
+.hero-find .btnface{display:inline-block;padding:9px 26px;border-radius:999px;background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.32);backdrop-filter:blur(3px);transition:background .2s}
+.hero-find:hover .btnface,.hero-find:focus-visible .btnface{background:rgba(255,255,255,.16)}
+.chev{color:#fff;font-size:1.5em;line-height:1;margin-top:6px;animation:bob 1.8s ease-in-out infinite}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
-@media(prefers-reduced-motion:reduce){.hero-cta .chev{animation:none}}
+@media(prefers-reduced-motion:reduce){.chev{animation:none}}
 
 /* ---- 本体 ---- */
 main{max-width:1080px;margin:0 auto;padding:26px 14px 8px 22px}
@@ -297,8 +302,11 @@ footer a{color:var(--link)}
     雷リスク・眺望・登山指数をまとめてチェック。</p>
     <a class="hero-cta" href="#start">
       <span class="btnface"><svg class="mk" aria-hidden="true"><use href="#mkico"/></svg>予報をチェックする</span>
-      <span class="chev" aria-hidden="true">⌄</span>
     </a>
+    <a class="hero-find" href="docs/find.html">
+      <span class="btnface">天気の良い山をさがす</span>
+    </a>
+    <span class="chev" aria-hidden="true">⌄</span>
   </div>
 </header>
 
