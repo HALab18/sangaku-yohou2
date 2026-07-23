@@ -45,12 +45,19 @@ main{max-width:860px;margin:0 auto;padding:18px 14px 8px}
   border-radius:0 6px 6px 0;margin:16px 0;font-size:.86em}
 .notice a{color:var(--link)}
 
-.tbl{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:10px 0 4px}
+/* .tbl 自身をスクロールコンテナ(max-height + overflow)にして、内部の th{position:sticky} が
+   ページ縦スクロールではなく .tbl 内スクロールで効くようにする(index.htmlと同じ方式)。
+   overflow-x:auto だけだと position:sticky はページ全体に対しては効かない。 */
+.tbl{max-height:75vh;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin:10px 0 4px}
 table{border-collapse:collapse;width:100%}
-th{background:var(--slate);color:#fff;padding:6px 8px;font-weight:600;font-size:.86em;white-space:nowrap}
+/* ヘッダはページ縦スクロール時に画面上端に固定し、どの列を見ているか分かるようにする(index.htmlと同じ挙動) */
+th{background:var(--slate);color:#fff;padding:6px 8px;font-weight:600;font-size:.86em;white-space:nowrap;position:sticky;top:0;z-index:2}
 td{padding:8px;border-bottom:1px solid var(--line);text-align:center;background:#fff;white-space:nowrap}
 tr:nth-child(even) td{background:#eef1f6}
-td.nm{text-align:left;white-space:normal}
+/* 山名列: 日本語CJKは基本改行させず1行で表示(word-break:keep-all)、極端に長い山名(9文字以上)だけ
+   max-width を超えた時に折り返しを許容(overflow-wrap:break-word)。td共通の white-space:nowrap は
+   normal に戻す(white-space:nowrap と overflow-wrap:anywhere は仕様上両立しないため)。 */
+td.nm{text-align:left;white-space:normal;min-width:8em;max-width:16em;word-break:keep-all;overflow-wrap:break-word}
 td.nm a{color:var(--link);font-weight:700;text-decoration:none}
 td.nm a:hover{text-decoration:underline}
 td.nm small{display:block;color:#8a94a8;font-size:.82em;font-weight:400}
