@@ -5,7 +5,62 @@
 
 ---
 
-## ▶ 次の再開ポイント: find.html の見やすさ改善 (降水量列 / スコアABC色分け / 東北デフォルト / 天気改善 / 凡例 / 山名折返し / 14日)
+## ▶ 次の再開ポイント: 気温の山頂補正確認 / 戻り導線 / 説明ページ意匠統一 / 表バランス
+
+**現状**: 作業ブランチ `mountain-weather-search-improvements-067f72`。**未コミット**。
+自宅PCで再開する場合は `git pull` してから開始。前回セッション (6a07b98) の続き。
+
+- **[未コミット] A. 気温補正の凡例訂正 (`scripts/gen_find.py`)**
+  - 実測 (`scratchpad/verify_elev.py`) で確認: Open-Meteo の forecast API は elevation
+    パラメータを渡すと **乾燥断熱減率 -0.65℃/100m で自動的に downscale** した気温を返す。
+    富士山/北岳/燧ヶ岳/蓬田岳の4座で実測差と期待減率が 0.1℃ 以内で一致。
+  - `gen_find.py` は既に `elevation:ms.map(m=>m.el).join(",")` を送っていたので、
+    表示値は最初から山頂補正済みだった。**コード修正は不要**。
+  - 凡例テキストのみ「標高補正はしていない」→「山頂標高で標高補正済み (Open-Meteo の
+    elevation パラメータ経由。乾燥断熱減率 約0.65℃/100m)」に訂正。
+  - スコアの `tmin < -5℃` 判定も自動的に補正後の値で判定されており、追加対応不要。
+
+- **[未コミット] B. 戻り導線の改善**
+  - **B-1 (`index.html:704`)**: 「← 天気で山さがしの一覧に戻る」リンクに
+    `onclick="if(history.length>1){history.back();return false}"` を追加。
+    履歴があれば **bfcache 復元** を優先、直リンク等で履歴が無い時は通常遷移でフォールバック。
+  - **B-2 (`scripts/gen_find.py`)**: `search()` 成功時に `sessionStorage["find:last"]` へ
+    `{r, p, date}` を保存。ページロード末尾 `restoreLastSearch()` で読み戻し、セレクタ復元 →
+    `cacheKey` にヒットすれば `search(true)` で自動描画 (Open-Meteo は叩かない)。
+    ステータス欄に「前回の検索結果を復元しました」表示。
+  - 動作確認: find.html で東北/宮城/07-24 で検索 → find.html を再訪 → セレクタと 16 座の
+    結果表が復元され、Open-Meteo リクエストは 0 件だった。
+
+- **[未コミット] C. `docs/find-score.html` の表組バランス修正**
+  - CSS: `table-layout:fixed` 追加で `<th style="width:...">` の指定が効くように。
+  - `th{text-align:left}` + `td.num{text-align:right}` の非対称を **中央揃えに統一**、
+    長文列 (`td.desc`) のみ左寄せに例外化。
+  - 対象4表 (スコア帯 / 4要素 / 天気コード / 気圧面) すべてに `td.desc` を付与。
+  - 併せて「天気アイコンは日照率基準」の古い注記を、実際のロジック (「悪天優先→日照率」)
+    に合わせて書き換え (前回 DEVLOG の TODO 消化)。
+
+- **[未コミット] D. 説明ページの意匠統一**
+  - **D-1 (`docs/how-it-works.html`)**: v1.01 の緑ベージュ配色 (`--accent:#2d6a4f`,
+    `--bg:#f7f5f0`) を index 系 (`--night/--slate/--sky/--bg:#f4f6f9`) に全面置換。
+    ヘッダを紺背景+稜線SVG形式に。インライン SVG 内の `#2d6a4f` も `#48608c` (--slate) に。
+    `.point` の緑背景も紺系に統一。
+  - **D-2 (`docs/find-score.html`)**: `<body><main>` 直置きだった構成を、
+    `<header>` (紺 + 戻るリンク + `.sub` + 稜線 SVG) → `<main>` に変更。他ページと同じテンプレ。
+
+- **触ってない**: `docs/how-it-works-web.html`, `docs/terms.html`, `docs/mountains.html`
+  (既に v2 テンプレ準拠のため今回対象外)。
+
+**次に触るときの注意**:
+- Open-Meteo の elevation 仕様: forecast API は乾燥断熱減率で気温を自動 downscale。
+  wind は補正されない (index.html の稜線風は独自に気圧面補間)。
+- last-search 復元機構は sessionStorage スコープ (タブ単位)。localStorage への昇格は
+  「別タブから同じ検索」需要が明確になってから検討。
+- `docs/how-it-works.html` の SVG は 2 図とも `#48608c` に置換済み。 index の他画像と
+  併せる時は同じ色系で。
+
+---
+
+## find.html の見やすさ改善 (降水量列 / スコアABC色分け / 東北デフォルト / 天気改善 / 凡例 / 山名折返し / 14日)
 
 **現状**: `mountain-weather-search-improvements-067f72` 作業ブランチ。**未コミット**。
 自宅PCで再開する場合は `git pull` してから開始。次にやること: 動作最終確認 → コミット → master 反映。

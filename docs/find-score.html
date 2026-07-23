@@ -12,24 +12,32 @@
   --btn:#4276b5;--bg:#f4f6f9;--line:#dee4ee;--field:#c9d2e0;
   --a:#1f7a34;--b:#b26b00;--c:#b3261e}
 *{box-sizing:border-box}
-body{margin:0;padding:18px 14px;background:var(--bg);color:#222;
+body{margin:0;background:var(--bg);color:#222;
   font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
   font-size:15px;line-height:1.8}
-main{max-width:860px;margin:0 auto}
-.back{display:inline-block;font-size:.85em;color:var(--link);text-decoration:none;margin-bottom:8px}
-.back:hover{text-decoration:underline}
-h1{color:var(--night);font-size:1.5em;border-bottom:3px solid var(--slate);padding-bottom:8px;margin-top:0}
-h1 small{display:block;font-size:.6em;color:#777;font-weight:400;margin-top:4px}
-h2{color:var(--night);font-size:1.15em;margin:34px 0 10px;border-left:6px solid var(--slate);padding-left:10px}
+/* index.html 系の紺ヘッダ+稜線 SVG に統一 (docs/find.html などと同じレイアウト)。 */
+header{background:var(--night);color:#fff;text-align:center;padding:30px 20px 0;position:relative}
+header .back{position:absolute;left:14px;top:12px;color:#c9d3e5;font-size:.82em;text-decoration:none}
+header .back:hover{color:#fff}
+header h1{margin:0;font-size:1.45em;font-weight:800;letter-spacing:.04em;border:none;padding:0;color:#fff}
+header .sub{margin:8px 0 0;font-size:.85em;color:#c9d3e5}
+.ridge{display:block;width:100%;height:44px;margin-top:18px}
+main{max-width:860px;margin:0 auto;padding:18px 14px 8px}
+h2{color:var(--night);font-size:1.15em;margin:32px 0 10px;border-left:6px solid var(--slate);padding-left:10px}
 h3{color:var(--slate);font-size:1.02em;margin:20px 0 6px}
 p{margin:8px 0}
 .card{background:#fff;border-radius:10px;padding:14px 18px;margin:12px 0;
   box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .tbl{overflow-x:auto;margin:10px 0}
-table{border-collapse:collapse;width:100%;background:#fff;font-size:.93em}
-th{background:var(--slate);color:#fff;padding:8px 10px;font-weight:600;text-align:left;white-space:nowrap}
-td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
-td.num{white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums}
+/* table-layout:fixed で <th style="width:..."> の指定を効かせる (auto だと無視されがち)。
+   text-align は th/td を中央揃えに統一し、数値列(th.num, td.num)のみ tabular-nums で桁揃え。
+   従来は th=左揃え / td.num=右揃え で列見出しと値が離れて見えていた。 */
+table{border-collapse:collapse;width:100%;background:#fff;font-size:.93em;table-layout:fixed}
+th{background:var(--slate);color:#fff;padding:8px 10px;font-weight:600;text-align:center;white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:center}
+th.num,td.num{white-space:nowrap;text-align:center;font-variant-numeric:tabular-nums}
+/* 長文が入るセル(理由・意味・目安など)は左寄せの方が読みやすい */
+td.desc{text-align:left}
 tr:nth-child(even) td{background:#eef1f6}
 .notice{background:#fff8e6;border-left:5px solid var(--b);padding:10px 14px;
   border-radius:0 6px 6px 0;margin:14px 0;font-size:.93em}
@@ -50,15 +58,22 @@ footer{color:#888;font-size:.85em;margin-top:36px;border-top:1px solid var(--lin
 footer a{color:var(--link)}
 .formula{background:#f8fafc;border:1px solid var(--line);border-radius:6px;padding:8px 12px;
   font-family:"Consolas","Menlo",monospace;font-size:.9em;margin:6px 0;display:inline-block}
-@media(max-width:600px){body{padding:12px 10px;font-size:14px}}
+@media(max-width:600px){body{font-size:14px}main{padding:14px 12px 8px}}
+@media(min-width:700px){header h1{font-size:1.7em}main{padding:24px 24px 12px}}
 </style>
 </head>
-<body><main>
+<body>
 
-<a class="back" href="find.html">← 天気の良い山をさがす に戻る</a>
+<header>
+  <a class="back" href="find.html">← 天気の良い山をさがす に戻る</a>
+  <h1>スコアの計算方法</h1>
+  <p class="sub">「天気の良い山をさがす」に表示される 0〜100 のスコアの算定方法</p>
+  <svg class="ridge" viewBox="0 0 750 44" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 44 L0 30 L95 12 L185 26 L290 5 L395 24 L500 9 L610 27 L695 15 L750 24 L750 44 Z" fill="#f4f6f9"/>
+  </svg>
+</header>
 
-<h1>スコアの計算方法
-<small>「天気の良い山をさがす」に表示される 0〜100 のスコアの算定方法</small></h1>
+<main>
 
 <p>「天気の良い山をさがす」ページでは、各山名の隣に、その日のコンディションを 0〜100 の数値で表した
 <b>スコア</b>を表示しています。数値が大きいほど登山に適した条件であることを示します。このページでは、
@@ -84,11 +99,11 @@ footer a{color:var(--link)}
   </thead>
   <tbody>
     <tr><td class="num"><span class="sc-a">70 〜 100</span></td><td><span class="badge badge-a">A</span></td>
-        <td>比較的良好な条件。晴天主体で降水・強風のリスクが低い日</td></tr>
+        <td class="desc">比較的良好な条件。晴天主体で降水・強風のリスクが低い日</td></tr>
     <tr><td class="num"><span class="sc-b">45 〜 69</span></td><td><span class="badge badge-b">B</span></td>
-        <td>雲量や風にやや不安のある条件。時間帯の選択など計画側の工夫が望まれる日</td></tr>
+        <td class="desc">雲量や風にやや不安のある条件。時間帯の選択など計画側の工夫が望まれる日</td></tr>
     <tr><td class="num"><span class="sc-c">0 〜 44</span></td><td><span class="badge badge-c">C</span></td>
-        <td>降水・強風など悪天の可能性が高い条件。慎重な判断が必要な日</td></tr>
+        <td class="desc">降水・強風など悪天の可能性が高い条件。慎重な判断が必要な日</td></tr>
   </tbody>
 </table>
 </div>
@@ -103,14 +118,14 @@ footer a{color:var(--link)}
     <tr><th style="width:2em">#</th><th>要素</th><th style="width:7em">最大減点</th><th>重視理由</th></tr>
   </thead>
   <tbody>
-    <tr><td>①</td><td><b>晴天度</b>(日照率 または 天気コード)</td><td class="num">-28 点</td>
-        <td>晴天は快適性に関わる重要な要素ですが、事故リスクへの影響は風・降水の方が大きいため、配点を抑えています</td></tr>
-    <tr><td>②</td><td><b>降水</b>(確率 + 量)</td><td class="num">-30 点</td>
-        <td>降水は行動可否に直結するため、確率と量の両面から評価します</td></tr>
-    <tr><td>③</td><td><b>稜線風</b>(気圧面補間による推定値)</td><td class="num">-32 点</td>
-        <td>稜線上の風は行動可否への影響が最も大きいため、標高を考慮した稜線値で評価する最重要要素です</td></tr>
-    <tr><td>④</td><td><b>雪・寒気</b>(積雪 + 最低気温)</td><td class="num">-10 点</td>
-        <td>積雪期に関わる条件を補助的に反映しています(正式な A/B/C 判定より控えめな扱いです)</td></tr>
+    <tr><td class="num">①</td><td class="desc"><b>晴天度</b>(日照率 または 天気コード)</td><td class="num">-28 点</td>
+        <td class="desc">晴天は快適性に関わる重要な要素ですが、事故リスクへの影響は風・降水の方が大きいため、配点を抑えています</td></tr>
+    <tr><td class="num">②</td><td class="desc"><b>降水</b>(確率 + 量)</td><td class="num">-30 点</td>
+        <td class="desc">降水は行動可否に直結するため、確率と量の両面から評価します</td></tr>
+    <tr><td class="num">③</td><td class="desc"><b>稜線風</b>(気圧面補間による推定値)</td><td class="num">-32 点</td>
+        <td class="desc">稜線上の風は行動可否への影響が最も大きいため、標高を考慮した稜線値で評価する最重要要素です</td></tr>
+    <tr><td class="num">④</td><td class="desc"><b>雪・寒気</b>(積雪 + 最低気温)</td><td class="num">-10 点</td>
+        <td class="desc">積雪期に関わる条件を補助的に反映しています(正式な A/B/C 判定より控えめな扱いです)</td></tr>
   </tbody>
 </table>
 </div>
@@ -149,10 +164,10 @@ footer a{color:var(--link)}
     <tr><th style="width:9em">天気コード</th><th>意味</th><th style="width:7em">減点</th></tr>
   </thead>
   <tbody>
-    <tr><td class="num">0, 1</td><td>快晴 / 晴れ</td><td class="num">0 点</td></tr>
-    <tr><td class="num">2</td><td>晴れ時々曇り</td><td class="num">-8 点</td></tr>
-    <tr><td class="num">3</td><td>曇り</td><td class="num">-18 点</td></tr>
-    <tr><td class="num">その他</td><td>霧・雨・雪・雷雨など</td><td class="num">-22 点</td></tr>
+    <tr><td class="num">0, 1</td><td class="desc">快晴 / 晴れ</td><td class="num">0 点</td></tr>
+    <tr><td class="num">2</td><td class="desc">晴れ時々曇り</td><td class="num">-8 点</td></tr>
+    <tr><td class="num">3</td><td class="desc">曇り</td><td class="num">-18 点</td></tr>
+    <tr><td>その他</td><td class="desc">霧・雨・雪・雷雨など</td><td class="num">-22 点</td></tr>
   </tbody>
 </table>
 </div>
@@ -170,9 +185,12 @@ footer a{color:var(--link)}
 </ul>
 
 <div class="notice">⚠️ なお、検索結果の表に表示している<b>天気アイコン</b>は、
-天気コードではなく<b>日照率</b>を基準にしています。時間帯の最大値で天気コードを扱うと、
-日中は晴天主体であっても短時間の霧雨によって「曇り」と表示され、「曇りなのに日照 97%」の
-ような不整合が生じるためです。</div>
+「悪天(雷雨・雪・雨) が対象時間帯にある場合はそれを優先表示、それ以外は日照率で
+『よく晴れ / 晴れ / 時々晴れ / 曇りがち』を判定」というルールで決めています。
+天気コードだけを主指標にすると、日中は晴天主体でも短時間の霧雨で「曇り」と表示され
+「曇りなのに日照 97%」のような不整合が生じるため、日照率を主軸にしています。
+一方で降水量が実質ある場合は雨アイコンを優先し、「雨予報の日が曇りとしか表示されない」
+不整合も避けています。</div>
 
 <h2>4. ② 降水 (最大 -30 点)</h2>
 
@@ -220,12 +238,12 @@ footer a{color:var(--link)}
     <tr><th style="width:9em">気圧面</th><th style="width:7em">標準高度</th><th>該当する山の目安</th></tr>
   </thead>
   <tbody>
-    <tr><td class="num">925 hPa</td><td class="num">760 m</td><td>低山・里山</td></tr>
-    <tr><td class="num">900 hPa</td><td class="num">990 m</td><td>低〜中山</td></tr>
-    <tr><td class="num">850 hPa</td><td class="num">1460 m</td><td>中山</td></tr>
-    <tr><td class="num">800 hPa</td><td class="num">1950 m</td><td>亜高山</td></tr>
-    <tr><td class="num">700 hPa</td><td class="num">3010 m</td><td>高山 (北アルプス級)</td></tr>
-    <tr><td class="num">600 hPa</td><td class="num">4200 m</td><td>富士山〜(日本の全山カバー)</td></tr>
+    <tr><td class="num">925 hPa</td><td class="num">760 m</td><td class="desc">低山・里山</td></tr>
+    <tr><td class="num">900 hPa</td><td class="num">990 m</td><td class="desc">低〜中山</td></tr>
+    <tr><td class="num">850 hPa</td><td class="num">1460 m</td><td class="desc">中山</td></tr>
+    <tr><td class="num">800 hPa</td><td class="num">1950 m</td><td class="desc">亜高山</td></tr>
+    <tr><td class="num">700 hPa</td><td class="num">3010 m</td><td class="desc">高山 (北アルプス級)</td></tr>
+    <tr><td class="num">600 hPa</td><td class="num">4200 m</td><td class="desc">富士山〜(日本の全山カバー)</td></tr>
   </tbody>
 </table>
 </div>

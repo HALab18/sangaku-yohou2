@@ -4,51 +4,74 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PeakWeather の仕組み — 山岳予報ツール解説</title>
+<link rel="icon" type="image/png" href="../icons/favicon-32.png">
+<meta name="theme-color" content="#1e2d4a">
 <style>
-:root{--accent:#2d6a4f;--accent2:#b5451b;--night:#1e2d4a;--warn:#7b5e00;--bg:#f7f5f0}
+:root{--night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
+  --bg:#f4f6f9;--line:#dee4ee;--warn:#b26b00}
 *{box-sizing:border-box}
-body{margin:0;padding:16px;background:var(--bg);color:#222;
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:#222;
   font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
   font-size:15px;line-height:1.8}
-main{max-width:860px;margin:0 auto}
-h1{color:var(--accent);font-size:1.5em;border-bottom:3px solid var(--accent);padding-bottom:8px}
-h1 small{display:block;font-size:.6em;color:#777;font-weight:400}
-h2{color:var(--night);font-size:1.2em;margin:34px 0 10px;border-left:6px solid var(--accent);padding-left:10px}
-h3{color:var(--accent);font-size:1.05em;margin:20px 0 6px}
+header{background:var(--night);color:#fff;text-align:center;padding:30px 20px 0;position:relative}
+header .back{position:absolute;left:14px;top:12px;color:#c9d3e5;font-size:.82em;text-decoration:none}
+header .back:hover{color:#fff}
+header h1{margin:0;font-size:1.45em;font-weight:800;letter-spacing:.04em}
+header .sub{margin:8px 0 0;font-size:.85em;color:#c9d3e5}
+.ridge{display:block;width:100%;height:44px;margin-top:18px}
+main{max-width:860px;margin:0 auto;padding:18px 14px 8px}
+h2{color:var(--night);font-size:1.15em;margin:32px 0 10px;border-left:6px solid var(--slate);padding-left:10px}
+h3{color:var(--slate);font-size:1em;margin:20px 0 6px;font-weight:700}
 p{margin:8px 0}
 .card{background:#fff;border-radius:10px;padding:14px 18px;margin:12px 0;
-  box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.tbl{overflow-x:auto;margin:10px 0}
-table{border-collapse:collapse;width:100%;white-space:nowrap;background:#fff}
-th{background:var(--accent);color:#fff;padding:7px 10px;font-size:.92em}
-td{padding:6px 10px;border-bottom:1px solid #e2ddd2;text-align:center}
-tr:nth-child(even) td{background:#f3f0e8}
-.b{display:inline-block;min-width:2.6em;padding:1px 8px;border-radius:10px;font-weight:700}
+  box-shadow:0 2px 8px rgba(30,45,74,.08)}
+.tbl{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:10px 0}
+/* table-layout:fixed で <th style="width:..."> の指定を効かせる。
+   text-align は中央揃えに統一し、長文が入る列 (td.desc) だけ左寄せに例外化。 */
+table{border-collapse:collapse;width:100%;background:#fff;font-size:.93em;table-layout:fixed}
+th{background:var(--slate);color:#fff;padding:8px 10px;font-weight:600;text-align:center;white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:center;background:#fff}
+td.desc{text-align:left;white-space:normal}
+tr:nth-child(even) td{background:#eef1f6}
+.b{display:inline-block;min-width:2.6em;padding:2px 8px;border-radius:10px;font-weight:700;font-size:.85em}
 .b-a{background:#d8efe1;color:#1c5b3f}.b-b{background:#fdeec9;color:#7b5e00}
 .b-c{background:#f9d9cf;color:#a03415}
-.notice{background:#fff8e6;border-left:5px solid var(--warn);padding:10px 14px;
-  border-radius:0 6px 6px 0;margin:14px 0;font-size:.93em}
-.point{background:#e8f2ec;border-left:5px solid var(--accent);padding:10px 14px;
+.notice{background:#fff8e6;border-left:5px solid var(--warn);color:#44506b;padding:10px 14px;
+  border-radius:0 6px 6px 0;margin:14px 0;font-size:.9em}
+.point{background:#edf2f9;border-left:5px solid var(--slate);color:#44506b;padding:10px 14px;
   border-radius:0 6px 6px 0;margin:14px 0;font-size:.95em}
+.point a,.notice a{color:var(--link)}
 figure{margin:14px 0;text-align:center}
 figure svg{max-width:100%;height:auto}
 figcaption{font-size:.85em;color:#777;margin-top:4px}
-code{background:#eee9df;padding:1px 6px;border-radius:4px;font-size:.9em}
-footer{color:#888;font-size:.85em;margin-top:36px;border-top:1px solid #ddd;padding-top:10px}
-@media(max-width:600px){body{padding:10px;font-size:14px}}
+code{background:#e8ecf4;padding:2px 6px;border-radius:4px;font-size:.9em;color:#2b5fa3;font-family:"Consolas","Menlo",monospace}
+a{color:var(--link);text-decoration:none}
+a:hover{text-decoration:underline}
+footer{color:#888;font-size:.85em;margin-top:36px;border-top:1px solid var(--line);padding-top:10px;padding-bottom:16px}
+footer a{color:var(--link)}
+@media(min-width:700px){header h1{font-size:1.7em}main{padding:24px 24px 12px}}
 </style>
 </head>
-<body><main>
+<body>
 
-<h1>山岳予報ツール「PeakWeather」の仕組み
-<small>どうやって山の天気を調べ、どう判定しているのかの解説</small></h1>
+<header>
+  <a class="back" href="../index.html">← トップへ戻る</a>
+  <h1>PeakWeather の仕組み</h1>
+  <p class="sub">「山の名前」から山頂・稜線の天気予報を作るまでの解説</p>
+  <svg class="ridge" viewBox="0 0 750 44" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 44 L0 30 L95 12 L185 26 L290 5 L395 24 L500 9 L610 27 L695 15 L750 24 L750 44 Z" fill="#f4f6f9"/>
+  </svg>
+</header>
+
+<main>
 
 <p>このツールは、<b>「山の名前」を入れると「その山の山頂・稜線の天気予報」を表にして返す</b>プログラムです。
 テレビやアプリの天気予報は麓の街の予報ですが、山の上は気温も風もまったく別物です。
 そこを数値でまかなうのがこのツールの役割です。</p>
 
 <div class="point">🌐 <b>Webアプリ版はこちら</b> →
-<a href="https://halab18.github.io/sangaku-yohou2/">halab18.github.io/sangaku-yohou2</a>
+<a href="../index.html">PeakWeather トップ</a>
 （ブラウザで山名を入れるだけ・スマホ対応・インストール不要）</div>
 
 <h2>1. 全体の流れ</h2>
@@ -56,19 +79,19 @@ footer{color:#888;font-size:.85em;margin-top:36px;border-top:1px solid #ddd;padd
 <figure>
 <svg viewBox="0 0 760 150" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="13">
   <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-    <path d="M0 0L10 5L0 10z" fill="#2d6a4f"/></marker></defs>
+    <path d="M0 0L10 5L0 10z" fill="#48608c"/></marker></defs>
   <rect x="5" y="45" width="130" height="60" rx="10" fill="#1e2d4a"/>
   <text x="70" y="70" fill="#fff" text-anchor="middle">「燕岳の</text>
   <text x="70" y="90" fill="#fff" text-anchor="middle">予報は?」</text>
-  <line x1="140" y1="75" x2="188" y2="75" stroke="#2d6a4f" stroke-width="2.5" marker-end="url(#ar)"/>
-  <rect x="193" y="45" width="150" height="60" rx="10" fill="#2d6a4f"/>
+  <line x1="140" y1="75" x2="188" y2="75" stroke="#48608c" stroke-width="2.5" marker-end="url(#ar)"/>
+  <rect x="193" y="45" width="150" height="60" rx="10" fill="#48608c"/>
   <text x="268" y="70" fill="#fff" text-anchor="middle">① 山を特定</text>
   <text x="268" y="90" fill="#fff" text-anchor="middle" font-size="11">緯度経度・標高</text>
-  <line x1="348" y1="75" x2="396" y2="75" stroke="#2d6a4f" stroke-width="2.5" marker-end="url(#ar)"/>
-  <rect x="401" y="45" width="150" height="60" rx="10" fill="#2d6a4f"/>
+  <line x1="348" y1="75" x2="396" y2="75" stroke="#48608c" stroke-width="2.5" marker-end="url(#ar)"/>
+  <rect x="401" y="45" width="150" height="60" rx="10" fill="#48608c"/>
   <text x="476" y="70" fill="#fff" text-anchor="middle">② 予報データ取得</text>
   <text x="476" y="90" fill="#fff" text-anchor="middle" font-size="11">Open-Meteo API</text>
-  <line x1="556" y1="75" x2="604" y2="75" stroke="#2d6a4f" stroke-width="2.5" marker-end="url(#ar)"/>
+  <line x1="556" y1="75" x2="604" y2="75" stroke="#48608c" stroke-width="2.5" marker-end="url(#ar)"/>
   <rect x="609" y="45" width="146" height="60" rx="10" fill="#b5451b"/>
   <text x="682" y="70" fill="#fff" text-anchor="middle">③ 計算・判定</text>
   <text x="682" y="90" fill="#fff" text-anchor="middle" font-size="11">表・HTMLで出力</text>
@@ -189,7 +212,7 @@ footer{color:#888;font-size:.85em;margin-top:36px;border-top:1px solid #ddd;padd
     <ellipse cx="530" cy="182" rx="55" ry="17"/>
   </g>
   <text x="600" y="192" fill="#555">下層雲(〜2km)</text>
-  <text x="600" y="210" fill="#2d6a4f" font-weight="bold">→ 雲海!</text>
+  <text x="600" y="210" fill="#48608c" font-weight="bold">→ 雲海!</text>
   <g fill="#d7dde6" stroke="#aab4c4" opacity=".9">
     <ellipse cx="180" cy="70" rx="65" ry="16"/>
     <ellipse cx="480" cy="62" rx="70" ry="17"/>
@@ -206,12 +229,12 @@ footer{color:#888;font-size:.85em;margin-top:36px;border-top:1px solid #ddd;padd
 </figure>
 
 <div class="tbl"><table>
-<tr><th>判定</th><th>条件（山頂の高さにかかる雲＋視程＋雨で判定）</th></tr>
-<tr><td>◎</td><td>山頂レベルの雲20%以下 かつ 視程20km以上</td></tr>
-<tr><td>○</td><td>山頂レベルの雲50%未満</td></tr>
-<tr><td>△</td><td>山頂レベルの雲50%以上 または 視程10km未満</td></tr>
-<tr><td>✕</td><td>雨(3時間1mm以上) / 視程2km未満 / 山頂レベルの雲80%以上</td></tr>
-<tr><td>(雲海)</td><td>山頂より下の雲60%以上＋山頂レベル30%以下 → ○/◎に付記</td></tr>
+<tr><th style="width:6em">判定</th><th>条件（山頂の高さにかかる雲＋視程＋雨で判定）</th></tr>
+<tr><td>◎</td><td class="desc">山頂レベルの雲20%以下 かつ 視程20km以上</td></tr>
+<tr><td>○</td><td class="desc">山頂レベルの雲50%未満</td></tr>
+<tr><td>△</td><td class="desc">山頂レベルの雲50%以上 または 視程10km未満</td></tr>
+<tr><td>✕</td><td class="desc">雨(3時間1mm以上) / 視程2km未満 / 山頂レベルの雲80%以上</td></tr>
+<tr><td>(雲海)</td><td class="desc">山頂より下の雲60%以上＋山頂レベル30%以下 → ○/◎に付記</td></tr>
 </table></div>
 <p>日別表の「眺望(朝)」は<b>4〜8時のいちばん良い時間帯</b>の値で、ご来光が狙えるかの目安です。</p>
 

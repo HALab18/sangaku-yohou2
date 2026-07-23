@@ -696,9 +696,12 @@ async function run(mt){
   // 期間内に積雪・降雪が一度でもあれば各表に積雪列を出す(夏山では省略して表を簡潔に保つ)
   const hasSnow=(h.snow_depth||[]).some(v=>v!=null&&v>=0.01)||(h.snowfall||[]).some(v=>v!=null&&v>=0.1);
 
-  // 「天気で山さがし」経由なら一覧に戻る導線を出す(sessionStorageにfindのフラグ)
+  // 「天気で山さがし」経由なら一覧に戻る導線を出す(sessionStorageにfindのフラグ)。
+  // クリック時は履歴があれば history.back() を優先する: ブラウザの back/bfcache が効くため
+  // find.html を完全再ロードせず、Open-Meteo への再コールも avoided される。
+  // history.length<=1 (直リンクなど) の場合のみ通常遷移でフォールバックする。
   const backToFind=sessionStorage.getItem("pw_from_find")==="1"
-    ?'<p class="backfind"><a href="docs/find.html">← 天気で山さがしの一覧に戻る</a></p>':"";
+    ?'<p class="backfind"><a href="docs/find.html" onclick="if(history.length>1){history.back();return false}">← 天気で山さがしの一覧に戻る</a></p>':"";
   let htmlOut=`${backToFind}<h2>${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""} の山岳気象予報</h2><ul class="meta">
     <li>地点: 北緯${mt.lat.toFixed(4)} 東経${mt.lon.toFixed(4)} / 標高 ${Math.round(mt.elev)}m
       (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li>

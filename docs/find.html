@@ -449,7 +449,10 @@ footer a{color:var(--link)}
 
   // ---- 検索実行 ----
   function cacheKey(r,p,date){return "find:"+r+":"+p+":"+date}
-  async function search(){
+  // 直近の検索条件を保存するキー。ページを再訪した時にセレクタと結果を復元する用途
+  // (bfcache が効かない iOS 直リンク等のフォールバック。詳細は末尾の restoreLastSearch)。
+  var LAST_KEY="find:last";
+  async function search(fromRestore){
     if(needsPrefSelection()){elStatus.textContent="県を選択してから検索してください";return}
     var ms=targets(),date=elDate.value,r=elRegion.value,p=elPref.value;
     if(!ms.length){elStatus.textContent="対象の山がありません";return}
@@ -458,7 +461,7 @@ footer a{color:var(--link)}
       var key=cacheKey(r,p,date),cached=null;
       try{cached=JSON.parse(sessionStorage.getItem(key)||"null")}catch(e){}
       var rows;
-      if(cached){elStatus.textContent="キャッシュから表示中…";rows=cached}
+      if(cached){elStatus.textContent=fromRestore?"前回の検索結果を復元しました":"キャッシュから表示中…";rows=cached}
       else{
         var chunks=[];for(var i=0;i<ms.length;i+=CHUNK)chunks.push(ms.slice(i,i+CHUNK));
         rows=[];
@@ -473,6 +476,8 @@ footer a{color:var(--link)}
         rows.sort(function(a,b){return b.sc.v-a.sc.v});
         try{sessionStorage.setItem(key,JSON.stringify(rows))}catch(e){}
       }
+      // 復元用に「最後の検索条件」を保存 (実際の rows は cacheKey 側に既に入っている)
+      try{sessionStorage.setItem(LAST_KEY,JSON.stringify({r:r,p:p,date:date}))}catch(e){}
       render(rows,date);
       // 足切り分離した内訳をステータスに出す
       var safeN=rows.filter(function(x){return !isDangerous(x.sc)}).length;
@@ -534,7 +539,7 @@ footer a{color:var(--link)}
       'それ以外は日照率で「よく晴れ・晴れ・時々晴れ・曇りがち」を判定</dd>'+
     '<dt>日照</dt><dd>7〜15時 のうち日照が見込まれる時間の割合 (0〜100%)</dd>'+
     '<dt>気温</dt><dd>7〜15時 の <b>最高 / 最低</b> 気温 (℃)。'+
-      '山頂への標高補正は<b>していない</b>ため、実際の山頂気温はこれより低い(標高100mで約0.6℃低下)</dd>'+
+      '山頂標高で標高補正済み (Open-Meteo の elevation パラメータ経由。乾燥断熱減率 約0.65℃/100m)</dd>'+
     '<dt>稜線風</dt><dd>山頂標高で推定した稜線風速の 7〜15時 最大値 (m/s)。'+
       '地表10mではなく気圧面から線形補間した値</dd>'+
     '<dt>降水確率</dt><dd>7〜15時 の1時間ごとの降水確率の最大値 (%)</dd>'+
@@ -569,8 +574,41 @@ footer a{color:var(--link)}
     elResults.innerHTML=h;
   }
 
-  elGo.addEventListener("click",search);
+  elGo.addEventListener("click",function(){search(false)});
+
+  // ---- 直近の検索条件を自動復元 ----
+  // find.html を再訪した時 (bfcache が効かず新規ロードされたケース)、前回の検索条件を
+  // sessionStorage から読んでセレクタを復元し、対応する cacheKey にヒットすれば
+  // 自動で render() まで進める。Open-Meteo は叩かない(キャッシュヒット時)。
+  // 個別予報 (index.html) から「一覧に戻る」した時、条件と結果が復元される導線として機能。
+  function restoreLastSearch(){
+    var last;
+    try{last=JSON.parse(sessionStorage.getItem(LAST_KEY)||"null")}catch(e){}
+    if(!last||!last.r||!last.date)return;
+    // 東北など初期値を東北から書き換えた場合のみ発動 (無条件だと初回訪問でも動いてしまう)
+    if(!Array.prototype.some.call(elRegion.options,function(o){return o.value===last.r}))return;
+    elRegion.value=last.r;
+    fillPrefs();
+    if(last.p){
+      if(Array.prototype.some.call(elPref.options,function(o){return o.value===last.p})){
+        elPref.value=last.p;
+      }
+    }
+    if(Array.prototype.some.call(elDate.options,function(o){return o.value===last.date})){
+      elDate.value=last.date;
+    }else{
+      // 日付が期限切れ (14日ウインドウを外れた) 場合は復元スキップ (キャッシュヒットしない)
+      return;
+    }
+    updateHint();
+    // cacheKey にヒットする場合だけ自動描画。ヒットしない場合はセレクタだけ復元して手動検索を待つ。
+    var key=cacheKey(last.r,last.p||"",last.date);
+    var hit=null;try{hit=sessionStorage.getItem(key)}catch(e){}
+    if(hit)search(true);
+  }
+
   fillPrefs();
+  restoreLastSearch();
 })();
 </script>
 
