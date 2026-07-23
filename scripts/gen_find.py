@@ -68,15 +68,10 @@ main{max-width:860px;margin:0 auto;padding:18px 14px 8px}
 .searchcard{background:#fff;border-radius:14px;padding:14px 16px;
   box-shadow:0 2px 12px rgba(30,45,74,.10)}
 .searchcard .row{display:flex;flex-wrap:wrap;gap:12px}
-/* min-width:0 は flex 子要素のデフォルト(auto)を無効にして、iOS Safari の
-   input[type=date] の内部レンダリング(カレンダーUI)がラベル幅を突き抜けて
-   カード外にはみ出るのを防ぐ。max-width:100% と併せて必ず親幅内に収める。 */
+/* min-width:0 は flex 子要素のデフォルト(auto)を無効にして親幅を尊重させる */
 .searchcard label{display:flex;flex-direction:column;gap:5px;font-size:.82em;font-weight:600;color:#556;flex:1 1 150px;min-width:0}
 .searchcard select,.searchcard input{font-size:16px;padding:11px 12px;border:1.5px solid var(--field);border-radius:10px;
   background:#fff;width:100%;max-width:100%;min-width:0;font-family:inherit}
-.searchcard .dow{font-size:.85em;color:#5b6b8a;font-weight:500;margin-top:2px;letter-spacing:.02em}
-.searchcard .dow.sat{color:#1857a4}
-.searchcard .dow.sun{color:#c0392b}
 .searchcard select:focus,.searchcard input:focus{outline:2px solid var(--night);outline-offset:1px}
 .searchcard .go{margin-top:12px;width:100%;background:var(--btn);color:#fff;border:0;border-radius:10px;
   padding:13px;font-size:1.02em;font-weight:700;font-family:inherit;cursor:pointer}
@@ -190,8 +185,7 @@ footer a{color:var(--link)}
       <select id="pref"><option value="">すべて</option></select>
     </label>
     <label>日付
-      <input id="date" type="date">
-      <span class="dow" id="dow"></span>
+      <select id="date"></select>
     </label>
   </div>
   <button class="go" id="go">この条件でさがす</button>
@@ -255,29 +249,27 @@ footer a{color:var(--link)}
   }
 
   var elRegion=document.getElementById("region"),elPref=document.getElementById("pref"),
-      elDate=document.getElementById("date"),elDow=document.getElementById("dow"),
-      elGo=document.getElementById("go"),
+      elDate=document.getElementById("date"),elGo=document.getElementById("go"),
       elHint=document.getElementById("hint"),elStatus=document.getElementById("status"),
       elResults=document.getElementById("results");
 
-  // ---- 日付の初期値/範囲 ----
+  // ---- 日付の選択肢 (今日〜15日先の16個・曜日つき) ----
+  // index.html と同じ方式: <select> に「07/25(土) 今日」形式の option を並べる。
+  // input[type=date] だと iOS/PCで曜日が出ない・実装差でカードから溢れるなどの問題が
+  // あったため、明示的に「日付+曜日」を全部option文言に埋め込む方式に統一。
+  var WJA="日月火水木金土";
   function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
-  var today=new Date();today.setHours(0,0,0,0);
-  var horizon=new Date(today);horizon.setDate(horizon.getDate()+15);
-  elDate.value=iso(today);elDate.min=iso(today);elDate.max=iso(horizon);
-
-  // ---- 曜日ラベル (input type=date は曜日を表示しないので隣に補足) ----
-  var WEEK=["日","月","火","水","木","金","土"];
-  function updateDow(){
-    var v=elDate.value;
-    if(!v){elDow.textContent="";elDow.className="dow";return}
-    var d=new Date(v+"T00:00:00");
-    var w=d.getDay();
-    elDow.textContent="("+WEEK[w]+"曜日)";
-    elDow.className="dow"+(w===0?" sun":w===6?" sat":"");
-  }
-  updateDow();
-  elDate.addEventListener("change",updateDow);
+  function md(d){return String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0")}
+  (function(){
+    var today=new Date();today.setHours(0,0,0,0);
+    for(var i=0;i<16;i++){
+      var d=new Date(today);d.setDate(d.getDate()+i);
+      var o=document.createElement("option");
+      o.value=iso(d);
+      o.textContent=md(d)+"("+WJA[d.getDay()]+")"+(i===0?" 今日":i===1?" 明日":"");
+      elDate.appendChild(o);
+    }
+  })();
 
   // ---- エリア/県セレクタ ----
   REGION_ORDER.forEach(function(r){
