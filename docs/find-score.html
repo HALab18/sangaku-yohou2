@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>スコアの計算方法 — 天気の良い山をさがす</title>
+<meta name="description" content="「天気の良い山をさがす」で表示される 0〜100 のスコアが、どんな要素を減点方式で組み合わせて出されているかを詳しく解説します。">
+<link rel="icon" type="image/png" href="../icons/favicon-32.png">
+<meta name="theme-color" content="#1e2d4a">
+<style>
+:root{--night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
+  --btn:#4276b5;--bg:#f4f6f9;--line:#dee4ee;--field:#c9d2e0;
+  --a:#1f7a34;--b:#b26b00;--c:#b3261e}
+*{box-sizing:border-box}
+body{margin:0;padding:18px 14px;background:var(--bg);color:#222;
+  font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+  font-size:15px;line-height:1.8}
+main{max-width:860px;margin:0 auto}
+.back{display:inline-block;font-size:.85em;color:var(--link);text-decoration:none;margin-bottom:8px}
+.back:hover{text-decoration:underline}
+h1{color:var(--night);font-size:1.5em;border-bottom:3px solid var(--slate);padding-bottom:8px;margin-top:0}
+h1 small{display:block;font-size:.6em;color:#777;font-weight:400;margin-top:4px}
+h2{color:var(--night);font-size:1.15em;margin:34px 0 10px;border-left:6px solid var(--slate);padding-left:10px}
+h3{color:var(--slate);font-size:1.02em;margin:20px 0 6px}
+p{margin:8px 0}
+.card{background:#fff;border-radius:10px;padding:14px 18px;margin:12px 0;
+  box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.tbl{overflow-x:auto;margin:10px 0}
+table{border-collapse:collapse;width:100%;background:#fff;font-size:.93em}
+th{background:var(--slate);color:#fff;padding:8px 10px;font-weight:600;text-align:left;white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+td.num{white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums}
+tr:nth-child(even) td{background:#eef1f6}
+.notice{background:#fff8e6;border-left:5px solid var(--b);padding:10px 14px;
+  border-radius:0 6px 6px 0;margin:14px 0;font-size:.93em}
+.point{background:#edf2f9;border-left:5px solid var(--slate);color:#44506b;padding:10px 14px;
+  border-radius:0 6px 6px 0;margin:14px 0;font-size:.95em}
+.point a{color:var(--link)}
+code{background:#eef1f6;padding:1px 6px;border-radius:4px;font-size:.9em;font-family:"Consolas","Menlo",monospace}
+pre{background:#f0f3f8;border-left:3px solid var(--slate);padding:10px 14px;overflow-x:auto;
+  border-radius:0 6px 6px 0;font-size:.85em;font-family:"Consolas","Menlo",monospace;line-height:1.5}
+pre .cm{color:#7a8398}
+.sc-a{color:var(--a);font-weight:700}
+.sc-b{color:var(--b);font-weight:700}
+.sc-c{color:var(--c);font-weight:700}
+.stars{color:#e0a92b;letter-spacing:1px}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-weight:700;font-size:.85em}
+.badge-a{background:#d8efe1;color:#1c5b3f}
+.badge-b{background:#fdeec9;color:#7b5e00}
+.badge-c{background:#f9d9cf;color:#a03415}
+ul{margin:6px 0;padding-left:1.4em}
+ul li{margin:4px 0}
+footer{color:#888;font-size:.85em;margin-top:36px;border-top:1px solid var(--line);padding-top:10px}
+footer a{color:var(--link)}
+.formula{background:#f8fafc;border:1px solid var(--line);border-radius:6px;padding:8px 12px;
+  font-family:"Consolas","Menlo",monospace;font-size:.9em;margin:6px 0;display:inline-block}
+@media(max-width:600px){body{padding:12px 10px;font-size:14px}}
+</style>
+</head>
+<body><main>
+
+<a class="back" href="find.html">← 天気の良い山をさがす に戻る</a>
+
+<h1>スコアの計算方法
+<small>「天気の良い山をさがす」に出る 0〜100 の数字が、どうやって決まっているか</small></h1>
+
+<p>「天気の良い山をさがす」ページの一番右端には、その日のコンディションを 0〜100 の数字で表した
+<b>スコア</b>が表示されます。数字が大きいほど「山日和」の目安。このページでは、この数字が
+<b>どんな気象要素をどう組み合わせて出されているのか</b>を、実際のコードと計算例で解説します。</p>
+
+<div class="point">📖 この解説の対象: 「天気の良い山をさがす」のスコア列だけです。
+個別の山の詳細ページに出る<b>正式な登山指数 A/B/C</b> は別のロジックで計算されています
+(こちらは <a href="how-it-works.html">PeakWeather の仕組み</a> で解説)。</div>
+
+<h2>1. スコアは「減点方式」で計算される</h2>
+
+<p>まず <b>100 点満点からスタート</b> して、そこから「気に入らない気象条件」があるたびに
+少しずつ点を引いていく仕組みです。全部の減点を差し引いた結果が最終スコアになります。</p>
+
+<div class="tbl">
+<table>
+  <thead>
+    <tr><th style="width:8em">スコア帯</th><th style="width:6em">色</th><th>ざっくりの意味</th></tr>
+  </thead>
+  <tbody>
+    <tr><td class="num"><span class="sc-a">70 〜 100</span></td><td><span class="badge badge-a">A</span></td>
+        <td>そこそこ良さそう。晴れ主体で降水・強風のリスクが低い日</td></tr>
+    <tr><td class="num"><span class="sc-b">45 〜 69</span></td><td><span class="badge badge-b">B</span></td>
+        <td>雲量や風で少し不安あり。時間帯を選べば行けそう</td></tr>
+    <tr><td class="num"><span class="sc-c">0 〜 44</span></td><td><span class="badge badge-c">C</span></td>
+        <td>降水や強風、悪天の可能性が高い。無理はしない方が</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>スコアの隣には <span class="stars">★★★★☆</span> の星も表示されます。これは
+スコアを 20 点刻みで 1〜5 に丸めた見た目上の目安で、判定ロジックとしてはスコアと同じものです
+(<code>Math.max(1, Math.round(score / 20))</code> 個の★)。</p>
+
+<h2>2. スコアに影響する4つの要素</h2>
+
+<p>減点の対象は次の4つです。数値は<b>最大の減点量</b>で、実際は条件が悪いほど徐々に引かれます。</p>
+
+<div class="tbl">
+<table>
+  <thead>
+    <tr><th style="width:2em">#</th><th>要素</th><th style="width:7em">最大減点</th><th>重視理由</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>①</td><td><b>晴天度</b>(日照率 or 天気コード)</td><td class="num">-45 点</td>
+        <td>登山者が最も気にする「晴れているか」を第一ファクターに置いた</td></tr>
+    <tr><td>②</td><td><b>降水</b>(確率 + 量)</td><td class="num">-25 点</td>
+        <td>雨は行動可否に直結。確率と量の両面から評価</td></tr>
+    <tr><td>③</td><td><b>風</b>(最大風速 + 突風)</td><td class="num">-20 点</td>
+        <td>稜線の風は行動を大きく制約する。ただし地表10m値なので相対比較用</td></tr>
+    <tr><td>④</td><td><b>雪・寒気</b>(積雪 + 最低気温)</td><td class="num">-10 点</td>
+        <td>冬山寄りの条件を軽く反映(A/B/C正式判定より控えめ)</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>合計の理論上の最大減点は約 -100 点ですが、各要素で頭打ちがあるので、
+現実には <b>最低でも 0 点まで</b>しか下がりません (下限クランプ)。</p>
+
+<h2>3. ① 晴天度 (最大 -45 点)</h2>
+
+<h3>まず「日照率」で見る</h3>
+
+<p>気象データの中に「その日、実際にお日さまが射す予想時間」(<code>sunshine_duration</code>) と、
+「日の出から日の入りまでの時間」(<code>daylight_duration</code>) の 2 つがあります。この比を <b>日照率</b>と呼びます。</p>
+
+<div class="formula">日照率 = sunshine_duration / daylight_duration &nbsp;(0〜1)</div>
+
+<ul>
+  <li>日照率 100% (=1.0) → 減点なし</li>
+  <li>日照率 50% (=0.5) → -22.5 点</li>
+  <li>日照率 0% (=0.0) → -45 点 (この要素での最大減点)</li>
+</ul>
+
+<div class="formula">減点 = (1 − 日照率) × 45</div>
+
+<h3>日照率が取れない時は「天気コード」で代替</h3>
+
+<p>予報モデルによっては日照時間の値を返さないケースがあります。その時は WMO の
+<b>天気コード</b> (0=快晴、1=晴れ、2=晴れ時々曇り、3=曇り、45=霧、51〜=雨、71〜=雪、95〜=雷雨…) を代替として使います。</p>
+
+<div class="tbl">
+<table>
+  <thead>
+    <tr><th style="width:9em">天気コード</th><th>意味</th><th style="width:7em">減点</th></tr>
+  </thead>
+  <tbody>
+    <tr><td class="num">0, 1</td><td>快晴 / 晴れ</td><td class="num">0 点</td></tr>
+    <tr><td class="num">2</td><td>晴れ時々曇り</td><td class="num">-12 点</td></tr>
+    <tr><td class="num">3</td><td>曇り</td><td class="num">-28 点</td></tr>
+    <tr><td class="num">その他</td><td>霧・雨・雪・雷雨など</td><td class="num">-35 点</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>悪天(雨・雪・雷)は追加で少し引く</h3>
+
+<p>日照率だけだと「一日の総日照時間はそこそこあるが、短時間だけ雨が通過する」ようなパターンを見逃します。
+なので<b>天気コードが雨・雪・雷を含むとき</b>、追加で軽く減点します。</p>
+
+<ul>
+  <li>雷雨 (コード 95以上): 追加 -12 点</li>
+  <li>雪系 (コード 71〜86): 追加 -8 点</li>
+  <li>雨系 (コード 51〜82): 追加 -6 点</li>
+</ul>
+
+<div class="notice">⚠️ ちなみに、Web アプリの表側にある <b>天気アイコン</b> (☀🌤☁🌧⛄⚡) は
+天気コードではなく<b>日照率</b>ベースで表示しています。24 時間 max の天気コードだと、一日晴れ主体でも
+短時間の霧雨で「曇り」表示になり、「曇りなのに日照 97%」のような矛盾が起きるためです。</div>
+
+<h2>4. ② 降水 (最大 -25 点)</h2>
+
+<h3>降水確率</h3>
+
+<div class="formula">減点 = 降水確率(%) / 100 × 15</div>
+
+<ul>
+  <li>降水確率 0% → 減点なし</li>
+  <li>降水確率 50% → -7.5 点</li>
+  <li>降水確率 100% → -15 点</li>
+</ul>
+
+<h3>降水量</h3>
+
+<div class="formula">減点 = min(降水量mm, 10) / 10 × 10</div>
+
+<ul>
+  <li>降水量 0mm → 減点なし</li>
+  <li>降水量 5mm → -5 点</li>
+  <li>降水量 10mm 以上 → -10 点 (以降頭打ち)</li>
+</ul>
+
+<p><b>確率と量を両方見る</b> のがポイント。確率だけだと「70% だけど降っても1mm」を過大評価し、
+量だけだと「20% だけど降ると 15mm 」を見落とします。</p>
+
+<h2>5. ③ 風 (最大 -20 点)</h2>
+
+<h3>最大風速 (地表 10m)</h3>
+
+<div class="formula">減点 = clamp((最大風速 − 4) / 12, 0, 1) × 15</div>
+
+<ul>
+  <li>4 m/s 以下 → 減点なし (無風〜穏やか)</li>
+  <li>10 m/s → -7.5 点</li>
+  <li>16 m/s 以上 → -15 点 (以降頭打ち)</li>
+</ul>
+
+<h3>突風</h3>
+
+<div class="formula">減点 = clamp((突風 − 8) / 22, 0, 1) × 5</div>
+
+<ul>
+  <li>8 m/s 以下 → 減点なし</li>
+  <li>19 m/s → -2.5 点</li>
+  <li>30 m/s 以上 → -5 点 (以降頭打ち)</li>
+</ul>
+
+<div class="notice">⚠️ ここで使っている風速は <b>地表 10m の値</b>です。稜線の風は
+これより 1.5〜3 倍強く吹くのが普通ですが、横断検索は「同じ地表基準で山どうしを比べる」
+のが目的なので、あえて標高補正はかけていません。<b>実際の登山可否は、必ず個別山ページの
+稜線風速を確認</b>してください。</div>
+
+<h2>6. ④ 雪・寒気 (最大 -10 点)</h2>
+
+<h3>積雪量</h3>
+
+<div class="formula">減点 = min(積雪, 5) / 5 × 5</div>
+
+<ul>
+  <li>積雪 0cm → 減点なし</li>
+  <li>積雪 2.5cm → -2.5 点</li>
+  <li>積雪 5cm 以上 → -5 点 (以降頭打ち)</li>
+</ul>
+
+<h3>最低気温 (低温だけ減点)</h3>
+
+<p>最低気温 -5℃ を超えて寒いときだけ減点します(-5℃以上は減点0)。</p>
+
+<div class="formula">減点 = min(−5 − 最低気温, 15) / 15 × 5 &nbsp; (最低気温 &lt; −5℃ のとき)</div>
+
+<ul>
+  <li>-5℃ 以上 → 減点なし</li>
+  <li>-12.5℃ → -2.5 点</li>
+  <li>-20℃ 以下 → -5 点 (以降頭打ち)</li>
+</ul>
+
+<h2>7. 実際の計算例</h2>
+
+<h3>例A: 快晴・微風の日 (夏山)</h3>
+
+<div class="card">
+<p><b>気象条件</b>: 日照率 90%、降水確率 10%、降水量 0mm、最大風速 8m/s、突風 12m/s、積雪 0cm、最低気温 15℃</p>
+<ul>
+  <li>① 晴天度: (1 − 0.90) × 45 = <b>-4.5 点</b></li>
+  <li>② 降水: 0.10 × 15 + 0 = <b>-1.5 点</b></li>
+  <li>③ 風: (8−4)/12 × 15 + (12−8)/22 × 5 = 5.0 + 0.9 = <b>-5.9 点</b></li>
+  <li>④ 雪・寒気: <b>0 点</b></li>
+</ul>
+<p><b>スコア = 100 − 4.5 − 1.5 − 5.9 = 88 点</b>
+<span class="badge badge-a">A</span> <span class="stars">★★★★☆</span></p>
+</div>
+
+<h3>例B: 曇りがち・降水あり・強めの風 (梅雨時)</h3>
+
+<div class="card">
+<p><b>気象条件</b>: 日照率 30%、降水確率 60%、降水量 5mm、最大風速 14m/s、突風 22m/s、積雪 0cm、最低気温 5℃</p>
+<ul>
+  <li>① 晴天度: (1 − 0.30) × 45 = <b>-31.5 点</b></li>
+  <li>② 降水: 0.60 × 15 + 5/10 × 10 = 9.0 + 5.0 = <b>-14 点</b></li>
+  <li>③ 風: (14−4)/12 × 15 + (22−8)/22 × 5 = 12.5 + 3.2 = <b>-15.7 点</b></li>
+  <li>④ 雪・寒気: <b>0 点</b></li>
+</ul>
+<p><b>スコア = 100 − 31.5 − 14 − 15.7 = 39 点</b>
+<span class="badge badge-c">C</span> <span class="stars">★★☆☆☆</span></p>
+</div>
+
+<h3>例C: 完璧に快晴・凪 (最高評価)</h3>
+
+<div class="card">
+<p><b>気象条件</b>: 日照率 100%、降水確率 0%、降水量 0mm、最大風速 3m/s、突風 5m/s、積雪 0cm、最低気温 15℃</p>
+<p>すべての要素で減点なし → <b>スコア = 100 点</b>
+<span class="badge badge-a">A</span> <span class="stars">★★★★★</span></p>
+</div>
+
+<h2>8. コード本体 (JavaScript)</h2>
+
+<p>実際のスコア計算は下記のコード <b>1 つに集約</b>されています。行数にして 20 行未満。
+上の数式表と対応させて読めます。</p>
+
+<pre><span class="cm">// score(d): Open-Meteo の daily レスポンスから 0〜100 のスコアを返す</span>
+var s = 100;
+
+<span class="cm">// ① 晴天度 (最大 -45)</span>
+if (sunFrac != null)  s -= (1 - sunFrac) * 45;
+else if (code != null) s -= code &lt;= 1 ? 0
+                          : code === 2 ? 12
+                          : code === 3 ? 28 : 35;
+<span class="cm">// 悪天コードの上乗せ</span>
+if (code &gt;= 95)               s -= 12;   <span class="cm">// 雷雨</span>
+else if (code &gt;= 71 &amp;&amp; code &lt;= 86) s -= 8;    <span class="cm">// 雪</span>
+else if (code &gt;= 51 &amp;&amp; code &lt;= 82) s -= 6;    <span class="cm">// 雨</span>
+
+<span class="cm">// ② 降水 (最大 -25)</span>
+if (pprob != null) s -= pprob / 100 * 15;
+if (psum  != null) s -= Math.min(psum, 10) / 10 * 10;
+
+<span class="cm">// ③ 風 (最大 -20、地表10m 基準の相対比較)</span>
+if (wmax != null) s -= clamp((wmax - 4) / 12, 0, 1) * 15;
+if (gust != null) s -= clamp((gust - 8) / 22, 0, 1) *  5;
+
+<span class="cm">// ④ 雪・寒気 (最大 -10)</span>
+if (snow != null &amp;&amp; snow &gt; 0)   s -= Math.min(snow, 5) / 5 * 5;
+if (tmin != null &amp;&amp; tmin &lt; -5)  s -= Math.min(-5 - tmin, 15) / 15 * 5;
+
+return Math.round(Math.max(0, Math.min(100, s)));</pre>
+
+<p>ソースは <a href="https://github.com/HALab18/sangaku-yohou2/blob/master/scripts/gen_find.py">scripts/gen_find.py</a> の
+<code>score()</code> 関数(生成テンプレート内)にあります。閾値や重みの根拠を含めて、コミット履歴からも辿れます。</p>
+
+<h2>9. このスコアで気をつけてほしいこと</h2>
+
+<div class="notice">
+<b>これは「山日和探しの入口」用の簡易スコアです</b>。次の点に注意してください:
+<ul>
+  <li><b>山頂への標高補正はしていません</b>。地表 10m の風速や、標高補正なしの気温がそのまま使われるため、
+      同じスコアでも標高の高い山ほど実際は厳しくなります。</li>
+  <li>正式な <b>登山指数 A/B/C</b>(個別山ページで表示) はまったく別のロジックで、稜線風速や
+      体感温度の補正も含んでいます。実際に登る前には必ず個別山ページで確認してください。</li>
+  <li><b>降水は 24 時間の合計</b>で見ています。深夜だけ雨で朝から晴れる日でも、少し減点されます。
+      時間帯の分布を知りたいときは個別山ページの 3h/1h 詳細を見てください。</li>
+  <li><b>気象データ自体の予測誤差</b>は当然含まれます。3日先までは信頼度高め、7日先以降は目安程度。</li>
+</ul>
+</div>
+
+<div class="point">🔗 <a href="find.html">← 天気の良い山をさがす</a> に戻る
+&nbsp;/&nbsp; <a href="how-it-works.html">PeakWeather 全体の仕組み(A/B/C 判定など)</a>
+&nbsp;/&nbsp; <a href="../index.html">PeakWeather トップ</a></div>
+
+<footer>
+天気データ: Open-Meteo (CC BY 4.0) /
+<a href="https://github.com/HALab18/sangaku-yohou2">GitHub リポジトリ</a>
+</footer>
+
+</main></body>
+</html>
