@@ -98,7 +98,13 @@ tr:nth-child(even) td{background:#eef1f6}
 /* 山名列: 日本語CJKは基本改行させず1行で表示(word-break:keep-all)、極端に長い山名(9文字以上)だけ
    max-width を超えた時に折り返しを許容(overflow-wrap:break-word)。td共通の white-space:nowrap は
    normal に戻す(white-space:nowrap と overflow-wrap:anywhere は仕様上両立しないため)。 */
-td.nm{text-align:left;white-space:normal;min-width:8em;max-width:16em;word-break:keep-all;overflow-wrap:break-word}
+td.nm{text-align:left;white-space:normal;min-width:6em;max-width:11em;word-break:keep-all;overflow-wrap:break-word}
+/* 山名セル内の右端にスコアを配置(山名の脇に常に見える)。星表示は廃止して数字色分けのみ */
+td.nm .nmrow{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+td.nm .scb{font-weight:800;font-size:1.05em;font-variant-numeric:tabular-nums;flex-shrink:0;line-height:1}
+td.nm .scb.sc-a{color:#1f7a34}
+td.nm .scb.sc-b{color:#b26b00}
+td.nm .scb.sc-c{color:#b3261e}
 /* スマホで横スクロール時にどの山を見ているか分かるよう、ランク列(#)と山名列を左端に固定する
    (index.htmlの日付列 sticky-left と同じ考え方)。ランク列を固定幅にして山名列の left オフセット
    を予測可能にした。角の交差セル(th)は元々 z-index:2、tdは z-index:1 で thの下に潜る。 */
@@ -120,15 +126,12 @@ h3.results-h .rcount{color:#556;font-weight:500;font-size:.9em;margin-left:6px}
 .rnote{margin:4px 0 0;font-size:.82em;color:#5b6b8a}
 .rnote.caution{color:#b26b00;background:#fff8e6;border-left:4px solid #b26b00;padding:6px 10px;border-radius:0 4px 4px 0}
 .rnote a{color:var(--link)}
-/* 足切り表: 見出し帯とスタート色をオレンジ系に、スコアの星は薄めに */
+/* 足切り表: 見出し帯をオレンジ系にして通常表と視覚的に差別化 */
 .tbl.caution table th{background:#b26b00}
-.tbl.caution .stars{opacity:.55}
 td.reason{color:#b26b00;font-weight:700;font-size:.85em;white-space:nowrap;text-align:left}
 /* 天気アイコン: index.html と同じSVG(#wx-sun 等)を参照。emoji のOS依存表示ズレを回避 */
 .wxico{width:1.9em;height:1.9em;display:block;margin:0 auto 2px}
 .wxlbl{color:#556;font-size:.82em}
-.sc{font-weight:800;font-variant-numeric:tabular-nums}
-.stars{color:#e0a92b;letter-spacing:1px;font-size:.9em;display:block}
 .num{font-variant-numeric:tabular-nums}
 .rank{color:#8a94a8;font-variant-numeric:tabular-nums}
 .sc-a{color:#1f7a34}.sc-b{color:#b26b00}.sc-c{color:#b3261e}
@@ -288,9 +291,14 @@ footer a{color:var(--link)}
     if(!c)return;
     var o=document.createElement("option");o.value=r;o.textContent=r+" ("+c+"座)";elRegion.appendChild(o);
   });
+  // 北海道は都道府県=1(北海道)なので県絞り込み不要。それ以外は県まで選ばないと検索させない
+  // (Open-Meteo 側の負荷軽減が目的)。
+  var NO_PREF_REGIONS={"北海道":true};
   function fillPrefs(){
     var r=elRegion.value;
-    elPref.innerHTML='<option value="">すべて</option>';
+    // デフォルトの「すべて」ラベルを状況で切り替える
+    var placeholder=r&&!NO_PREF_REGIONS[r]?"県を選択してください":"すべて";
+    elPref.innerHTML='<option value="">'+placeholder+'</option>';
     var counts={};
     MOUNTAINS.forEach(function(m){if(m.reg===r){var p=m.pref.split("・")[0];counts[p]=(counts[p]||0)+1}});
     PREF_ORDER.forEach(function(p){
@@ -307,11 +315,22 @@ footer a{color:var(--link)}
       return true;
     });
   }
+  function needsPrefSelection(){
+    var r=elRegion.value,p=elPref.value;
+    return r && !NO_PREF_REGIONS[r] && !p;
+  }
   function updateHint(){
+    var r=elRegion.value;
+    if(needsPrefSelection()){
+      elHint.textContent="Open-Meteoの負荷軽減のため、県を選択してから検索してください(北海道を除く)";
+      elGo.disabled=true;
+      return;
+    }
+    elGo.disabled=false;
     var n=targets().length;
     var reqs=Math.ceil(n/CHUNK);
     var msg="対象 "+n+"座";
-    if(reqs>1)msg+=" / "+reqs+"回に分けて取得します。県でしぼると1回で済み負荷を抑えられます";
+    if(reqs>1)msg+=" / "+reqs+"回に分けて取得します";
     else msg+=" / 1回の取得で完了します";
     elHint.textContent=msg;
   }
@@ -435,7 +454,6 @@ footer a{color:var(--link)}
     return parts.join(" / ");
   }
 
-  function stars(v){var n=Math.max(1,Math.round(v/20));return "★★★★★".slice(0,n)+"☆☆☆☆☆".slice(0,5-n)}
   function scClass(v){return v>=70?"sc-a":v>=45?"sc-b":"sc-c"}
   function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
   function pct(f){return f==null?"-":Math.round(f*100)+"%"}
@@ -444,6 +462,7 @@ footer a{color:var(--link)}
   // ---- 検索実行 ----
   function cacheKey(r,p,date){return "find:"+r+":"+p+":"+date}
   async function search(){
+    if(needsPrefSelection()){elStatus.textContent="県を選択してから検索してください";return}
     var ms=targets(),date=elDate.value,r=elRegion.value,p=elPref.value;
     if(!ms.length){elStatus.textContent="対象の山がありません";return}
     elStatus.className="";elResults.innerHTML="";elGo.disabled=true;
@@ -486,7 +505,13 @@ footer a{color:var(--link)}
     var reason=caution?'<td class="reason">⚠ '+esc(reasonLabel(s))+'</td>':'';
     return '<tr>'+
       '<td class="rank">'+(i+1)+'</td>'+
-      '<td class="nm"><a href="'+href+'"'+oc+'>'+esc(m.n)+'</a><small>'+esc(m.pref)+' / '+m.el+'m</small></td>'+
+      '<td class="nm">'+
+        '<div class="nmrow">'+
+          '<a href="'+href+'"'+oc+'>'+esc(m.n)+'</a>'+
+          '<span class="scb '+scClass(s.v)+'">'+s.v+'</span>'+
+        '</div>'+
+        '<small>'+esc(m.pref)+' / '+m.el+'m</small>'+
+      '</td>'+
       reason+
       '<td>'+(wx.ic?'<svg class="wxico" aria-hidden="true"><use href="#'+wx.ic+'"/></svg>':"-")+
             '<span class="wxlbl">'+esc(wx.lb)+'</span></td>'+
@@ -494,14 +519,13 @@ footer a{color:var(--link)}
       '<td class="num">'+fnum(s.tmax,"")+' / '+fnum(s.tmin,"℃")+'</td>'+
       '<td class="num">'+fnum(s.ridgeWmax,"m/s")+'</td>'+
       '<td class="num">'+(s.pprob==null?"-":Math.round(s.pprob)+"%")+'</td>'+
-      '<td class="sc '+scClass(s.v)+'">'+s.v+'<span class="stars">'+stars(s.v)+'</span></td>'+
       '</tr>';
   }
 
   function tableHtml(rows,date,caution){
-    var head='<tr><th>#</th><th>山名</th>'+
+    var head='<tr><th>#</th><th>山名 / スコア</th>'+
       (caution?'<th>理由</th>':'')+
-      '<th>天気</th><th>日照</th><th>気温</th><th>稜線風</th><th>降水</th><th>スコア</th></tr>';
+      '<th>天気</th><th>日照</th><th>気温</th><th>稜線風</th><th>降水</th></tr>';
     var body='';
     rows.forEach(function(row,i){body+=rowHtml(row,i,date,caution)});
     return '<div class="tbl'+(caution?' caution':'')+'"><table><thead>'+head+
