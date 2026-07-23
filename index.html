@@ -892,14 +892,16 @@ async function locateCoordAndGo(lat,lon,elevManual){
 // ---- 利用規約への同意ゲート ----
 // 同意しない限り本体フォームは操作不可(inert + pointer-events:none。キーボード操作も遮断)。
 // 同意はローカル保存し次回以降は再表示しない。
-const AGREE_KEY="sangaku-yohou-agreed-v1";
+// KEY名はsangaku-yohou(v1)と別名にすること: 同じhalab18.github.ioオリジンでlocalStorageを
+// 共有するため、キー名が同じだとv1で同意/認証済みの利用者がv2でも未入力のまま通ってしまう。
+const AGREE_KEY="sangaku-yohou2-agreed-v1";
 // 認証コード: コード本体は埋め込まず、PBKDF2ハッシュのみ照合する。
 // 定数3つ(VER/SALT/HASH)は scripts/gen_auth_hash.py の出力で年1回差し替える。
 // VERを変えると全端末のlocalStorageの認証済み印が無効になり、再入力が求められる。
-const AUTH_KEY="peakweather-auth",
+const AUTH_KEY="peakweather2-auth",
       AUTH_VER="2026",
-      AUTH_SALT="87d8b957337ae34b42890f9b2eed01d4",
-      AUTH_HASH="22c737a5964139051ec51e16cd47b2808d3a14ccfa1c5dea0440ef7bb8db7c39",
+      AUTH_SALT="0d5c8ead991540ff412074d0cd056776",
+      AUTH_HASH="be1caef9b1a4012a4297740a3d0118f5d5d371a6a221526e28de12c9c5bbc2a4",
       AUTH_ITER=300000;
 const isAuthed=()=>localStorage.getItem(AUTH_KEY)===AUTH_VER;
 async function hashAuthCode(code){

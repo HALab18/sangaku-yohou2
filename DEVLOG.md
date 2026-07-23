@@ -5,37 +5,32 @@
 
 ---
 
-## ▶ 次の再開ポイント: コンディション横断検索ページ（docs/find.html）実装済み・master 未反映
+## ▶ 次の再開ポイント: sangaku-yohou2 (v2.01) 新規リポジトリとして公開済み
 
-**現状**: 作業ブランチ `feature/condition-search` に **未コミット** で実装完了・ローカル検証済み。
-まだ commit も master push もしていない。次にやること = **① 内容を確認 → ② コミット → ③ master へ
-push（`git push origin feature/condition-search:master`）**。push すると GitHub Pages に公開される。
-- **新機能**: 「その日に天気の良さそうな山を先に見つける」逆引きページ。エリア(9地方)＋任意で県＋単日を
-  指定 → その範囲の山を Open-Meteo の **daily 値だけバッチ取得**（緯度経度カンマ区切り・1回最大50座・
-  50座超は50ずつ直列・sessionStorageキャッシュ）→ **晴天度最重視の簡易スコア**で降順表示 →
-  行タップで既存詳細（`../index.html#山名/日付`）へ。詳細は下の 07-23 ログ参照。
-- 追加/変更ファイル: `scripts/gen_find.py`（新規・生成器）, `docs/find.html`（自動生成物）,
-  `index.html`（入口リンク2本追加のみ・判定ロジック無改変）, `references/criteria.md`（日和スコアの注記追加）,
-  `.claude/launch.json`（ローカル確認用・既存）。**`check_mountains.py` は通過済み**（CSV/同期に影響なし）。
-- 注意: 簡易スコアは **A/B/C 正式判定とは別物**（規約3の対象外）。CLI/Web共通の判定には触れていない。
-- 山岳DB更新時は `python scripts/gen_find.py` も再実行して find.html を同期すること（mountains.html と同様）。
+**現状**: 本リポジトリ `sangaku-yohou2` は、`sangaku-yohou`（本家・以下v1）の
+`feature/condition-search` ブランチ（コンディション横断検索=「天気で山さがし」機能）を
+ベースに **2026-07-23 に新規分離**。v1 は変更を一切反映せず従来のまま運用継続、
+横断検索機能（Open-Meteoへのリクエスト増）はこちらのリポジトリのみで開発を続ける方針。
+公開URL: https://halab18.github.io/sangaku-yohou2/ 。GitHub Pages 設定済み・公開確認済み。
 
-**以前からの状態**（すべて master 反映済み）:
-自宅で再開する場合は最初に `git pull` してから作業開始。
-- **スマホ左余白**（07-22 左余白のログ）: `main` の左パディング 14→22px（スマホのみ）。commit `1314708` で反映済み。
-- **予報表の sticky 化**（07-22 sticky のログ）: ヘッダ行・先頭列を固定。commit `5edf8aa` で master 反映済み。
-- **日代表天気ロジック**（07-22 のログ）: 日別表の天気を hourly から自前算出。commit `645feb5` で
-  master 反映済み。CLI/Web parity テスト済み。
-- 山岳DB **604座** 確定済み（`tenki_mountain_list.xlsx` からの追加は完全に打ち止め。
-  未収録の元リスト行は標高100m未満2座・渓谷1座・額取山878mの重複1座で、理由込みで確定済み）
-- 予報の取得経路は **3つ**: ①山名検索 ②GPS現在地（`#gps`ハッシュ、市町村名つき見出し）
-  ③座標指定（`docs/point.html` → `index.html#緯度,経度[,標高]/日付` ハッシュ。詳細は 07-18 のログ）
-- **認証コード制**: 初回のみコード入力で利用可（Open-Meteo無料枠の保護）。年次更新の手順は
-  07-18 の「認証コードゲート」ログ参照。**コード本体はリポジトリに書かないこと**
-- バグ・セキュリティ点検済み（07-18 のログ）。利用規約に第6条（位置情報の取り扱い）あり
-- index.html / terms.html から GitHubリポジトリへの記載・リンクは削除済み（ユーザー指示）
-- **ver 1.01 / 独自ライセンス**（07-20 のログ）。以後、大きな改定ごとに版番号を振る運用
-**このブランチのマージ以外に、新しい指示がない限り着手すべき作業は無い。**
+- **v1との違いは「天気で山さがし」機能のみ**。既存の山頂気象予報（index.html本体・CLI）は無改変。
+  機能詳細（日和スコアの設計・チャンク分割等）は下記 07-23 の旧ログ参照。
+- **認証コードはv1と完全に分離**（重要）: v1/v2 とも `halab18.github.io` の同一オリジンで
+  localStorageを共有するため、キー名が同じだとv1で同意/認証済みの人がv2でも未入力のまま
+  通ってしまう。そのため `AGREE_KEY`・`AUTH_KEY` をv1と別名（`sangaku-yohou2-agreed-v1` /
+  `peakweather2-auth`）に変更し、認証コード自体も新規生成・別コードにした。
+  v1のコードを知っていてもv2には入れない。コード本体はYAMAPモーメント等、リポジトリ外にのみ記載。
+- **バージョン表記 ver 2.01**（index.htmlフッター）。以後の版番号運用もv1から独立してこちらで管理。
+- ライセンス・利用規約中のURL/リポジトリ名参照は `sangaku-yohou2` に更新済み
+  （CLAUDE.md・README.md・LICENSE・docs/how-it-works.html等）。
+
+**v1から引き継いだ既存機能**（すべてv1のmaster時点で反映済み・詳細は下の旧ログ参照）:
+- スマホ左余白・予報表sticky化・日代表天気ロジック・山岳DB604座・GPS/座標指定・眺望判定・
+  体感温度(風冷指数)・A/B/C登山指数（夏山/冬山モード自動切替）等、v1の全機能を継承
+- 山岳DB更新パイプライン（db_reconcile→db_fetch_coords→db_merge→check_mountains→
+  gen_mountain_list）は本リポジトリでも同様に使える。**DB更新時は `gen_find.py` も再実行**して
+  find.html を同期すること（mountains.html と同様）
+**新しい指示がない限り、次の大きな作業は未定。次回は DEVLOG 冒頭のこのブロックから開始。**
 
 ---
 
