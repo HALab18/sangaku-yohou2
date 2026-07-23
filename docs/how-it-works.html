@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PeakWeather の仕組み — 山岳予報ツール解説</title>
+<style>
+:root{--accent:#2d6a4f;--accent2:#b5451b;--night:#1e2d4a;--warn:#7b5e00;--bg:#f7f5f0}
+*{box-sizing:border-box}
+body{margin:0;padding:16px;background:var(--bg);color:#222;
+  font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+  font-size:15px;line-height:1.8}
+main{max-width:860px;margin:0 auto}
+h1{color:var(--accent);font-size:1.5em;border-bottom:3px solid var(--accent);padding-bottom:8px}
+h1 small{display:block;font-size:.6em;color:#777;font-weight:400}
+h2{color:var(--night);font-size:1.2em;margin:34px 0 10px;border-left:6px solid var(--accent);padding-left:10px}
+h3{color:var(--accent);font-size:1.05em;margin:20px 0 6px}
+p{margin:8px 0}
+.card{background:#fff;border-radius:10px;padding:14px 18px;margin:12px 0;
+  box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.tbl{overflow-x:auto;margin:10px 0}
+table{border-collapse:collapse;width:100%;white-space:nowrap;background:#fff}
+th{background:var(--accent);color:#fff;padding:7px 10px;font-size:.92em}
+td{padding:6px 10px;border-bottom:1px solid #e2ddd2;text-align:center}
+tr:nth-child(even) td{background:#f3f0e8}
+.b{display:inline-block;min-width:2.6em;padding:1px 8px;border-radius:10px;font-weight:700}
+.b-a{background:#d8efe1;color:#1c5b3f}.b-b{background:#fdeec9;color:#7b5e00}
+.b-c{background:#f9d9cf;color:#a03415}
+.notice{background:#fff8e6;border-left:5px solid var(--warn);padding:10px 14px;
+  border-radius:0 6px 6px 0;margin:14px 0;font-size:.93em}
+.point{background:#e8f2ec;border-left:5px solid var(--accent);padding:10px 14px;
+  border-radius:0 6px 6px 0;margin:14px 0;font-size:.95em}
+figure{margin:14px 0;text-align:center}
+figure svg{max-width:100%;height:auto}
+figcaption{font-size:.85em;color:#777;margin-top:4px}
+code{background:#eee9df;padding:1px 6px;border-radius:4px;font-size:.9em}
+footer{color:#888;font-size:.85em;margin-top:36px;border-top:1px solid #ddd;padding-top:10px}
+@media(max-width:600px){body{padding:10px;font-size:14px}}
+</style>
+</head>
+<body><main>
+
+<h1>山岳予報ツール「PeakWeather」の仕組み
+<small>どうやって山の天気を調べ、どう判定しているのかの解説</small></h1>
+
+<p>このツールは、<b>「山の名前」を入れると「その山の山頂・稜線の天気予報」を表にして返す</b>プログラムです。
+テレビやアプリの天気予報は麓の街の予報ですが、山の上は気温も風もまったく別物です。
+そこを数値でまかなうのがこのツールの役割です。</p>
+
+<div class="point">🌐 <b>Webアプリ版はこちら</b> →
+<a href="https://halab18.github.io/sangaku-yohou2/">halab18.github.io/sangaku-yohou2</a>
+（ブラウザで山名を入れるだけ・スマホ対応・インストール不要）</div>
+
+<h2>1. 全体の流れ</h2>
+
+<figure>
+<svg viewBox="0 0 760 150" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="13">
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+    <path d="M0 0L10 5L0 10z" fill="#2d6a4f"/></marker></defs>
+  <rect x="5" y="45" width="130" height="60" rx="10" fill="#1e2d4a"/>
+  <text x="70" y="70" fill="#fff" text-anchor="middle">「燕岳の</text>
+  <text x="70" y="90" fill="#fff" text-anchor="middle">予報は?」</text>
+  <line x1="140" y1="75" x2="188" y2="75" stroke="#2d6a4f" stroke-width="2.5" marker-end="url(#ar)"/>
+  <rect x="193" y="45" width="150" height="60" rx="10" fill="#2d6a4f"/>
+  <text x="268" y="70" fill="#fff" text-anchor="middle">① 山を特定</text>
+  <text x="268" y="90" fill="#fff" text-anchor="middle" font-size="11">緯度経度・標高</text>
+  <line x1="348" y1="75" x2="396" y2="75" stroke="#2d6a4f" stroke-width="2.5" marker-end="url(#ar)"/>
+  <rect x="401" y="45" width="150" height="60" rx="10" fill="#2d6a4f"/>
+  <text x="476" y="70" fill="#fff" text-anchor="middle">② 予報データ取得</text>
+  <text x="476" y="90" fill="#fff" text-anchor="middle" font-size="11">Open-Meteo API</text>
+  <line x1="556" y1="75" x2="604" y2="75" stroke="#2d6a4f" stroke-width="2.5" marker-end="url(#ar)"/>
+  <rect x="609" y="45" width="146" height="60" rx="10" fill="#b5451b"/>
+  <text x="682" y="70" fill="#fff" text-anchor="middle">③ 計算・判定</text>
+  <text x="682" y="90" fill="#fff" text-anchor="middle" font-size="11">表・HTMLで出力</text>
+</svg>
+<figcaption>山名の入力から出力までの3ステップ。すべてプログラム（コード）が実行する</figcaption>
+</figure>
+
+<div class="card">
+<h3>① 山を特定する</h3>
+<p>ツールの中に<b>日本百名山・二百名山・三百名山ほか604座のデータベース</b>（山名・緯度経度・山頂標高）を持っています。
+この座標は国土地理院・yamarecoの地名検索と標高データで一座ずつ照合して作りました。
+データベースにない山は、国土地理院などの地名検索で自動的に探します。
+「大山」のように同名の山が複数ある場合は、候補（鳥取の大山／丹沢の大山）を提示して選んでもらいます。</p>
+<h3>② 予報データを取得する</h3>
+<p>気象データは <b>Open-Meteo</b> という無料の気象APIから取ります。ここには
+<b>気象庁（日本）・ECMWF（欧州）・GFS（米国）</b>など世界の気象機関の数値予報モデルが集約されていて、
+地点に応じて最適なモデルを合成した予報を返してくれます。登録もAPIキーも不要です。</p>
+<h3>③ 計算・判定して出力する</h3>
+<p>取得した生データから「稜線の風」「体感温度」「登山指数」「眺望」を計算し、表に整形します。
+この部分はすべて<b>あらかじめ決めたルール（数式としきい値）</b>で動くので、
+同じデータなら誰が実行しても同じ結果になります。</p>
+</div>
+
+<h2>2. 工夫①: 「山頂の気温」をどう出すか</h2>
+<p>ふつうの天気予報APIに燕岳の座標を渡すと、予報モデルのならされた地形（実際より低い標高）の気温が返ってきます。
+このツールは<b>「標高2763mの高さの値をくれ」と明示的に指定</b>して取得しています。
+だから真夏でも「山頂は11℃」のような、街の予報と20℃近く違う値がちゃんと出ます。</p>
+
+<h2>3. 工夫②: 「稜線の風」をどう出すか</h2>
+<p>ここがこのツールの一番のポイントです。ふつうの「風速」は地面から10mの風で、
+山の地形にブロックされた弱めの値が出がちです。しかし稜線に立つ登山者に当たるのは、
+遮るもののない<b>上空の風</b>にずっと近い。</p>
+<p>そこで気象モデルが計算している<b>気圧面の風</b>（850hPa＝上空約1500m、700hPa＝約3000mなど）を取得し、
+山頂標高を挟む2つの面から比例配分（線形補間）して「稜線風」としています。</p>
+
+<figure>
+<svg viewBox="0 0 700 260" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="13">
+  <polygon points="60,240 340,40 620,240" fill="#8aa79a"/>
+  <polygon points="240,112 340,40 440,112 400,112 370,84 340,112 310,84 280,112" fill="#e8e4da"/>
+  <g stroke="#1e2d4a" stroke-width="1.5" stroke-dasharray="7 5">
+    <line x1="40" y1="200" x2="660" y2="200"/>
+    <line x1="40" y1="130" x2="660" y2="130"/>
+    <line x1="40" y1="60"  x2="660" y2="60"/>
+  </g>
+  <text x="650" y="195" text-anchor="end" fill="#1e2d4a">850hPa面 ≈ 1500m</text>
+  <text x="650" y="125" text-anchor="end" fill="#1e2d4a">800hPa面 ≈ 1950m</text>
+  <text x="650" y="55"  text-anchor="end" fill="#1e2d4a">700hPa面 ≈ 3000m</text>
+  <g fill="#b5451b">
+    <circle cx="340" cy="40" r="5"/>
+    <text x="330" y="30" text-anchor="end" font-weight="bold">山頂 2763m</text>
+  </g>
+  <path d="M120 90 q14 -12 28 0 q14 12 28 0" stroke="#b5451b" stroke-width="3" fill="none"/>
+  <path d="M110 160 q12 -10 24 0 q12 10 24 0" stroke="#b5451b" stroke-width="2.2" fill="none"/>
+  <text x="128" y="115" fill="#b5451b" font-weight="bold">上空の風=稜線風のもと</text>
+  <text x="75" y="252" fill="#333">10m風(地形にならされ弱め) ← これだけ見ると危険</text>
+</svg>
+<figcaption>山頂標高(2763m)を挟む800hPaと700hPaの風から補間して「稜線風」を算出</figcaption>
+</figure>
+
+<div class="point">実例: 麓の予報が「風速2m/s」でも、稜線風は15m/s超ということが普通にあります。
+表には両方の性質を持つ「突風」も併記しています。</div>
+
+<h2>4. 判定基準①: 登山指数 A/B/C</h2>
+<p>1日を3時間ごとのブロックに割り、各ブロックを下の表で採点します。
+複数の項目に引っかかる場合は<b>いちばん悪い評価を採用</b>（安全側に倒す）。
+日単位の指数は、行動時間帯（5〜17時）の中の最悪値です。
+風速・降水の基準は<b>予報対象日の月</b>で夏山と冬山・残雪期を自動で切り替えます。</p>
+
+<p><b>夏山モード（6月〜10月）</b></p>
+<div class="tbl"><table>
+<tr><th>項目</th><th><span class="b b-a">A</span> 登山適</th><th><span class="b b-b">B</span> 要注意</th><th><span class="b b-c">C</span> 登山不適</th></tr>
+<tr><td>稜線風速</td><td>10m/s未満</td><td>10〜15m/s</td><td>15m/s以上</td></tr>
+<tr><td>降水量(3時間)</td><td>1mm未満</td><td>1〜5mm</td><td>5mm以上</td></tr>
+<tr><td>雷エネルギー(CAPE)</td><td>500未満</td><td>500〜1000</td><td>1000以上</td></tr>
+</table></div>
+
+<p><b>冬山・残雪期モード（11月〜5月）</b></p>
+<div class="tbl"><table>
+<tr><th>項目</th><th><span class="b b-a">A</span> 登山適</th><th><span class="b b-b">B</span> 要注意</th><th><span class="b b-c">C</span> 登山不適</th></tr>
+<tr><td>稜線風速</td><td>8m/s未満</td><td>8〜12m/s</td><td>12m/s以上</td></tr>
+<tr><td>降水量(3時間)</td><td>1mm未満</td><td>1〜3mm</td><td>3mm以上（降雪リスク）</td></tr>
+<tr><td>雷エネルギー(CAPE)</td><td>500未満</td><td>500〜1000</td><td>1000以上</td></tr>
+</table></div>
+
+<p>降水確率は表に参考として表示しますが、<b>判定には使いません</b>
+（判定に使うのは実測ベースの降水量です）。</p>
+
+<p><b>CAPE（ケープ）</b>は「大気にたまった雷雨の燃料」を表す気象指標です（単位 J/kg）。
+値が大きいほど積乱雲が発達しやすく、夏山の午後の雷雨リスクの先読みに使えます。
+風速15m/sは「歩行がふらつき、耐風姿勢が必要になり始める」レベルで、
+一般的な山岳気象の目安と同じ線を採用しています。冬は同じ風速でも低体温リスクが
+段違いに上がるため、閾値を8/12m/sに引き下げています。</p>
+
+<div class="point">⚠ <b>夕方急変の警告</b>: 行動時間帯の外である17〜20時がC相当と予想される日は、
+日中の指数は変えずに「⚠夕方」の警告マークを付けます。下山が遅れたときやテント泊のときは
+この印が付いた日の夕方以降に注意してください。</div>
+
+<h2>5. 判定基準②: 体感温度</h2>
+<p>風の強さで体から奪われる熱を表す<b>風冷指数（Wind Chill Index, JAG/TI式）</b>で計算しています。</p>
+<div class="point">体感温度 ＝ 13.12 + 0.6215×気温 − 11.37×風速(km/h)<sup>0.16</sup> + 0.3965×気温×風速(km/h)<sup>0.16</sup><br>
+（風速4.8km/h未満のときは気温をそのまま表示）<br>
+例: 気温0℃・風14m/s → 体感約−8℃。夏でも稜線では防寒着が要る、が数字で見えます。
+雨や汗で濡れるとさらに下がるため、表の値は「良くてこれくらい」と読んでください。</div>
+
+<h2>6. 判定基準③: 眺望 ◎○△✕</h2>
+<p>雲の予報は「下層（〜2km）・中層（2〜7km）・上層（7km〜）」の3階建てで出てきます。
+これを<b>山頂の高さと見比べる</b>のがミソです。</p>
+
+<figure>
+<svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="13">
+  <polygon points="90,225 320,45 550,225" fill="#8aa79a"/>
+  <circle cx="320" cy="45" r="5" fill="#b5451b"/>
+  <text x="332" y="42" fill="#b5451b" font-weight="bold">山頂 2763m</text>
+  <g fill="#fff" stroke="#bbb">
+    <ellipse cx="150" cy="185" rx="60" ry="18"/>
+    <ellipse cx="240" cy="192" rx="70" ry="20"/>
+    <ellipse cx="420" cy="188" rx="65" ry="19"/>
+    <ellipse cx="530" cy="182" rx="55" ry="17"/>
+  </g>
+  <text x="600" y="192" fill="#555">下層雲(〜2km)</text>
+  <text x="600" y="210" fill="#2d6a4f" font-weight="bold">→ 雲海!</text>
+  <g fill="#d7dde6" stroke="#aab4c4" opacity=".9">
+    <ellipse cx="180" cy="70" rx="65" ry="16"/>
+    <ellipse cx="480" cy="62" rx="70" ry="17"/>
+  </g>
+  <text x="558" y="66" fill="#555">中層雲(2〜7km)</text>
+  <text x="558" y="84" fill="#a03415" font-weight="bold">→ 山頂がガスる</text>
+  <g stroke="#9fb3d1" stroke-width="2" opacity=".8">
+    <path d="M80 18 q40 -8 80 0" fill="none"/>
+    <path d="M300 14 q40 -8 80 0" fill="none"/>
+  </g>
+  <text x="400" y="22" fill="#777">上層雲 → 眺望には影響小</text>
+</svg>
+<figcaption>同じ「曇り」でも、雲が山頂より下なら絶景（雲海）、山頂の高さなら真っ白（ガス）</figcaption>
+</figure>
+
+<div class="tbl"><table>
+<tr><th>判定</th><th>条件（山頂の高さにかかる雲＋視程＋雨で判定）</th></tr>
+<tr><td>◎</td><td>山頂レベルの雲20%以下 かつ 視程20km以上</td></tr>
+<tr><td>○</td><td>山頂レベルの雲50%未満</td></tr>
+<tr><td>△</td><td>山頂レベルの雲50%以上 または 視程10km未満</td></tr>
+<tr><td>✕</td><td>雨(3時間1mm以上) / 視程2km未満 / 山頂レベルの雲80%以上</td></tr>
+<tr><td>(雲海)</td><td>山頂より下の雲60%以上＋山頂レベル30%以下 → ○/◎に付記</td></tr>
+</table></div>
+<p>日別表の「眺望(朝)」は<b>4〜8時のいちばん良い時間帯</b>の値で、ご来光が狙えるかの目安です。</p>
+
+<h3>日別表の「天気」は行動時間帯から自前で代表を決める</h3>
+<p>予報APIが返す「その日の天気」は<b>24時間の中で最も悪い1時間</b>を採用する仕様のため、
+朝霧や通り雨がひと晴れの日を丸ごと「霧雨」にしてしまいます。そこでこのツールは、
+<b>行動時間帯（4〜17時）の1時間ごとの天気から、その日の代表天気を自前で決めています</b>。
+時間が最も長い天気を代表にし、雷雨・強い雨など<b>安全上重要な悪天は短時間でも必ず代表として残します</b>。
+代表にならなかった霧・霧雨・にわか雨は消さずに「夕方に霧雨」のような<b>注記</b>で併記します。</p>
+
+<h2>7. 予報の前に「直近の実況」も表示</h2>
+<p>予報の表の前に、<b>直近3日の実況（モデル解析値）</b>を小さな表で出します。
+「これからの天気」だけでなく<b>「ここ数日、山でなにが起きていたか」</b>が分かると、
+登山道の状態 — ぬかるみ、沢の増水、残雪・凍結 — をある程度見立てられるからです。</p>
+<div class="tbl"><table>
+<tr><th>日付</th><th>天気</th><th>山頂気温</th><th>稜線風max(5-17時)</th><th>降水量</th></tr>
+<tr><td>07/10(金)</td><td>霧雨</td><td>8〜16℃</td><td>南西 5.0m/s</td><td>1.5mm</td></tr>
+<tr><td>07/11(土)</td><td>曇り</td><td>9〜16℃</td><td>西南西 7.9m/s</td><td>0.0mm</td></tr>
+<tr><td>07/12(日)</td><td>霧雨</td><td>9〜13℃</td><td>北西 17.7m/s</td><td>2.7mm</td></tr>
+</table></div>
+<p>読み方の例: 直近に雨が続いていれば「ぬかるみや沢の増水がありそう」、冬に降雪が続いていれば
+「新雪のラッセルになりそう」。表示するのは事実データだけで、コンディションの断定はしません。
+登山指数（A/B/C）の判定にも使いません。<b>見立てるための材料</b>としてお使いください。</p>
+<h3>雪のある期間は「積雪」列が自動で現れる</h3>
+<p>山に雪がある期間だけ、実況・日別サマリ・3時間ごと詳細の各表に<b>積雪max(新雪)</b>列が追加されます。
+「85cm(+12)」なら<b>積雪深85cm・その日に降った新雪12cm</b>という意味です。
+雪のない夏山では列ごと非表示になるので、表はすっきりしたままです。</p>
+<div class="point">「実況」といっても観測所（アメダス等）の実測ではなく、気象モデルが再現した
+<b>解析値</b>です。実際の路面や残雪の状態は、山小屋の情報など現地発の情報があればそちらを優先してください。</div>
+
+<h2>8. 予報はどこまで信じられる? — 3モデル比較</h2>
+<p>結果の最後に、<b>気象庁・ECMWF（欧州）・GFS（米国）の3つの予報を並べた比較表</b>を表示します。
+3つが同じ答えなら信頼度が高く、バラバラなら「まだ決まっていない天気」です。
+実際、1週間先の予報で気象庁だけが大雨・欧米2つは小雨と割れることがあり、
+その場合は「まだ確定ではない、直前に再確認」という判断材料になります。</p>
+
+<h2>9. コードとAIの分担</h2>
+<div class="card">
+<p><b>コード（プログラム）がやること</b> — 山の特定、データ取得、稜線風・体感温度・指数・眺望の計算、表づくり。
+すべて決まったルール（数式としきい値）で動きます。</p>
+<p><b>AI（Claude）がやること</b> — 出てきた表を読んで「土曜午前が狙い目」「午後は雷に注意」
+「直近の雨で足元はぬかるみ気味かも」のような日本語の解説を添えること。数字そのものはAIは作りません。</p>
+</div>
+
+<h2>10. 限界と正しい使い方</h2>
+<div class="notice">
+<b>これは「参考情報」であり、安全を保証するものではありません。</b><br>
+・数値予報の解像度は数km四方。稜線ぴったりの滝雲、局地的な突風、雷の正確な位置と時刻は表現できません<br>
+・予報は16日先まで出ますが、実用的な精度は3日先程度まで。それ以降は「傾向」として読む<br>
+・雲海・ガスの判定は雲の高さの推定に基づく近似です。「◎でもガスることはある」<br>
+・「直近の実況」はモデルの解析値で、アメダス等の観測実測とは差があります<br>
+・最終判断は、直前の最新予報（ヤマテン等の専門予報も併用）と現地の空を見て、自分で行ってください
+</div>
+
+<h2>11. まとめ</h2>
+<div class="point">
+① 山の名前から緯度経度と山頂標高を特定する（604座は照合済みデータベース）<br>
+② 世界の気象モデルの予報を「山頂の高さ」を指定して取得する<br>
+③ 上空の風から「稜線の風」を、雲の高さから「眺望」を、複数指標の最悪値から「登山指数A/B/C」を計算する<br>
+④ 予報の前に直近3日の実況（モデル解析値）も表示。雪のある期間は積雪列を自動追加<br>
+⑤ 数字はぜんぶ決まったルールの計算。AIはその読み解きだけを担当する
+</div>
+
+<footer>PeakWeather — データ: Open-Meteo (CC BY 4.0) / 山岳座標: 国土地理院地名検索・標高API による照合 / 2026-07</footer>
+
+</main></body>
+</html>

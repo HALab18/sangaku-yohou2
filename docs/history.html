@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>改訂履歴 — PeakWeather</title>
+<link rel="icon" type="image/png" href="../icons/favicon-32.png">
+<meta name="theme-color" content="#1e2d4a">
+<style>
+:root{--night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
+  --bg:#f4f6f9;--line:#dee4ee}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:#222;
+  font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+  font-size:14px;line-height:1.7}
+header{background:var(--night);color:#fff;text-align:center;padding:30px 20px 0;position:relative}
+header .back{position:absolute;left:14px;top:12px;color:#c9d3e5;font-size:.82em;text-decoration:none}
+header .back:hover{color:#fff}
+header h1{margin:0;font-size:1.45em;font-weight:800;letter-spacing:.06em}
+header .sub{margin:8px 0 0;font-size:.85em;color:#c9d3e5}
+.ridge{display:block;width:100%;height:40px;margin-top:18px}
+main{max-width:860px;margin:0 auto;padding:18px 14px 8px}
+.note{color:#8a94a8;font-size:.85em;margin:6px 0 18px}
+h2{color:var(--night);font-size:1.08em;margin:24px 0 8px;border-left:5px solid var(--sky);padding-left:10px}
+ul{margin:6px 0;padding-left:1.4em}
+li{margin:6px 0}
+a{color:var(--link);text-decoration:none}
+a:hover{text-decoration:underline}
+footer{color:#888;font-size:.82em;margin-top:26px;border-top:1px solid var(--line);padding-top:10px;padding-bottom:16px}
+footer a{color:var(--link)}
+@media(min-width:700px){header h1{font-size:1.7em}}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="back" href="../index.html">← トップへ戻る</a>
+  <h1>改訂履歴</h1>
+  <p class="sub">PeakWeatherの主な機能追加・変更の記録</p>
+  <svg class="ridge" viewBox="0 0 750 40" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 40 L0 28 L95 12 L185 26 L290 5 L395 24 L500 9 L610 27 L695 15 L750 24 L750 40 Z" fill="#f4f6f9"/>
+  </svg>
+</header>
+
+<main>
+
+<p class="note">主な機能の追加・変更のみを記載しています。細かな修正・調整は省略しています。</p>
+
+<h2>2026年7月18日（ver 1.01）</h2>
+<ul>
+<li>β版の表記を終了し、正式版として公開しました</li>
+<li>正式版への移行に伴い、気象データの無料利用枠を維持するため、
+  利用開始時に認証コードの入力が必要になりました
+  （コードは閲覧許可制のYAMAPモーメントに記載。入力は端末ごとに初回の1回のみです）</li>
+<li><a href="point.html">座標を指定して予報を取得できるページ</a>を新設。
+  地理院地図の共有URLをそのまま貼り付けても緯度・経度を読み取ります</li>
+<li><a href="terms.html">利用規約</a>に「位置情報の取り扱い」の条項を追加</li>
+<li>ソースコードのライセンスをMIT Licenseから独自の利用許諾条件に変更しました
+  （引き続き無償でご利用いただけますが、著作権は放棄しません。
+  複製・改変・再配布・商用利用には事前の許諾が必要です）。
+  <a href="terms.html">利用規約</a>第7条をご確認ください</li>
+</ul>
+
+<h2>2026年7月17日</h2>
+<ul>
+<li>GPSで現在地の予報を表示する機能を追加（見出しに市町村名を表示）。
+  山名検索・現在地・座標指定の3つの方法で予報を取得できるようになりました</li>
+</ul>
+
+<h2>2026年7月15日</h2>
+<ul>
+<li>トップページをモバイルファーストにデザイン刷新</li>
+<li>対応する山を604座へ大幅拡張（日本百名山に加え、二百名山・三百名山・東北百名山ほか）</li>
+<li><a href="mountains.html">対応山リストページ</a>を追加</li>
+<li>ロゴの山モチーフをサイト全体に展開してデザインを統一</li>
+</ul>
+
+<h2>2026年7月14日</h2>
+<ul>
+<li>入力フォームを簡素化し、1時間ごとの詳細表示を追加</li>
+<li>ホーム画面アイコン（PWA）に対応</li>
+</ul>
+
+<h2>2026年7月13日</h2>
+<ul>
+<li>サービス名を「PeakWeather」に改名</li>
+<li>登山指数をA/B/C表示に統一し、判定基準の説明を結果に併記</li>
+<li>スマホ対応の山名サジェスト（入力候補）を追加</li>
+<li>直近実況（過去3日のモデル解析値）と積雪表示を追加</li>
+</ul>
+
+<h2>2026年7月12日（ver 1.00）</h2>
+<ul>
+<li>初版公開。山名を入れると山頂・稜線の気象予報（稜線風・山頂気温・体感温度・
+  雷CAPE・眺望・登山指数）を表で表示</li>
+<li><a href="terms.html">利用規約・免責事項</a>と<a href="how-it-works-web.html">仕組み解説ページ</a>を同時公開</li>
+</ul>
+
+<footer>本ページはPeakWeatherの改訂履歴です。<a href="../index.html">トップへ戻る</a></footer>
+
+</main></body>
+</html>

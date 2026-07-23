@@ -1,0 +1,12 @@
+# 開発・保守作業でのみ必要な依存。
+# ── CLI本体 (scripts/mountain_weather.py) と Webアプリ (index.html) は
+#    Python標準ライブラリのみで動くため、これらのインストールは不要です。
+#
+# 使うのは次の作業をするときだけ:
+#   - 山岳DBの拡張        … scripts/db_reconcile.py が xlsx 読み込みに openpyxl を使用
+#   - PWAアイコンの再生成 … scripts/gen_icons.py が画像描画に Pillow を使用
+#
+# 導入:  pip install -r requirements-dev.txt
+
+openpyxl>=3.1
+Pillow>=10.0
