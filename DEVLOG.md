@@ -5,7 +5,38 @@
 
 ---
 
-## ▶ 次の再開ポイント: 戻るリンクのボタン化 + find-score.html 文言修正 2 件
+## ▶ 次の再開ポイント: v2.00 YAMAP モーメント投稿と本体リンクの差し替え
+
+**現状**: 作業ブランチ `mountain-weather-search-improvements-067f72`。
+`references/moment-v2.md` (投稿本文) と `Introduction image/moment-v2/*.svg` (添付画像3枚) を新設。
+
+**投稿手順**:
+1. `references/moment-v2.md` の本文をコピーして YAMAP モーメント (限定公開) として投稿
+2. 添付画像は `Introduction image/moment-v2/card-01-intro.svg` / `card-02-flow.svg` /
+   `card-03-result.svg` の3枚を、それぞれ PNG に変換してから投稿
+   (SVG のまま YAMAP にアップできるかは要確認。ブラウザで開いてスクリーンショットするか、
+    ImageMagick / Inkscape 等で PNG 化する)
+3. 投稿後、モーメント URL を控える
+
+**投稿後の必須タスク (未着手)**:
+- **[TODO] `index.html:343` の YAMAP モーメントリンクを新モーメント URL に差し替え**
+  - 現状: `href="https://yamap.com/moments/1715010"` (v1.00 モーメント)
+  - この URL は「認証コードの入手先」の案内リンクなので、コード掲載を v2 モーメントに
+    切り替えたら必ず差し替えること
+- `docs/how-it-works-web.html` にも同じリンクが無いか grep で再確認 (現状 index.html のみのはず)
+- 上記2件を master に反映後、GitHub Pages 反映を確認
+
+**画像作成の設計メモ**:
+- 3枚とも `viewBox="0 0 1080 1080"` の正方形 (Instagram/YAMAP 向き)
+- 色は index.html の `--night/--slate/--sky/--btn` を踏襲
+- card-01: ヒーロー風の紹介カード。ver 2.00 バッジ + ロゴマーク + 「NEW FEATURE 天気の良い山をさがす」
+- card-02: 3ステップ使い方フロー (エリア/県 → 日付 → 検索ボタン)。実際のUIモックを模倣
+- card-03: 検索結果 4行 (A/A/B/C のスコア色分け + 天気アイコン + 気温/風/降水量) + A/B/C 凡例
+- 手直しするときは Python の `xml.etree` で編集するか、直接 SVG を書き換える
+
+---
+
+## 戻るリンクのボタン化 + find-score.html 文言修正 2 件
 
 **現状**: 作業ブランチ `mountain-weather-search-improvements-067f72`。**未コミット**。
 自宅PCで再開する場合は `git pull` してから開始。前回セッション (3371849) の続きの微修正。

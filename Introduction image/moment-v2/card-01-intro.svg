@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" font-family="'Hiragino Kaku Gothic ProN','Yu Gothic UI','Meiryo',sans-serif">
+  <!-- 背景: index.htmlのヒーローと同じ紺色系 -->
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e2d4a"/>
+      <stop offset="100%" stop-color="#0e1830"/>
+    </linearGradient>
+    <linearGradient id="mtnGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3d5580"/>
+      <stop offset="100%" stop-color="#1e2d4a"/>
+    </linearGradient>
+    <linearGradient id="badgeGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5b87c5"/>
+      <stop offset="100%" stop-color="#4276b5"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1080" height="1080" fill="url(#bgGrad)"/>
+
+  <!-- 遠景の山 -->
+  <path d="M0 800 L120 620 L240 720 L400 500 L560 680 L720 550 L880 700 L1080 640 L1080 1080 L0 1080 Z"
+        fill="url(#mtnGrad)" opacity="0.75"/>
+  <!-- 中景の山 -->
+  <path d="M0 900 L100 780 L260 860 L440 740 L620 850 L780 760 L960 830 L1080 800 L1080 1080 L0 1080 Z"
+        fill="#0e1830"/>
+
+  <!-- 星々 -->
+  <g fill="#fff" opacity="0.5">
+    <circle cx="140" cy="120" r="2"/>
+    <circle cx="320" cy="180" r="1.5"/>
+    <circle cx="480" cy="90" r="2.5"/>
+    <circle cx="700" cy="150" r="1.5"/>
+    <circle cx="880" cy="110" r="2"/>
+    <circle cx="960" cy="200" r="1.5"/>
+    <circle cx="220" cy="230" r="1.5"/>
+  </g>
+
+  <!-- バージョンバッジ (右上) -->
+  <g transform="translate(920, 90)">
+    <rect x="-90" y="-30" width="180" height="60" rx="30" fill="url(#badgeGrad)"/>
+    <text x="0" y="8" font-size="26" font-weight="700" fill="#fff" text-anchor="middle" letter-spacing="1">ver 2.00</text>
+  </g>
+
+  <!-- ロゴマーク (山アイコン) -->
+  <g transform="translate(540, 340)">
+    <!-- 三角の山 + 雪冠 -->
+    <path d="M-100 100 L0 -120 L100 100 Z" fill="#fff" stroke="#c9d3e5" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M-38 20 L0 -50 L20 -22 L8 -8 L28 12 L38 20 Z" fill="#5b87c5"/>
+    <path d="M-20 60 L15 30 L45 55 L60 45 L80 90 L-40 90 Z" fill="#5b87c5" opacity="0.7"/>
+  </g>
+
+  <!-- メインタイトル -->
+  <text x="540" y="580" font-size="88" font-weight="900" fill="#fff" text-anchor="middle" letter-spacing="4">PeakWeather</text>
+  <text x="540" y="640" font-size="30" font-weight="500" fill="#c9d3e5" text-anchor="middle" letter-spacing="8">山頂コンディションをもっと手軽に。</text>
+
+  <!-- 目玉機能ハイライト -->
+  <g transform="translate(540, 780)">
+    <rect x="-380" y="-60" width="760" height="150" rx="20" fill="#fff" fill-opacity="0.08" stroke="#5b87c5" stroke-width="2"/>
+    <text x="0" y="-10" font-size="26" font-weight="700" fill="#5b87c5" text-anchor="middle" letter-spacing="3">NEW FEATURE</text>
+    <text x="0" y="45" font-size="52" font-weight="900" fill="#fff" text-anchor="middle" letter-spacing="4">🔍 天気の良い山をさがす</text>
+  </g>
+
+  <!-- URL -->
+  <text x="540" y="1010" font-size="22" fill="#8ea8d0" text-anchor="middle" font-family="monospace">halab18.github.io/sangaku-yohou2</text>
+</svg>

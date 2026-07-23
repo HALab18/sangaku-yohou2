@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" font-family="'Hiragino Kaku Gothic ProN','Yu Gothic UI','Meiryo',sans-serif">
+  <!-- 背景 -->
+  <rect width="1080" height="1080" fill="#f4f6f9"/>
+
+  <!-- ヘッダ帯 -->
+  <rect x="0" y="0" width="1080" height="160" fill="#1e2d4a"/>
+  <path d="M0 160 L0 140 L120 120 L260 138 L400 108 L560 132 L720 112 L880 130 L1000 122 L1080 130 L1080 160 Z" fill="#f4f6f9"/>
+  <text x="540" y="80" font-size="46" font-weight="800" fill="#fff" text-anchor="middle">検索結果イメージ</text>
+  <text x="540" y="118" font-size="22" fill="#c9d3e5" text-anchor="middle">東北 / 宮城県 の 07/26 — スコアの高い順</text>
+
+  <!-- 結果カード -->
+  <g transform="translate(40, 200)">
+    <rect width="1000" height="700" rx="18" fill="#fff" stroke="#dee4ee" stroke-width="2"/>
+
+    <!-- 表ヘッダ -->
+    <rect x="0" y="0" width="1000" height="58" rx="18" fill="#48608c"/>
+    <rect x="0" y="20" width="1000" height="38" fill="#48608c"/>
+    <text x="60" y="38" font-size="20" font-weight="700" fill="#fff" text-anchor="middle">#</text>
+    <text x="230" y="38" font-size="20" font-weight="700" fill="#fff" text-anchor="middle">山名 / スコア</text>
+    <text x="500" y="38" font-size="20" font-weight="700" fill="#fff" text-anchor="middle">天気</text>
+    <text x="620" y="38" font-size="20" font-weight="700" fill="#fff" text-anchor="middle">気温</text>
+    <text x="770" y="38" font-size="20" font-weight="700" fill="#fff" text-anchor="middle">稜線風</text>
+    <text x="910" y="38" font-size="20" font-weight="700" fill="#fff" text-anchor="middle">降水量</text>
+
+    <!-- 行1: 山A - スコア85 (A: 緑) -->
+    <g transform="translate(0, 58)">
+      <rect x="0" y="0" width="1000" height="80" fill="#fff"/>
+      <text x="60" y="47" font-size="24" font-weight="700" fill="#8a94a8" text-anchor="middle">1</text>
+      <text x="120" y="35" font-size="22" font-weight="700" fill="#2b5fa3">面白山</text>
+      <text x="120" y="60" font-size="14" fill="#8a94a8">山形県 / 1264m</text>
+      <text x="360" y="47" font-size="34" font-weight="900" fill="#1f7a34" text-anchor="middle">85</text>
+      <!-- 天気アイコン: 晴れ -->
+      <circle cx="500" cy="42" r="16" fill="#f5a623"/>
+      <g stroke="#f5a623" stroke-width="2.5" stroke-linecap="round">
+        <line x1="500" y1="16" x2="500" y2="24"/>
+        <line x1="500" y1="60" x2="500" y2="68"/>
+        <line x1="474" y1="42" x2="482" y2="42"/>
+        <line x1="518" y1="42" x2="526" y2="42"/>
+        <line x1="482" y1="24" x2="487" y2="29"/>
+        <line x1="513" y1="55" x2="518" y2="60"/>
+        <line x1="518" y1="24" x2="513" y2="29"/>
+        <line x1="487" y1="55" x2="482" y2="60"/>
+      </g>
+      <text x="620" y="47" font-size="20" fill="#222" text-anchor="middle">22 / 15℃</text>
+      <text x="770" y="47" font-size="20" fill="#222" text-anchor="middle">5m/s</text>
+      <text x="910" y="47" font-size="20" fill="#222" text-anchor="middle">0.0mm</text>
+    </g>
+
+    <!-- 行2: スコア78 (A) -->
+    <g transform="translate(0, 138)">
+      <rect x="0" y="0" width="1000" height="80" fill="#eef1f6"/>
+      <text x="60" y="47" font-size="24" font-weight="700" fill="#8a94a8" text-anchor="middle">2</text>
+      <text x="120" y="35" font-size="22" font-weight="700" fill="#2b5fa3">泉ヶ岳</text>
+      <text x="120" y="60" font-size="14" fill="#8a94a8">宮城県 / 1175m</text>
+      <text x="360" y="47" font-size="34" font-weight="900" fill="#1f7a34" text-anchor="middle">78</text>
+      <!-- 晴れときどき曇り -->
+      <circle cx="490" cy="34" r="12" fill="#f5a623"/>
+      <path d="M486 52 c0 -6 5 -10 12 -10 c1 -8 10 -14 18 -12 c8 2 12 10 10 18 c4 2 6 8 3 12 c-2 3 -6 4 -9 3 h-30 c-3 0 -6 -3 -6 -6 c0 -3 1 -5 2 -5" fill="none" stroke="#8b93a3" stroke-width="2" stroke-linejoin="round"/>
+      <text x="620" y="47" font-size="20" fill="#222" text-anchor="middle">20 / 13℃</text>
+      <text x="770" y="47" font-size="20" fill="#222" text-anchor="middle">8m/s</text>
+      <text x="910" y="47" font-size="20" fill="#222" text-anchor="middle">0.2mm</text>
+    </g>
+
+    <!-- 行3: スコア58 (B: 橙) -->
+    <g transform="translate(0, 218)">
+      <rect x="0" y="0" width="1000" height="80" fill="#fff"/>
+      <text x="60" y="47" font-size="24" font-weight="700" fill="#8a94a8" text-anchor="middle">3</text>
+      <text x="120" y="35" font-size="22" font-weight="700" fill="#2b5fa3">蔵王山</text>
+      <text x="120" y="60" font-size="14" fill="#8a94a8">宮城県・山形県 / 1841m</text>
+      <text x="360" y="47" font-size="34" font-weight="900" fill="#b26b00" text-anchor="middle">58</text>
+      <!-- 曇り -->
+      <path d="M475 50 c0 -8 6 -14 14 -14 c2 -10 12 -16 22 -14 c10 2 16 12 14 22 c4 2 8 8 4 14 c-2 4 -8 6 -12 4 h-38 c-4 0 -8 -4 -8 -8 c0 -4 2 -6 4 -6" fill="none" stroke="#8b93a3" stroke-width="2.5" stroke-linejoin="round"/>
+      <text x="620" y="47" font-size="20" fill="#222" text-anchor="middle">15 / 10℃</text>
+      <text x="770" y="47" font-size="20" fill="#222" text-anchor="middle">12m/s</text>
+      <text x="910" y="47" font-size="20" fill="#222" text-anchor="middle">0.5mm</text>
+    </g>
+
+    <!-- 行4: スコア42 (C: 赤) -->
+    <g transform="translate(0, 298)">
+      <rect x="0" y="0" width="1000" height="80" fill="#eef1f6"/>
+      <text x="60" y="47" font-size="24" font-weight="700" fill="#8a94a8" text-anchor="middle">4</text>
+      <text x="120" y="35" font-size="22" font-weight="700" fill="#2b5fa3">船形山</text>
+      <text x="120" y="60" font-size="14" fill="#8a94a8">宮城県・山形県 / 1500m</text>
+      <text x="360" y="47" font-size="34" font-weight="900" fill="#b3261e" text-anchor="middle">42</text>
+      <!-- 雨 -->
+      <path d="M475 40 c0 -6 5 -10 12 -10 c1 -8 10 -14 18 -12 c8 2 12 10 10 18 c4 2 6 8 3 12 c-2 3 -6 4 -9 3 h-30 c-3 0 -6 -3 -6 -6 c0 -3 1 -5 2 -5" fill="none" stroke="#8b93a3" stroke-width="2" stroke-linejoin="round"/>
+      <line x1="485" y1="55" x2="481" y2="66" stroke="#3f83d6" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="497" y1="55" x2="493" y2="66" stroke="#3f83d6" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="509" y1="55" x2="505" y2="66" stroke="#3f83d6" stroke-width="2.5" stroke-linecap="round"/>
+      <text x="620" y="47" font-size="20" fill="#222" text-anchor="middle">14 / 9℃</text>
+      <text x="770" y="47" font-size="20" fill="#222" text-anchor="middle">14m/s</text>
+      <text x="910" y="47" font-size="20" fill="#222" text-anchor="middle">3.8mm</text>
+    </g>
+
+    <!-- スコア色の凡例 -->
+    <g transform="translate(500, 480)">
+      <text x="0" y="0" font-size="22" font-weight="700" fill="#1e2d4a" text-anchor="middle">スコアの色分け</text>
+      <g transform="translate(-320, 30)">
+        <rect x="0" y="0" width="200" height="80" rx="12" fill="#d8efe1" stroke="#1f7a34" stroke-width="2"/>
+        <text x="100" y="34" font-size="28" font-weight="900" fill="#1f7a34" text-anchor="middle">A</text>
+        <text x="100" y="62" font-size="18" font-weight="700" fill="#1c5b3f" text-anchor="middle">70 〜 100</text>
+      </g>
+      <g transform="translate(-100, 30)">
+        <rect x="0" y="0" width="200" height="80" rx="12" fill="#fdeec9" stroke="#b26b00" stroke-width="2"/>
+        <text x="100" y="34" font-size="28" font-weight="900" fill="#b26b00" text-anchor="middle">B</text>
+        <text x="100" y="62" font-size="18" font-weight="700" fill="#7b5e00" text-anchor="middle">45 〜 69</text>
+      </g>
+      <g transform="translate(120, 30)">
+        <rect x="0" y="0" width="200" height="80" rx="12" fill="#f9d9cf" stroke="#b3261e" stroke-width="2"/>
+        <text x="100" y="34" font-size="28" font-weight="900" fill="#b3261e" text-anchor="middle">C</text>
+        <text x="100" y="62" font-size="18" font-weight="700" fill="#a03415" text-anchor="middle">0 〜 44</text>
+      </g>
+      <text x="0" y="145" font-size="17" fill="#556" text-anchor="middle">気になる山をタップすると、詳しい気象予報が開きます</text>
+    </g>
+  </g>
+
+  <!-- 下部メッセージ -->
+  <g transform="translate(540, 950)">
+    <rect x="-460" y="-30" width="920" height="80" rx="16" fill="#edf2f9" stroke="#48608c" stroke-width="1.5"/>
+    <text x="0" y="0" font-size="20" font-weight="700" fill="#1e2d4a" text-anchor="middle">⚠ 稜線風18m/s以上・降水量10mm以上の日は</text>
+    <text x="0" y="30" font-size="20" font-weight="700" fill="#b26b00" text-anchor="middle">「⚠ 慎重に判断が必要」表として本表と分離されます</text>
+  </g>
+
+  <!-- URLフッタ -->
+  <text x="540" y="1050" font-size="18" fill="#8ea8d0" text-anchor="middle" font-family="monospace">halab18.github.io/sangaku-yohou2</text>
+</svg>

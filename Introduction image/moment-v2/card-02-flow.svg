@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" font-family="'Hiragino Kaku Gothic ProN','Yu Gothic UI','Meiryo',sans-serif">
+  <!-- 背景 -->
+  <rect width="1080" height="1080" fill="#f4f6f9"/>
+
+  <!-- ヘッダ帯 -->
+  <rect x="0" y="0" width="1080" height="160" fill="#1e2d4a"/>
+  <path d="M0 160 L0 140 L120 120 L260 138 L400 108 L560 132 L720 112 L880 130 L1000 122 L1080 130 L1080 160 Z" fill="#f4f6f9"/>
+  <text x="540" y="80" font-size="46" font-weight="800" fill="#fff" text-anchor="middle">天気の良い山をさがす</text>
+  <text x="540" y="118" font-size="22" fill="#c9d3e5" text-anchor="middle">3ステップで、その日のオススメ山が見つかる</text>
+
+  <!-- Step 1: エリアと県を選ぶ -->
+  <g transform="translate(540, 260)">
+    <rect x="-460" y="0" width="920" height="180" rx="18" fill="#fff" stroke="#dee4ee" stroke-width="2"/>
+    <circle cx="-410" cy="90" r="42" fill="#4276b5"/>
+    <text x="-410" y="105" font-size="46" font-weight="900" fill="#fff" text-anchor="middle">1</text>
+    <text x="-340" y="55" font-size="28" font-weight="700" fill="#1e2d4a">エリアと県を選ぶ</text>
+    <text x="-340" y="90" font-size="19" fill="#556">全国9エリア × 47都道府県から絞り込み</text>
+    <!-- モック: セレクトボックス2つ -->
+    <g transform="translate(-340, 108)">
+      <rect x="0" y="0" width="200" height="52" rx="10" fill="#fff" stroke="#c9d2e0" stroke-width="1.6"/>
+      <text x="16" y="34" font-size="20" font-weight="600" fill="#1e2d4a">東北 (118座) ▾</text>
+      <rect x="216" y="0" width="200" height="52" rx="10" fill="#fff" stroke="#c9d2e0" stroke-width="1.6"/>
+      <text x="232" y="34" font-size="20" font-weight="600" fill="#1e2d4a">宮城県 (16座) ▾</text>
+    </g>
+  </g>
+
+  <!-- Step 2: 日付を選ぶ -->
+  <g transform="translate(540, 470)">
+    <rect x="-460" y="0" width="920" height="180" rx="18" fill="#fff" stroke="#dee4ee" stroke-width="2"/>
+    <circle cx="-410" cy="90" r="42" fill="#4276b5"/>
+    <text x="-410" y="105" font-size="46" font-weight="900" fill="#fff" text-anchor="middle">2</text>
+    <text x="-340" y="55" font-size="28" font-weight="700" fill="#1e2d4a">日付を選ぶ</text>
+    <text x="-340" y="90" font-size="19" fill="#556">今日〜13日先、曜日つきで選択可能</text>
+    <!-- モック: 日付セレクト -->
+    <g transform="translate(-340, 108)">
+      <rect x="0" y="0" width="416" height="52" rx="10" fill="#fff" stroke="#c9d2e0" stroke-width="1.6"/>
+      <text x="16" y="34" font-size="20" font-weight="600" fill="#1e2d4a">07/26(日)</text>
+      <text x="396" y="34" font-size="20" fill="#556" text-anchor="end">▾</text>
+    </g>
+  </g>
+
+  <!-- Step 3: 検索ボタン -->
+  <g transform="translate(540, 680)">
+    <rect x="-460" y="0" width="920" height="180" rx="18" fill="#fff" stroke="#dee4ee" stroke-width="2"/>
+    <circle cx="-410" cy="90" r="42" fill="#4276b5"/>
+    <text x="-410" y="105" font-size="46" font-weight="900" fill="#fff" text-anchor="middle">3</text>
+    <text x="-340" y="55" font-size="28" font-weight="700" fill="#1e2d4a">「この条件でさがす」をタップ</text>
+    <text x="-340" y="90" font-size="19" fill="#556">対象山域の全山を4要素の総合スコアでランキング表示</text>
+    <!-- モック: ボタン -->
+    <g transform="translate(-340, 108)">
+      <rect x="0" y="0" width="416" height="56" rx="10" fill="#4276b5"/>
+      <text x="208" y="37" font-size="22" font-weight="700" fill="#fff" text-anchor="middle">この条件でさがす</text>
+    </g>
+  </g>
+
+  <!-- 下矢印と結果ヒント -->
+  <g transform="translate(540, 900)">
+    <path d="M-16 0 L16 0 L0 32 Z" fill="#4276b5"/>
+    <text x="0" y="76" font-size="24" font-weight="700" fill="#1e2d4a" text-anchor="middle">→ 良い順に山が並んで表示されます</text>
+  </g>
+
+  <!-- URLフッタ -->
+  <text x="540" y="1030" font-size="18" fill="#8ea8d0" text-anchor="middle" font-family="monospace">halab18.github.io/sangaku-yohou2</text>
+</svg>
