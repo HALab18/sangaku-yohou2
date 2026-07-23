@@ -5,35 +5,48 @@
 
 ---
 
-## ▶ 次の再開ポイント: 入力欄レイアウト整理と find.html 天気アイコンSVG化まで反映済み
+## ▶ 次の再開ポイント: find.html 表ヘッダ固定・山名列拡張と PWA アイコン対角グラデ化まで反映
 
-**現状**: master に4件連続でpush済み・作業中の変更なし・GitHub Pages反映確認済み。
-最新commit: `48d1b53`（HEAD）。自宅PCで再開する場合は `git pull` してから開始。
-以下、本セッションで対応した内容と、次に触るときの注意:
+**現状**: 本セッションで職場PCから作業を引き継ぎ、find.html の表挙動改善2件と
+アイコンの v2.00 向け配色変更をブランチにコミット済み。master への push はこの
+セッションの続きで実施予定（あるいは自宅PCで `git pull` した後の作業に引き継ぐ）。
+作業ブランチ: `claude/folder-content-review-dc625c`。以下、本セッションで対応した内容:
 
-- **d771d8a 天気アイコン・のち/時々/一時フレーズを復活、入力欄レイアウトを再構成**
-  index.html: v2初回コミット時に落ちていた v1 の日内変化フレーズ処理
-  (`dayWeatherPhrase`/`singleCodePhrase`/`wxPhraseHtml`/`wxCodeIcon`)と天気アイコンSVG・
-  `.wxico`/`.wxconn` CSSを移植。「直近の実況」「16日間の見通し」「3h/1h詳細」の3表すべてで
-  アイコン+「のち/時々/一時」フレーズが復活。
-- **bdcb5c4 find.html: 天気アイコンを絵文字→SVGに統一**
-  gen_find.py: 「天気で山さがし」の天気列で絵文字(☀️/🌤/⛅/☁️)がOS/ブラウザで彩色や
-  サイズが揃わない問題を解消。index.html と同じSVGシンボル(`#wx-sun`/`wx-cloud`/
-  新規追加した `wx-suncloud`/`wx-fog`/`wx-rain`/`wx-snow`/`wx-thunder`)に置換。
-  日照率バケットと code フォールバックの両方をSVGにマッピング。**gen_find.py 修正時は
-  必ず `python scripts/gen_find.py` を再実行して docs/find.html を再生成**する
-  （自動生成物・直接編集禁止）。
-- **69459da 入力欄リンク順を「対応山リスト → 座標を指定」に入れ替え**（ユーザー希望順）
-- **48d1b53 「天気で山さがし」を開始日の直上に単独行で配置**
-  スマホ幅(375px)で山名ラベル行が「対応山リスト+座標を指定+天気で山さがし」の3リンク併記だと
-  不揃いに折り返す問題を解消。天気で山さがしを入力欄と開始日の間の独立行(右寄せ)に切り出し、
-  ラベル行を2リンクだけにして1行に収まるようにした。関連CSSは `.findrow`（新規）。
+- **fdd390e find.html: 表ヘッダをsticky化・山名列を改行しにくく拡張**
+  scripts/gen_find.py の CSS のみ変更（docs/find.html は自動生成物）。
+  1) `.tbl` を `max-height:75vh; overflow:auto; overscroll-behavior:contain` で
+  スクロールコンテナ化し、`th{position:sticky;top:0;z-index:2}` で縦スクロール時に
+  タイトル行を上端固定（index.html と同じ方式）。
+  2) 山名列 `td.nm` を `white-space:normal; word-break:keep-all; min-width:8em;
+  max-width:16em; overflow-wrap:break-word` に変更。日本語CJKでは基本改行させず、
+  極端に長い山名だけ max-width を超えた時に折り返す。デスクトップ幅では山名列
+  245px、11文字の「カムイエクウチカウシ山」も1行表示。スマホ幅（375px）でも
+  1行表示可、表全体は横スクロールで対応。
+- **40f6029 icons: v2.00向けに背景を対角線形グラデに変更(色相は同じネイビー)**
+  scripts/gen_icons.py の背景描画を縦線形（横ライン走査）→ 対角線形（`x+y`の
+  等高線走査）に変更。カラー定数を `GRAD_TOP/BOTTOM` → `GRAD_TL/BR` にリネームし、
+  レンジも広げた（左上 `#4A6DA5` → 右下 `#141D38`）。デザイン（双耳峰輪郭・雪
+  三角形）とマークサイズ・線幅は完全に据え置き。4サイズすべて再生成済み。
+  4隅のピクセル値検証で対称性 OK・mode=RGB（iOS 角丸切れなし）。
 
 **次に触るときの注意**:
-- 山名ラベル行のリンクを増やしたくなったら、また折り返し問題が出る。天気で山さがしと同じく
-  独立行(`.findrow`同様のパターン)に逃がすのが吉。
-- 天気アイコンのSVGシンボルは index.html と find.html の両方に**同じ定義**を置いている。
-  塗り分けや形を変えるときは両方揃えること（片方だけ変えるとページ間で見た目がズレる）。
+- **iOS の PWA アイコンキャッシュは強い**。v1 アイコンを既に追加した端末は、
+  ホーム画面から削除→再追加でしか新配色に更新されない（CLAUDE.md にも既記載）。
+- gen_icons.py の対角グラデは `x+y` の等高線に沿って線を引く実装。`SS=4`
+  スーパーサンプリングで 512×512 の場合は約 4000本弱の線を描くため、生成に
+  数秒かかる。将来ロジックを変えるなら numpy でベクトル化してもよい。
+- find.html の `.tbl` を `overflow:auto` にしたことで、表内スクロールと
+  ページ全体スクロールが独立して動くようになった。極端に多い山（甲信越 148座）
+  でも表内スクロールで完結し、フッターは常に画面下部に見える設計。
+- `word-break:keep-all` は日本語CJK文字での改行を抑制するプロパティ。
+  `white-space:nowrap` と `overflow-wrap:break-word` は仕様上両立しないため、
+  「基本1行・max-width超過時のみ折り返し」を実現するには keep-all で書く必要がある。
+
+**本セッションのちょっとした注意事項**:
+- Edit tool で `D:\dev\sangaku-yohou2\scripts\gen_find.py`（worktree の**外**、master
+  ブランチ）を誤って編集する事故が発生。git restore で復旧し、worktree 側に変更を
+  移し直した。今後 worktree 内で作業するときは、絶対パスに `.claude\worktrees\...`
+  が含まれているかを Edit tool 呼び出し時に確認する。
 
 **新しい指示がない限り、次の大きな作業は未定。次回は DEVLOG 冒頭のこのブロックから開始。**
 
