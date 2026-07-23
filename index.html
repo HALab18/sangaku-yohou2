@@ -53,6 +53,11 @@ h1{margin:0;font-size:2.15em;font-weight:800;letter-spacing:.05em;color:#fff;
   border:1.5px solid rgba(255,255,255,.6);backdrop-filter:blur(3px);transition:background .2s}
 .hero-cta .mk{width:20px;height:14px;margin-right:9px;vertical-align:-2px;color:#fff}
 .hero-cta:hover .btnface,.hero-cta:focus-visible .btnface{background:rgba(255,255,255,.3)}
+/* 副次ボタン: 主目的の「予報をチェックする」より控えめな配色で find.html への入口 */
+.hero-find{margin-top:10px;color:#c9d3e5;text-decoration:none;font-weight:600;font-size:.85em;letter-spacing:.06em}
+.hero-find .btnface{display:inline-block;padding:9px 26px;border-radius:999px;background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.32);backdrop-filter:blur(3px);transition:background .2s}
+.hero-find:hover .btnface,.hero-find:focus-visible .btnface{background:rgba(255,255,255,.16)}
 .chev{color:#fff;font-size:1.5em;line-height:1;margin-top:6px;animation:bob 1.8s ease-in-out infinite}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
 @media(prefers-reduced-motion:reduce){.chev{animation:none}}
@@ -136,11 +141,6 @@ button:disabled{background:#9aa7bd;cursor:wait}
   background:#fff;color:var(--link);border:1.5px solid var(--field)}
 #gps:hover{background:var(--sel)}
 #gps:disabled{background:#fff;color:#9aa7bd}
-/* 天気の良い山をさがす: #gps と同じセカンダリスタイルのリンクボタン */
-#findbtn{display:block;width:100%;padding:11px;font-size:15px;border-radius:12px;margin-top:-4px;
-  background:#fff;color:var(--link);border:1.5px solid var(--field);
-  text-align:center;text-decoration:none;font-weight:700;box-sizing:border-box}
-#findbtn:hover{background:var(--sel)}
 .listlink .mk{width:14px;height:10px;margin-right:4px;vertical-align:-.5px}
 .backfind{margin:0 0 10px;font-size:.9em}
 .backfind a{color:var(--link);text-decoration:none;font-weight:600}
@@ -298,8 +298,11 @@ footer a{color:var(--link)}
     雷リスク・眺望・登山指数をまとめてチェック。</p>
     <a class="hero-cta" href="#start">
       <span class="btnface"><svg class="mk" aria-hidden="true"><use href="#mkico"/></svg>予報をチェックする</span>
-      <span class="chev" aria-hidden="true">⌄</span>
     </a>
+    <a class="hero-find" href="docs/find.html">
+      <span class="btnface">天気の良い山をさがす</span>
+    </a>
+    <span class="chev" aria-hidden="true">⌄</span>
   </div>
 </header>
 
@@ -358,7 +361,6 @@ footer a{color:var(--link)}
     </div>
   </div>
   <button id="go" type="submit"><svg class="mk" aria-hidden="true"><use href="#mkico"/></svg>予報を見る</button>
-  <a id="findbtn" href="docs/find.html">🔍 天気の良い山をさがす</a>
   <button id="gps" type="button">📍 現在地の予報を見る</button>
 </form>
 <p class="hint">仕組みは<a href="docs/how-it-works-web.html">図解ページ</a>をご覧ください</p>
