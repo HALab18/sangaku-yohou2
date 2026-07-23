@@ -107,8 +107,10 @@ form{display:flex;flex-direction:column;gap:14px}
 .llabel{white-space:nowrap}
 .lrow .listlink{color:var(--link);font-weight:600;text-decoration:none;white-space:nowrap}
 .lrow .listlink:hover{text-decoration:underline}
-/* 「天気で山さがし」は右端に固定(左脇のリンク群と離す) */
-.lrow .findlink{margin-left:auto}
+/* 「天気で山さがし」は開始日欄の直上に単独行で右寄せ配置(狭幅で山名行が折り返さないよう分離) */
+.findrow{margin:6px 0 -2px;text-align:right}
+.findrow .listlink{color:var(--link);font-weight:600;text-decoration:none;white-space:nowrap;font-size:.92em}
+.findrow .listlink:hover{text-decoration:underline}
 input,select{font-size:16px;padding:11px 12px;border:1.5px solid var(--field);border-radius:10px;
   background:#fff;width:100%;font-family:inherit}
 input:focus,select:focus{outline:2px solid var(--night);outline-offset:1px}
@@ -339,11 +341,11 @@ footer a{color:var(--link)}
     <span class="lrow"><span class="llabel">山名（直接入力可能）</span>
       <a class="listlink" href="docs/mountains.html"><svg class="mk" aria-hidden="true"><use href="#mkico"/></svg>対応山リスト ▸</a>
       <a class="listlink" href="docs/point.html">座標を指定 ▸</a>
-      <a class="listlink findlink" href="docs/find.html">天気で山さがし ▸</a>
     </span>
     <input id="mname" placeholder="例: 燕岳" required autocomplete="off">
     <div id="sugg" hidden></div>
   </label>
+  <div class="findrow"><a class="listlink" href="docs/find.html">天気で山さがし ▸</a></div>
   <div class="frow">
     <label class="f">開始日（詳細表示）
       <select id="mdate"></select>
