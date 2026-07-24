@@ -558,8 +558,12 @@ const wxPhraseHtml=ph=>!ph||!ph.length?"-":ph.map(s=>s.conn!==undefined
   ?`<span class="wxconn">${s.conn}</span>`
   :(s.icon?`<svg class="wxico" aria-hidden="true"><use href="#${s.icon}"/></svg>`:"")+esc(s.label)).join("");
 // 単一コード→アイコン+詳細ラベル(弱/強)。3h/1h詳細表用。
-const wxCodeIcon=c=>{if(c==null)return"-";const ic=wbaseIcon(c);
-  return(ic?`<svg class="wxico" aria-hidden="true"><use href="#${ic}"/></svg>`:"")+wcode(c);};
+// code=2("晴れ時々曇り")は複合ラベルなので太陽+雲の2アイコン(singleCodePhrase と同じ扱い)。
+const wxCodeIcon=c=>{if(c==null)return"-";
+  const svg=id=>`<svg class="wxico" aria-hidden="true"><use href="#${id}"/></svg>`;
+  if(c===2)return svg("wx-sun")+svg("wx-cloud")+wcode(c);
+  const ic=wbaseIcon(c);
+  return(ic?svg(ic):"")+wcode(c);};
 const wxnote=n=>n&&n.length?`<span class="wxnote">${n.map(esc).join(" / ")}</span>`:"";
 const f0=(v,none="-")=>v==null?none:Math.round(v).toString();
 const f1=v=>v==null?"-":v.toFixed(1);

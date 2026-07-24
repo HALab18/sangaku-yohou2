@@ -5,10 +5,28 @@
 
 ---
 
-## ▶ 次の再開ポイント: v2.01β リリース (find改善4件 + モーメントリンク差し替え)
+## ▶ 次の再開ポイント: 「晴れ時々曇り」アイコン修正 (3h/1h詳細表)
 
-**現状**: 作業ブランチ `v201beta-find-improvements`。**未コミット/未push**。
-`check_mountains.py` は通過済み (疑い0件)、`gen_find.py` 実行で `docs/find.html` 再生成済み。
+**現状**: 作業ブランチ `v201beta-find-improvements` → master 反映済み。GitHub Pages 公開済み。
+`check_mountains.py` 通過 (疑い0件)。
+
+**このセッションの変更 (1件)**:
+- **`wxCodeIcon` (index.html:560-566) の code=2 分岐追加**。
+  「晴れ時々曇り」(WMO code 2) の 3時間ごと/1時間ごと詳細表で、
+  太陽アイコン (wx-sun) しか出ていなかったのを **太陽+雲 (wx-sun + wx-cloud)** に修正。
+  日別サマリで使う `singleCodePhrase` は既に code=2 で 2 アイコンに分解する実装
+  だったので、詳細表側も同じ扱いに揃えた。
+  検証: ブラウザで `wxCodeIcon(1)`→[wx-sun]晴れ、`wxCodeIcon(2)`→[wx-sun][wx-cloud]晴れ時々曇り、
+  `wxCodeIcon(3)`→[wx-cloud]曇り が期待通り出ることを確認。
+
+**参考**: 3h/1h詳細表は同じ描画ループ (index.html:803-849) で作られており、
+step=1 or 3 の違いだけで天気列は `wxCodeIcon(h.weather_code[i0])` 共通。よって1修正で両方カバー。
+
+---
+
+## v2.01β リリース (find改善4件 + モーメントリンク差し替え) — 反映済み
+
+commit `e62194a` で master に反映済み・GitHub Pages 公開済み。
 
 **このセッションの変更 (4件)**:
 1. **バージョン表記を 2.01β に** (`index.html` フッター `ver 2.01` → `ver 2.01β`)。
@@ -28,13 +46,6 @@
 **見送った変更**:
 - 「天気の良い山をさがす」ボタンへのイルカ 🐬 追加 (「ここにいるか」の言葉遊び)。
   一度実装したがユーザー判断で削除。CSS(`inline-flex`化・`.dolphin`)も元に戻し済み。
-
-**次にやること**:
-- ブラウザ実機で (a) 詳細ページ末尾の戻るボタン (find経由時のみ表示)、
-  (b) find.html の県ドロップダウンで栗駒山が岩手/宮城/秋田すべてに出るか を最終確認
-- master へ反映 (`git push origin v201beta-find-improvements:master`) → GitHub Pages 確認
-- 注: 投稿済みモーメント本文(references/moment-v2.md)は「ver 2.01」表記のまま。
-  サイトは 2.01β だが、既に公開済みモーメントは触らない(β はサイト内の内部表記)。
 
 ---
 
