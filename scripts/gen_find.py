@@ -244,6 +244,9 @@ footer a{color:var(--link)}
   var REGION_ORDER=__REGION_ORDER__;
   var CHUNK=50;                 // 1リクエストあたりの最大地点数(負荷抑制)
   var PREF_ORDER=__PREF_ORDER__;
+  var PREF2REGION=__PREF2REGION__;  // 県名→地方名。県境またぎ(m.pref が「岩手県・宮城県・秋田県」等)を各県で扱うため
+  // 山の所属県リスト。県境をまたぐ山は各県に属するものとして数え・絞り込む(例: 栗駒山→岩手/宮城/秋田)
+  function prefsOf(m){return m.pref.split("・");}
 
   var WMO={0:"快晴",1:"晴れ",2:"晴れ時々曇り",3:"曇り",45:"霧",48:"着氷性の霧",
    51:"霧雨",53:"霧雨",55:"霧雨(強)",56:"着氷性霧雨",57:"着氷性霧雨(強)",
@@ -307,7 +310,8 @@ footer a{color:var(--link)}
 
   // ---- エリア/県セレクタ ----
   REGION_ORDER.forEach(function(r){
-    var c=MOUNTAINS.filter(function(m){return m.reg===r}).length;
+    // 県境またぎの山は、所属するいずれかの県がこの地方に含まれれば1座として数える
+    var c=MOUNTAINS.filter(function(m){return prefsOf(m).some(function(p){return PREF2REGION[p]===r})}).length;
     if(!c)return;
     var o=document.createElement("option");o.value=r;o.textContent=r+" ("+c+"座)";elRegion.appendChild(o);
   });
@@ -325,7 +329,8 @@ footer a{color:var(--link)}
     var placeholder=r&&!NO_PREF_REGIONS[r]?"県を選択してください":"すべて";
     elPref.innerHTML='<option value="">'+placeholder+'</option>';
     var counts={};
-    MOUNTAINS.forEach(function(m){if(m.reg===r){var p=m.pref.split("・")[0];counts[p]=(counts[p]||0)+1}});
+    // 県境またぎの山は所属する各県でそれぞれ1座として数える(この地方に属する県のみ)
+    MOUNTAINS.forEach(function(m){prefsOf(m).forEach(function(p){if(PREF2REGION[p]===r)counts[p]=(counts[p]||0)+1})});
     PREF_ORDER.forEach(function(p){
       if(!counts[p])return;
       var o=document.createElement("option");o.value=p;o.textContent=p+" ("+counts[p]+"座)";elPref.appendChild(o);
@@ -335,9 +340,11 @@ footer a{color:var(--link)}
   function targets(){
     var r=elRegion.value,p=elPref.value;
     return MOUNTAINS.filter(function(m){
-      if(m.reg!==r)return false;
-      if(p&&m.pref.split("・")[0]!==p)return false;
-      return true;
+      var prefs=prefsOf(m);
+      // 県が選択されていれば、その県を含む山を対象にする(県境またぎは各県で拾える)
+      if(p)return prefs.indexOf(p)!==-1;
+      // 県未選択(北海道など)は、いずれかの県がこの地方に属する山を対象にする
+      return prefs.some(function(pp){return PREF2REGION[pp]===r});
     });
   }
   function needsPrefSelection(){
@@ -665,11 +672,15 @@ def main():
     # 県の表示順は REGIONS の定義順(北→南)で安定させる
     pref_order = json.dumps([p for _, prefs in REGIONS for p in prefs],
                             ensure_ascii=False)
+    # 県名→地方名。県境またぎの山を各県・各地方で扱うためクライアントに渡す
+    pref2region = json.dumps({p: name for name, prefs in REGIONS for p in prefs},
+                             ensure_ascii=False)
 
     html = (TEMPLATE
             .replace("__MOUNTAINS_JSON__", mountains_json)
             .replace("__REGION_ORDER__", region_order)
-            .replace("__PREF_ORDER__", pref_order))
+            .replace("__PREF_ORDER__", pref_order)
+            .replace("__PREF2REGION__", pref2region))
     OUT.write_text(html, encoding="utf-8", newline="\n")
     print(f"docs/find.html を生成しました (全{total}座 / 横断検索ページ)")
 

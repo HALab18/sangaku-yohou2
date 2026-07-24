@@ -147,6 +147,7 @@ button:disabled{background:#9aa7bd;cursor:wait}
 /* 「天気で山さがし」からの遷移時に予報カード先頭に出す戻りボタン。
    プレーンリンクだと見落とされやすいので、ピル型の塗りボタン(--btn 系)にして目立たせる。 */
 .backfind{margin:0 0 14px}
+.backfind.bottom{margin:20px 0 4px}
 .backfind a{display:inline-block;padding:9px 22px;background:var(--btn);color:#fff;
   border-radius:999px;font-size:.9em;font-weight:700;text-decoration:none;
   box-shadow:0 2px 6px rgba(30,45,74,.14)}
@@ -340,7 +341,7 @@ footer a{color:var(--link)}
   </form>
   <p class="authmsg" id="authmsg" hidden></p>
   <small>気象データの無料利用枠を維持するため、認証コードを入力した方のみご利用いただけます。
-  コードは<a href="https://yamap.com/moments/1715010" target="_blank" rel="noopener">YAMAPのモーメント（閲覧許可制）</a>に記載しています。
+  コードは<a href="https://yamap.com/moments/1721648" target="_blank" rel="noopener">YAMAPのモーメント（閲覧許可制）</a>に記載しています。
   端末（ブラウザ）ごとに1回入力すれば以降は不要です。</small>
 </div>
 
@@ -389,7 +390,7 @@ footer a{color:var(--link)}
 <a href="docs/mountains.html">対応山リスト</a> /
 <a href="docs/how-it-works-web.html">仕組み解説</a> /
 <a href="docs/terms.html">利用規約・免責事項</a> /
-<a href="docs/history.html">改訂履歴</a> / ver 2.01 / © 2026 HALab18
+<a href="docs/history.html">改訂履歴</a> / ver 2.01β / © 2026 HALab18
 </footer>
 
 <button id="totop" type="button" aria-label="山名の検索フォームへ戻る"><svg class="mk" aria-hidden="true"><use href="#mkico"/></svg></button>
@@ -875,6 +876,8 @@ async function run(mt){
   htmlOut+=`<div class="notice">⚠️ 数値予報は山岳地形では誤差が大きく、局地的な突風・雷雨・視界不良は表現しきれません。
     登山指数は目安です。最終判断は最新の予報（<a href="https://i.yamatenki.co.jp/">ヤマテン</a>・
     <a href="https://tenki.jp/mountain/">tenki.jp山の天気</a>等）と現地の状況で行ってください。</div>`;
+  // 「天気で山さがし」経由なら、長い予報表を読み終えた末尾にも一覧へ戻る導線を出す(先頭と同じ挙動)。
+  if(backToFind)htmlOut+=`<p class="backfind bottom"><a href="docs/find.html" onclick="if(history.length>1){history.back();return false}">← 天気で山さがしの一覧に戻る</a></p>`;
   out.innerHTML=htmlOut;
   status.textContent="";
   const hashKey=mt.here?"gps":mt.coord?`${mt.lat},${mt.lon}${mt.elevManual?","+mt.elev:""}`:encodeURIComponent(mt.name);

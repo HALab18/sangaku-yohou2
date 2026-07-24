@@ -113,6 +113,7 @@ https://halab18.github.io/sangaku-yohou2/docs/how-it-works-web.html
 
 ## 投稿後の TODO
 
-- [ ] 投稿したモーメントのURLを取得
-- [ ] `index.html` および `docs/how-it-works-web.html` 内のモーメントリンク (現状 v1.00 モーメントを指している) を新モーメントURLに差し替え
+- [x] 投稿したモーメントのURLを取得 → https://yamap.com/moments/1721648
+- [x] `index.html` 内のモーメントリンク (旧 v1.00 の 1715010) を新モーメントURL 1721648 に差し替え
+      (`docs/how-it-works-web.html` にはモーメントリンクは無し。grep 済み)
 - [ ] 差し替え後に master へ反映して GitHub Pages に公開
