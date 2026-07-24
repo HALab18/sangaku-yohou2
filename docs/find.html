@@ -75,6 +75,9 @@ th:first-child,td.rank{width:34px;min-width:34px;max-width:34px;padding-left:6px
 th:first-child,td.rank{position:sticky;left:0}
 th:nth-child(2),td.nm{position:sticky;left:34px}
 td.rank,td.nm{z-index:1}
+/* sticky-left の角セル(th)は sticky-top の他ヘッダ(z-index:2)より前面に置き、
+   横スクロール時に他の列ヘッダが山名/ランク列の下に潜るようにする(index.htmlと同方式)。 */
+th:first-child,th:nth-child(2){z-index:3}
 /* 偶数行の背景色が透けないよう明示 (sticky で親の背景が引き継がれないため) */
 tr:nth-child(even) td.rank,tr:nth-child(even) td.nm{background:#eef1f6}
 /* 山名列の右端に境界線 (横スクロール時に固定範囲の右端が視認しやすい) */
