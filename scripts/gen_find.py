@@ -210,7 +210,7 @@ footer a{color:var(--link)}
     <label>エリア
       <select id="region"></select>
     </label>
-    <label>県でしぼり込み
+    <label>都道府県
       <select id="pref"><option value="">すべて</option></select>
     </label>
     <label>日付
@@ -444,8 +444,10 @@ footer a{color:var(--link)}
   var NO_PREF_REGIONS={"北海道":true};
   function fillPrefs(){
     var r=elRegion.value;
-    // デフォルトの「すべて」ラベルを状況で切り替える
-    var placeholder=r&&!NO_PREF_REGIONS[r]?"県を選択してください":"すべて";
+    // デフォルトの「すべて」ラベルを状況で切り替える。
+    // 「県を選択してください」だと 375px 幅の <select> (テキスト領域126px) に収まらず
+    // 末尾が見切れるため、ラベル(都道府県)で分かる分は削って「選択してください」(101px)にする。
+    var placeholder=r&&!NO_PREF_REGIONS[r]?"選択してください":"すべて";
     elPref.innerHTML='<option value="">'+placeholder+'</option>';
     var counts={};
     // 県境またぎの山は所属する各県でそれぞれ1座として数える(この地方に属する県のみ)
@@ -473,7 +475,7 @@ footer a{color:var(--link)}
   function updateHint(){
     var r=elRegion.value;
     if(needsPrefSelection()){
-      elHint.textContent="Open-Meteoの負荷軽減のため、県を選択してから検索してください(北海道を除く)";
+      elHint.textContent="Open-Meteoの負荷軽減のため、都道府県を選択してから検索してください(北海道を除く)";
       elGo.disabled=true;
       return;
     }
@@ -632,7 +634,7 @@ footer a{color:var(--link)}
   // (bfcache が効かない iOS 直リンク等のフォールバック。詳細は末尾の restoreLastSearch)。
   var LAST_KEY="find3:last";
   async function search(fromRestore){
-    if(needsPrefSelection()){elStatus.textContent="県を選択してから検索してください";return}
+    if(needsPrefSelection()){elStatus.textContent="都道府県を選択してから検索してください";return}
     var ms=targets(),date=elDate.value,r=elRegion.value,p=elPref.value;
     if(!ms.length){elStatus.textContent="対象の山がありません";return}
     elStatus.className="";elResults.innerHTML="";elGo.disabled=true;
