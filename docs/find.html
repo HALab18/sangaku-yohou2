@@ -238,6 +238,9 @@ footer a{color:var(--link)}
    snow:"雪",snowshowers:"にわか雪",thunder:"雷雨"};
   var CAT_ICON={fog:"wx-fog",drizzle:"wx-rain",rain:"wx-rain",showers:"wx-rain",
    snow:"wx-snow",snowshowers:"wx-snow",thunder:"wx-thunder"};
+  // 代表が降水系になった日に「晴れていた時間帯」を添えるための表示名。
+  // clear/partly はどちらも「晴れ」にまとめる (index.html の WBASE と同じ畳み方)。
+  var FAIR_LABEL={clear:"晴れ",partly:"晴れ",cloudy:"曇り"};
   // 注記の時間帯表現。find の窓は 7-15時 なので実際に出るのは 朝/昼前/昼過ぎ/夕方 の4つ。
   var TOD_ORDER=["明け方","朝","昼前","昼過ぎ","夕方"];
   function timeOfDay(h){return h<=6?"明け方":h<=9?"朝":h<=11?"昼前":h<=14?"昼過ぎ":"夕方"}
@@ -249,8 +252,11 @@ footer a{color:var(--link)}
     if(labels.length>=2)return labels[0]+"〜"+labels[labels.length-1];
     return labels[0];
   }
-  // win=[{hour,code}] (7-15時) → {code,cat,hours,notes}。窓が空なら null。
-  // 代表にならなかった降水カテゴリは notes(「昼過ぎに霧雨」等)に降格して情報を落とさない。
+  // win=[{hour,code}] (7-15時) → {code,cat,hours,notes,fair}。窓が空なら null。
+  // notes: 代表にならなかった降水の注記 [{h:開始時,t:"昼過ぎに霧雨"}] を時刻順に。
+  // fair : 代表が降水系のとき、最も長かった晴れ/曇りの注記 {h,t}。それ以外は null。
+  //        「雷雨マークなのに日照88%」という隣の日照列との食い違いを防ぐために添える。
+  //        表示するかは dispWx が決める (霧雨の降水量裏取りで降格した場合は不要なため)。
   function repWeather(win){
     if(!win.length)return null;
     var catHours={},i,cat;
@@ -259,14 +265,28 @@ footer a{color:var(--link)}
       if(!catHours[cat])catHours[cat]=[];
       catHours[cat].push(win[i].hour);
     }
-    // 代表コードが決まったら、それ以外の降水カテゴリを注記に落として返す
+    function note(hours,text){return {h:Math.min.apply(null,hours),t:text}}
+    // 代表コードが決まったら、注記を組み立てて返す
     function finish(code){
-      var rc=wcat(code),notes=[],c2;
+      var rc=wcat(code),notes=[],fair=null,c2;
+      // 代表以外の降水カテゴリを注記に降格
       for(c2 in catHours){
         if(c2===rc||!PRECIP_CATS[c2])continue;
-        notes.push(timingLabel(catHours[c2])+"に"+CAT_LABEL[c2]);
+        notes.push(note(catHours[c2],timingLabel(catHours[c2])+"に"+CAT_LABEL[c2]));
       }
-      return {code:code,cat:rc,hours:catHours[rc]||[],notes:notes};
+      notes.sort(function(a,b){return a.h-b.h});
+      // 代表が降水系なら、最も長かった晴れ/曇りも拾っておく(1時間だけなら雑音なので出さない)
+      if(PRECIP_CATS[rc]){
+        var byLabel={},fl;
+        for(c2 in catHours){
+          fl=FAIR_LABEL[c2]; if(!fl)continue;
+          byLabel[fl]=(byLabel[fl]||[]).concat(catHours[c2]);
+        }
+        var bestL=null,bestH=null;
+        for(fl in byLabel)if(!bestH||byLabel[fl].length>bestH.length){bestL=fl;bestH=byLabel[fl]}
+        if(bestH&&bestH.length>=2)fair=note(bestH,timingLabel(bestH)+"は"+bestL);
+      }
+      return {code:code,cat:rc,hours:catHours[rc]||[],notes:notes,fair:fair};
     }
     // 第1層: 安全オーバーライド(強雨・大雪・雷などは1時間でも代表に昇格。最重症を採る)
     var ov=null;
@@ -305,6 +325,12 @@ footer a{color:var(--link)}
   //   3) 日照率も weather_code もない場合は "-"。
   // 対象時間帯は score() 側の agg() と一致する 7-15時。
   // なお score() の悪天上乗せ減点は従来どおり「窓内の最悪コード」基準(安全側)で、ここの表示判定とは別。
+  // 注記の配列 [{h,t}] を時刻順に並べて文字列配列にする
+  function noteTexts(arr){
+    var a=arr.slice().sort(function(x,y){return x.h-y.h}),out=[],i;
+    for(i=0;i<a.length;i++)out.push(a[i].t);
+    return out;
+  }
   function dispWx(s){
     var rep=s.wxRep, f=s.sunFrac, notes=(rep&&rep.notes)||[];
     // 1) 代表が降水系ならそれを優先表示
@@ -313,25 +339,29 @@ footer a{color:var(--link)}
       // 霧雨だけは「コードは出るが実質降っていない」ケースがあるので降水量で裏取りする
       var drizzleDry=(cat==="drizzle"&&!(s.psum!=null&&s.psum>=0.1));
       if(PRECIP_CATS[cat]&&!drizzleDry)
-        return {ic:CAT_ICON[cat], lb:CAT_LABEL[cat], nt:notes};
+        // 「晴れていた時間帯」の注記はここでだけ添える(下の日照率ラベルなら文言が重複するため)
+        return {ic:CAT_ICON[cat], lb:CAT_LABEL[cat],
+                nt:noteTexts(rep.fair?notes.concat([rep.fair]):notes)};
       // 裏取りで降格した霧雨も注記には残す
       if(drizzleDry&&rep.hours.length)
-        notes=notes.concat([timingLabel(rep.hours)+"に"+CAT_LABEL[cat]]);
+        notes=notes.concat([{h:Math.min.apply(null,rep.hours),
+                             t:timingLabel(rep.hours)+"に"+CAT_LABEL[cat]}]);
     }
+    var nt=noteTexts(notes);
     // 2) 日照率ベース
     if(f!=null){
-      if(f>=0.80)return {ic:"wx-sun",     lb:"よく晴れ", nt:notes};
-      if(f>=0.55)return {ic:"wx-suncloud",lb:"晴れ",     nt:notes};
-      if(f>=0.30)return {ic:"wx-suncloud",lb:"時々晴れ", nt:notes};
-      return       {ic:"wx-cloud",  lb:"曇りがち", nt:notes};
+      if(f>=0.80)return {ic:"wx-sun",     lb:"よく晴れ", nt:nt};
+      if(f>=0.55)return {ic:"wx-suncloud",lb:"晴れ",     nt:nt};
+      if(f>=0.30)return {ic:"wx-suncloud",lb:"時々晴れ", nt:nt};
+      return       {ic:"wx-cloud",  lb:"曇りがち", nt:nt};
     }
     // 3) 日照率フォールバック: 代表コードのみで大分類
     var c=(rep&&rep.code!=null)?rep.code:s.code;
-    if(c==null)return {ic:null,lb:"-",nt:notes};
-    if(c===45||c===48)return {ic:"wx-fog",     lb:"霧",          nt:notes};
-    if(c===3)         return {ic:"wx-cloud",   lb:"曇り",        nt:notes};
-    if(c===2)         return {ic:"wx-suncloud",lb:"晴れ時々曇り", nt:notes};
-    return             {ic:"wx-sun",     lb:wlabel(c),     nt:notes};
+    if(c==null)return {ic:null,lb:"-",nt:nt};
+    if(c===45||c===48)return {ic:"wx-fog",     lb:"霧",          nt:nt};
+    if(c===3)         return {ic:"wx-cloud",   lb:"曇り",        nt:nt};
+    if(c===2)         return {ic:"wx-suncloud",lb:"晴れ時々曇り", nt:nt};
+    return             {ic:"wx-sun",     lb:wlabel(c),     nt:nt};
   }
 
   var elRegion=document.getElementById("region"),elPref=document.getElementById("pref"),
@@ -554,12 +584,13 @@ footer a{color:var(--link)}
   function rankOf(v){return v>=70?"a":v>=45?"b":"c"}
 
   // ---- 検索実行 ----
-  // キー接頭辞の数字は保存形式のバージョン。sc の中身を変えたら上げる
-  // (find2: 代表天気 wxRep を追加。旧キャッシュを復元すると天気列だけ古い判定に戻るため)。
-  function cacheKey(r,p,date){return "find2:"+r+":"+p+":"+date}
+  // キー接頭辞の数字は保存形式のバージョン。sc の中身を変えたら必ず上げる
+  // (find2: 代表天気 wxRep を追加 / find3: wxRep.notes を [{h,t}] 形式にし fair を追加)。
+  // 上げ忘れると旧キャッシュがそのまま復元され、天気列だけ古い表示になる。
+  function cacheKey(r,p,date){return "find3:"+r+":"+p+":"+date}
   // 直近の検索条件を保存するキー。ページを再訪した時にセレクタと結果を復元する用途
   // (bfcache が効かない iOS 直リンク等のフォールバック。詳細は末尾の restoreLastSearch)。
-  var LAST_KEY="find2:last";
+  var LAST_KEY="find3:last";
   async function search(fromRestore){
     if(needsPrefSelection()){elStatus.textContent="県を選択してから検索してください";return}
     var ms=targets(),date=elDate.value,r=elRegion.value,p=elPref.value;
@@ -646,8 +677,9 @@ footer a{color:var(--link)}
       '色は山名脇のスコアに反映(<a href="find-score.html">計算方法</a>)</dd>'+
     '<dt>天気</dt><dd>7〜15時 の代表天気。<b>最も長い時間を占めた天気</b>を採用し、'+
       '強い雨・雪・雷は1時間でも含まれれば優先して表示。降水が代表でない日は日照率で'+
-      '「よく晴れ・晴れ・時々晴れ・曇りがち」を判定し、代表とならなかった短時間の降水は'+
-      '「昼過ぎに霧雨」のように下段へ小さく併記(<a href="find-score.html">判定の手順</a>)</dd>'+
+      '「よく晴れ・晴れ・時々晴れ・曇りがち」を判定。代表とならなかった天気は下段へ小さく併記する'+
+      '(晴れが代表なら「昼過ぎに霧雨」、雨・雪・雷が代表なら「朝〜昼過ぎは晴れ」など。'+
+      '<a href="find-score.html">判定の手順</a>)</dd>'+
     '<dt>日照</dt><dd>7〜15時 のうち日照が見込まれる時間の割合 (0〜100%)</dd>'+
     '<dt>気温</dt><dd>7〜15時 の <b>最高 / 最低</b> 気温 (℃)。'+
       '山頂標高で標高補正済み (Open-Meteo の elevation パラメータ経由。乾燥断熱減率 約0.65℃/100m)</dd>'+
