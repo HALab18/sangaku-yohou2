@@ -292,7 +292,7 @@ footer a{color:var(--link)}
   function wlabel(c){return c==null?"-":(WMO[c]||("code"+c))}
 
   // ---- 代表天気モデル (index.html の WMETA / SAFETY_OVERRIDE と同一の値) ----
-  // 7-15時の weather_code を単純な max で潰すと、9時間中1時間の霧雨が6時間の快晴を乗っ取り
+  // 7:00〜15:59の weather_code を単純な max で潰すと、9時間中1時間の霧雨が6時間の快晴を乗っ取り
   // 「雨アイコンなのに日照100%」という不整合が出る。index.html の summarizeDailyWeather と同じ
   // 「カテゴリ別の時間数で多数決 / 強い悪天だけは1時間でも昇格」で代表を決める。
   // 値を変えるときは index.html:WMETA と scripts/mountain_weather.py:WMETA も必ず揃えること。
@@ -315,7 +315,7 @@ footer a{color:var(--link)}
   // 代表が降水系になった日に「晴れていた時間帯」を添えるための表示名。
   // clear/partly はどちらも「晴れ」にまとめる (index.html の WBASE と同じ畳み方)。
   var FAIR_LABEL={clear:"晴れ",partly:"晴れ",cloudy:"曇り"};
-  // 注記の時間帯表現。find の窓は 7-15時 なので実際に出るのは 朝/昼前/昼過ぎ/夕方 の4つ。
+  // 注記の時間帯表現。find の窓は 7:00〜15:59 なので実際に出るのは 朝/昼前/昼過ぎ/夕方 の4つ。
   var TOD_ORDER=["明け方","朝","昼前","昼過ぎ","夕方"];
   function timeOfDay(h){return h<=6?"明け方":h<=9?"朝":h<=11?"昼前":h<=14?"昼過ぎ":"夕方"}
   function timingLabel(hours){
@@ -326,7 +326,7 @@ footer a{color:var(--link)}
     if(labels.length>=2)return labels[0]+"〜"+labels[labels.length-1];
     return labels[0];
   }
-  // win=[{hour,code}] (7-15時) → {code,cat,hours,notes,fair}。窓が空なら null。
+  // win=[{hour,code}] (7:00〜15:59) → {code,cat,hours,notes,fair}。窓が空なら null。
   // notes: 代表にならなかった降水の注記 [{h:開始時,t:"昼過ぎに霧雨"}] を時刻順に。
   // fair : 代表が降水系のとき、最も長かった晴れ/曇りの注記 {h,t}。それ以外は null。
   //        「雷雨マークなのに日照88%」という隣の日照列との食い違いを防ぐために添える。
@@ -390,14 +390,14 @@ footer a{color:var(--link)}
     return finish(repCode);
   }
 
-  // 天気列は 7-15時 の予報を「代表天気(多数決) → 日照率」の順で判定する。
+  // 天気列は 7:00〜15:59 の予報を「代表天気(多数決) → 日照率」の順で判定する。
   //   1) repWeather() の代表が降水系(雷雨/雪/雨/にわか雨/霧雨/霧)なら、そのアイコンで明示する。
   //      → 「雨が降る予報の日が『曇りがち』としか表示されない」誤解を防ぐ。
   //      強い雨・雪・雷は1時間でもあれば代表になる(SAFETY_OVERRIDE)ので取りこぼさない。
   //   2) 代表が降水系でなければ日照率で「よく晴れ〜曇りがち」を判定。
   //      代表になれなかった短時間の降水は nt(注記)に残して表に併記する。
   //   3) 日照率も weather_code もない場合は "-"。
-  // 対象時間帯は score() 側の agg() と一致する 7-15時。
+  // 対象時間帯は score() 側の agg() と一致する 7:00〜15:59。
   // なお score() の悪天上乗せ減点は従来どおり「窓内の最悪コード」基準(安全側)で、ここの表示判定とは別。
   // 注記の配列 [{h,t}] を時刻順に並べて文字列配列にする
   function noteTexts(arr){
@@ -540,7 +540,7 @@ footer a{color:var(--link)}
   // 対象時間帯: 7:00〜15:59 (hour 7〜15 の 9時間、登山コアタイム)
   function inRange(t){var h=parseInt(t.slice(11,13),10);return h>=7&&h<=15}
 
-  // ---- Open-Meteo (daily は積雪のみ、hourly で7-15時集計) ----
+  // ---- Open-Meteo (daily は積雪のみ、hourly で7:00〜15:59集計) ----
   var DAILY="snowfall_sum";
   var HOURLY="weather_code,temperature_2m,precipitation,precipitation_probability,"+
     "sunshine_duration,wind_speed_925hPa,wind_speed_900hPa,wind_speed_850hPa,"+
@@ -568,11 +568,11 @@ footer a{color:var(--link)}
     return Array.isArray(data)?data:[data]; // 単一地点はオブジェクトで返る
   }
 
-  // ---- 安全性優先スコア(0-100)。稜線風と降水を最重視、対象時間帯 7-15時 ----
+  // ---- 安全性優先スコア(0-100)。稜線風と降水を最重視、対象時間帯 7:00〜15:59 ----
   // 重み: ①晴天度-28 / ②降水-30 / ③稜線風-32 / ④雪寒気-10  (合計-100)
   function score(d, mt){
     var hr=d.hourly, times=(hr&&hr.time)||[], N=times.length;
-    // 7-15時 の hourly 値を集計するヘルパ
+    // 7:00〜15:59 の hourly 値を集計するヘルパ
     function agg(key, mode){
       var arr=hr&&hr[key]; if(!arr)return null;
       var vs=[], sum=0;
@@ -602,13 +602,13 @@ footer a{color:var(--link)}
       }
       if(has)ridgeWmax=mv;
     }
-    // 日照率: 7-15時 の sunshine_duration 合計 / (9h × 3600s)
+    // 日照率: 7:00〜15:59 の sunshine_duration 合計 / (9h × 3600s)
     var sunSum=agg("sunshine_duration","sum");
     var sunFrac=sunSum==null?null:Math.max(0,Math.min(1,sunSum/(9*3600)));
     // 天気コードの worst(max)。スコアの悪天上乗せ減点(安全側)にのみ使う。
     // 表示用の代表天気は下の repWeather() が別に決める(max だと短時間の霧雨に乗っ取られるため)。
     var code=agg("weather_code","max");
-    // 表示用: 7-15時の (時刻, code) 列から代表天気を多数決で決める
+    // 表示用: 7:00〜15:59の (時刻, code) 列から代表天気を多数決で決める
     var win=[];
     for(var wi=0;wi<N;wi++){
       if(!inRange(times[wi]))continue;
@@ -753,18 +753,18 @@ footer a{color:var(--link)}
       '<span class="rk rk-b">B</span>45〜69 '+
       '<span class="rk rk-c">C</span>0〜44 '+
       '色は山名脇のスコアに反映(<a href="find-score.html">計算方法</a>)</dd>'+
-    '<dt>天気</dt><dd>7〜15時 の代表天気。<b>最も長い時間を占めた天気</b>を採用し、'+
+    '<dt>天気</dt><dd>7:00〜15:59 の代表天気。<b>最も長い時間を占めた天気</b>を採用し、'+
       '強い雨・雪・雷は1時間でも含まれれば優先して表示。降水が代表でない日は日照率で'+
       '「よく晴れ・晴れ・時々晴れ・曇りがち」を判定。代表とならなかった天気は下段へ小さく併記する'+
       '(晴れが代表なら「昼過ぎに霧雨」、雨・雪・雷が代表なら「朝〜昼過ぎは晴れ」など。'+
       '<a href="find-score.html">判定の手順</a>)</dd>'+
-    '<dt>日照</dt><dd>7〜15時 のうち日照が見込まれる時間の割合 (0〜100%)</dd>'+
-    '<dt>気温</dt><dd>7〜15時 の <b>最高 / 最低</b> 気温 (℃)。'+
+    '<dt>日照</dt><dd>7:00〜15:59 のうち日照が見込まれる時間の割合 (0〜100%)</dd>'+
+    '<dt>気温</dt><dd>7:00〜15:59 の <b>最高 / 最低</b> 気温 (℃)。'+
       '山頂標高で標高補正済み (Open-Meteo の elevation パラメータ経由。乾燥断熱減率 約0.65℃/100m)</dd>'+
-    '<dt>稜線風</dt><dd>山頂標高で推定した稜線風速の 7〜15時 最大値 (m/s)。'+
+    '<dt>稜線風</dt><dd>山頂標高で推定した稜線風速の 7:00〜15:59 最大値 (m/s)。'+
       '地表10mではなく気圧面から線形補間した値</dd>'+
-    '<dt>降水確率</dt><dd>7〜15時 の1時間ごとの降水確率の最大値 (%)</dd>'+
-    '<dt>降水量</dt><dd>7〜15時 の降水量の合計 (mm)。'+
+    '<dt>降水確率</dt><dd>7:00〜15:59 の1時間ごとの降水確率の最大値 (%)</dd>'+
+    '<dt>降水量</dt><dd>7:00〜15:59 の降水量の合計 (mm)。'+
       'スコアと足切り(⚠ 慎重に判断が必要)に直接影響する</dd>'+
     '</dl></div>');
 
@@ -783,7 +783,7 @@ footer a{color:var(--link)}
     // ② 足切り表: 該当ゼロなら表示しない
     if(caution.length){
       h+='<h3 class="results-h caution">⚠ 慎重に判断が必要 <span class="rcount">('+caution.length+'座)</span></h3>';
-      h+='<p class="rnote caution">稜線風速 18m/s 以上、または 7-15時 の降水量 10mm 以上。'+
+      h+='<p class="rnote caution">稜線風速 18m/s 以上、または 7:00〜15:59 の降水量 10mm 以上。'+
          '登山に不適格の可能性が高いため、参考として下位に表示しています。</p>';
       h+=tableHtml(caution,date,true);
     }
