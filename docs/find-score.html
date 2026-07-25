@@ -58,6 +58,25 @@ footer{color:#888;font-size:.85em;margin-top:36px;border-top:1px solid var(--lin
 footer a{color:var(--link)}
 .formula{background:#f8fafc;border:1px solid var(--line);border-radius:6px;padding:8px 12px;
   font-family:"Consolas","Menlo",monospace;font-size:.9em;margin:6px 0;display:inline-block}
+/* 天気マークの解説図: 7-15時 の1時間ごとの天気を横に並べて見せる帯。
+   狭い画面では横スクロールさせる (本文が横に溢れないよう .strip 側で overflow を持つ)。 */
+.strip{display:flex;gap:3px;margin:10px 0 4px;overflow-x:auto;padding-bottom:4px}
+/* flex:1 1 46px + min-width で、狭い画面ではセルが縮んで9個が1画面に収まるようにする
+   (縮みきらない極端な幅のときだけ .strip 側の overflow-x が効く) */
+.strip .h{flex:1 1 46px;min-width:34px;text-align:center;border-radius:6px;padding:5px 2px;line-height:1.45}
+.strip .h .m{display:block;font-size:1.3em;line-height:1.3}
+.strip .h .t{display:block;font-size:.78em;color:#5a6478;font-variant-numeric:tabular-nums}
+.strip .h .w{display:block;font-size:.72em;color:#5a6478;white-space:nowrap}
+.strip .sunny{background:#fdf4da;border:1px solid #ecd9a0}
+.strip .wet{background:#e0e9f5;border:1px solid #b9cde6}
+.stripcap{font-size:.85em;color:#5a6478;margin:0 0 14px}
+/* 判定の流れ (上から順に当てはまった時点で決定) */
+.flow{counter-reset:fl;list-style:none;padding:0;margin:12px 0}
+.flow li{position:relative;background:#fff;border:1px solid var(--line);border-left:5px solid var(--slate);
+  border-radius:0 6px 6px 0;padding:10px 14px 10px 46px;margin:8px 0}
+.flow li::before{counter-increment:fl;content:counter(fl);position:absolute;left:12px;top:10px;
+  width:22px;height:22px;border-radius:50%;background:var(--slate);color:#fff;
+  font-size:.8em;font-weight:700;text-align:center;line-height:22px}
 @media(max-width:600px){body{font-size:14px}main{padding:14px 12px 8px}}
 @media(min-width:700px){header h1{font-size:1.7em}main{padding:24px 24px 12px}}
 </style>
@@ -83,7 +102,8 @@ footer a{color:var(--link)}
 夜間のみ降雨がある日が実際以上に低く評価されたり、日没後の風が評価に影響したりすることを
 避けるための時間帯限定です。以下のすべての要素はこの時間帯を対象としています。</div>
 
-<div class="point">📖 この解説の対象: 「天気の良い山をさがす」のスコア列だけです。
+<div class="point">📖 この解説の対象: 「天気の良い山をさがす」の<b>スコア列</b>と、
+表に出る<b>天気マーク</b>(「4.」で説明) です。
 個別の山の詳細ページに出る<b>正式な登山指数 A/B/C</b> は別のロジックで計算されています
 (こちらは <a href="how-it-works.html">PeakWeather の仕組み</a> で解説)。</div>
 
@@ -186,34 +206,102 @@ footer a{color:var(--link)}
   <li>雨系 (コード 51〜82): 追加 -4 点</li>
 </ul>
 
-<div class="notice">⚠️ この減点は<b>安全側に倒すため 7-15時 の最も悪いコード</b>で判定しますが、
-表に表示する<b>天気アイコンの判定は別ルール</b>です (下記)。「減点は最悪コード / 表示は多数決」と
-使い分けています。</div>
+<div class="notice">⚠️ この減点は<b>安全側に倒すため 7-15時 の最も悪いコード</b>で判定しています。
+一方、表に表示する<b>天気マークは別のルール</b>で決めています (次の「4.」で説明します)。
+「減点は最悪の1時間を見る / 表示は一日ぜんたいの傾向を見る」という使い分けです。</div>
 
-<h3>表示する天気アイコンは「時間数の多数決」で決めます</h3>
+<h2>4. 表に出る「天気マーク」の決め方</h2>
 
-<p>天気コードだけを主指標にすると、日中は晴天主体でも短時間の霧雨で「曇り」「雨」と表示され、
-「雨アイコンなのに日照 100%」のような不整合が生じます。そのため天気アイコンは、
-7-15時 の1時間ごとの天気コードを<b>カテゴリ (晴れ / 曇り / 雨 / 雪 / 雷 など) に分類して
-時間数の多数決</b>を取り、次の順で決めています。</p>
+<p>ここまではスコアの話でした。ここからは、表の「天気」の欄に出る<b>マークと言葉</b>を
+どうやって選んでいるかの説明です。スコアとは別のルールで決めています。</p>
 
-<ol>
-  <li><b>強い悪天は1時間でも優先</b> — 強い雨 (65〜67)・大雪 (75)・激しいにわか雨 (82)・
-    にわか雪 (85, 86)・雷雨 (95〜99) は、対象時間帯に1時間でもあれば代表天気に昇格します
-    (多数決で打ち消させない安全側の扱い)。</li>
-  <li><b>それ以外は多数決</b> — 最も時間数の多いカテゴリを代表とします (同数なら悪い方)。
-    代表が雨・雪・霧などの降水系なら、そのアイコンを表示します。</li>
-  <li><b>代表が降水系でなければ日照率で判定</b> — 「よく晴れ / 晴れ / 時々晴れ / 曇りがち」を
-    日照率から決めます。同じ表の「日照」列と同じ根拠なので、両者が食い違いません。</li>
-  <li><b>代表になれなかった降水は注記として併記</b> — 天気アイコンの下に
-    「昼過ぎに霧雨」のように小さく表示し、短時間の降水も見落とさないようにしています。</li>
+<h3>むかしの決め方と、その困りごと</h3>
+
+<p>以前は「7時から15時までの9時間のうち、<b>いちばん悪かった天気</b>」をその日の代表に
+していました。単純で分かりやすいのですが、この決め方だと
+<b>たった1時間でも弱い雨の予報があれば、残りの8時間が快晴でも雨マーク</b>になってしまいます。</p>
+
+<p>実際に、こんな日がありました (陣馬山・2026年7月25日)。</p>
+
+<div class="strip">
+  <div class="h sunny"><span class="m">☀</span><span class="t">7時</span><span class="w">快晴</span></div>
+  <div class="h sunny"><span class="m">☀</span><span class="t">8時</span><span class="w">快晴</span></div>
+  <div class="h sunny"><span class="m">☀</span><span class="t">9時</span><span class="w">快晴</span></div>
+  <div class="h sunny"><span class="m">☀</span><span class="t">10時</span><span class="w">快晴</span></div>
+  <div class="h sunny"><span class="m">☀</span><span class="t">11時</span><span class="w">快晴</span></div>
+  <div class="h sunny"><span class="m">☀</span><span class="t">12時</span><span class="w">晴れ</span></div>
+  <div class="h wet"><span class="m">☂</span><span class="t">13時</span><span class="w">霧雨</span></div>
+  <div class="h wet"><span class="m">☂</span><span class="t">14時</span><span class="w">霧雨</span></div>
+  <div class="h wet"><span class="m">☂</span><span class="t">15時</span><span class="w">霧雨</span></div>
+</div>
+<p class="stripcap">日照率は <b>100%</b>。降ったのは午後の弱い霧雨だけで、合計 0.3mm でした。</p>
+
+<p>それでも「いちばん悪かった天気」を選ぶ決め方では、この日の代表は<b>雨</b>。
+表の同じ行に「<b>雨マーク</b>」と「<b>日照 100%</b>」が並ぶという、
+ちぐはぐな表示になっていました。ふつうに考えれば、この日は晴れマークが妥当です。</p>
+
+<h3>いまの決め方: 時間の長さで「多数決」</h3>
+
+<p>そこで現在は、<b>9時間ぶんの天気に1票ずつ持たせて多数決</b>をしています。
+上の例なら <b>晴れ 6票 対 霧雨 3票</b> で晴れの勝ち。この日の天気マークは
+<b>「よく晴れ」</b>になります。一日を通してどうだったか、で決まる仕組みです。</p>
+
+<h3>ただし、危ない天気は1時間でも「当選」します</h3>
+
+<p>多数決には例外を設けています。次の天気は、対象の時間帯に<b>1時間でも予報にあれば、
+他がすべて晴れでも代表</b>になります。多数決で打ち消させない、いわば拒否権つきの扱いです。</p>
+
+<ul>
+  <li>強い雨</li>
+  <li>大雪・にわか雪</li>
+  <li>激しいにわか雨</li>
+  <li>雷雨</li>
+</ul>
+
+<p>山では「一日のうち何時間降るか」より「<b>短時間でも遭ってしまう可能性があるか</b>」の方が
+大事だからです。雷雨が1時間でも予報にあれば、その日は雷雨マークで警告します。</p>
+
+<h3>多数決で負けた天気も、小さく書き添えます</h3>
+
+<p>負けた雨や雪を消してしまうと、今度は逆に見落としのもとになります。そこで代表になれなかった
+降水は、マークの下に<b>「昼過ぎ〜夕方に霧雨」</b>のように小さく書き添えています。
+先ほどの陣馬山の日は、こう表示されます。</p>
+
+<div class="card" style="text-align:center;max-width:220px;margin-left:auto;margin-right:auto">
+  <div style="font-size:1.8em;line-height:1.2">☀</div>
+  <div style="font-size:.95em">よく晴れ</div>
+  <div style="font-size:.8em;color:#6b7280;margin-top:2px">昼過ぎ〜夕方に霧雨</div>
+</div>
+
+<p>天気予報でいう「晴れ時々雨」に近い読み方です。<b>晴れベースの一日だけれど、
+午後は降るときがある</b>と一目で分かります。降水確率と降水量は隣の列にそのまま出ますので、
+情報が減ることはありません。</p>
+
+<h3>晴れの日は「日照率」でさらに細かく分けます</h3>
+
+<p>雨も雪も代表にならなかった日は、天気マークを<b>日照率</b>で決めます
+(「よく晴れ」「晴れ」「時々晴れ」「曇りがち」の4段階)。同じ表の「日照」列とまったく同じ数字を
+根拠にしているので、<b>マークと日照率が食い違うことがありません</b>。
+「快晴」と「うっすら雲のある晴れ」も、日照率なら区別できます。</p>
+
+<h3>まとめ: 上から順に当てはまったところで決定</h3>
+
+<ol class="flow">
+  <li><b>強い雨・雪・雷が1時間でもある？</b><br>
+    → あれば、そのマーク (安全側の拒否権)</li>
+  <li><b>なければ、9時間で多数決。勝ったのが雨・雪・霧？</b><br>
+    → そうなら、そのマーク</li>
+  <li><b>勝ったのが晴れや曇りなら、日照率で判定</b><br>
+    → 「よく晴れ / 晴れ / 時々晴れ / 曇りがち」</li>
+  <li><b>どの場合も、負けた降水はマークの下に小さく注記</b><br>
+    → 「昼過ぎに霧雨」など</li>
 </ol>
 
-<p>例えば 7-15時 が「快晴6時間 + 霧雨3時間 (計 0.3mm)」の日は、多数決で晴れが代表となり
-<b>「よく晴れ ＋ 昼過ぎ〜夕方に霧雨」</b>と表示されます。降水確率・降水量は隣の列にそのまま
-出るので、情報が減ることはありません。</p>
+<div class="notice">⚠️ 天気マークは、あくまで<b>その日をひとことで言うとどうか</b>という要約です。
+何時ごろ降るのか、風がいつ強まるのかまでは表せません。行く山が決まったら、
+必ず山名をタップして<b>時間ごとの詳しい予報</b>を確認してください。</div>
 
-<h2>4. ② 降水 (最大 -30 点)</h2>
+<h2>5. ② 降水 (最大 -30 点)</h2>
 
 <p>降水は 7-15時 の時間別データから、確率は<b>最大値</b>、量は<b>合計値</b>を採用します。
 夜間のみの弱い降雨によってスコアが実際以上に低く評価されることを避けるための時間帯限定です。</p>
@@ -242,7 +330,7 @@ footer a{color:var(--link)}
 ケースを過大に評価し、量のみでは「確率 20% ながら降れば 15mm」のケースを見落とすためです。
 両者の合計で最大 -30 点となります。</p>
 
-<h2>5. ③ 稜線風 (最大 -32 点) — 最重要要素</h2>
+<h2>6. ③ 稜線風 (最大 -32 点) — 最重要要素</h2>
 
 <p>風は<b>地表 10m の値ではなく、山頂標高における稜線風速</b>で評価します。稜線上の風は
 地表 10m の値より 1.5〜3 倍程度強く吹くことが一般的であり、地表値による比較では
@@ -294,7 +382,7 @@ footer a{color:var(--link)}
 情報が無く、地表 10m の突風値を稜線風速と混在させると評価の一貫性が損なわれるためです。
 突風の詳細は、個別の山のページで確認してください。</div>
 
-<h2>6. ④ 雪・寒気 (最大 -10 点)</h2>
+<h2>7. ④ 雪・寒気 (最大 -10 点)</h2>
 
 <h3>積雪量 (日単位)</h3>
 
@@ -321,7 +409,7 @@ footer a{color:var(--link)}
   <li>-20℃ 以下 → -5 点 (以降頭打ち)</li>
 </ul>
 
-<h2>7. ⚠ 安全性の足切り (別表への振り分け)</h2>
+<h2>8. ⚠ 安全性の足切り (別表への振り分け)</h2>
 
 <p>スコアの数値のみで並べた場合、「稜線風は 25 m/s ながら晴天のためスコアは 60 点台」の
 ような日が上位に混在し、誤解を招くおそれがあります。そこで、以下の<b>いずれか</b>に
@@ -343,7 +431,7 @@ footer a{color:var(--link)}
 <p>該当する山がない場合、この表は表示されません。すべての山が該当した場合は
 「登れそうな山は見つかりませんでした」と表示し、日程の変更をご案内します。</p>
 
-<h2>8. 実際の計算例 (すべて 7-15時 の値)</h2>
+<h2>9. 実際の計算例 (すべて 7-15時 の値)</h2>
 
 <h3>例A: 晴れ・微風の日</h3>
 
@@ -404,7 +492,7 @@ footer a{color:var(--link)}
 明示的に注意喚起を行います。</p>
 </div>
 
-<h2>9. このスコアで気をつけてほしいこと</h2>
+<h2>10. このスコアで気をつけてほしいこと</h2>
 
 <div class="notice">
 <b>このスコアは、条件の良い山を効率的に絞り込むための簡易的な指標です</b>。ご利用にあたっては
