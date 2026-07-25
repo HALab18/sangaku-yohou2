@@ -14,7 +14,53 @@
 push 後、GA4 管理画面でカスタムディメンション3つ（`pw_entry` / `pw_result` / `pw_region`、
 スコープ=イベント）を登録する。**登録前に発生したデータは集計されない**ので公開直後に行うこと。
 
-### 0. 作業開始時のブランチ元が古かった（次回のための教訓）
+### 0-A. push したのに公開サイトが更新されない（Jekyll がビルドごと失敗していた）
+
+**症状**: `19fba18` を master に push し、`origin/master` にも入っているのに、
+公開サイトの `docs/find.html` は旧版のまま（ゲート無し）で `gate.js` は 404。
+利用者から「認証コード無しで find/point に行けてしまう」と報告された。
+
+**真因**: **この DEVLOG に書いた `` `{{` `` という文字列**を Jekyll が Liquid の変数開始と解釈し、
+`Liquid syntax error` で **Pages のビルド全体が失敗**していた。ビルドが落ちるとサイトは
+一切更新されないため、コードが正しくても旧版が配信され続ける。
+
+**気づきにくかった理由**: Pages API は `status=building` のまま止まって見え、`error` も null。
+実際の失敗は Actions の `pages build and deployment` を見ないと分からない。
+
+```bash
+gh run list --repo HALab18/sangaku-yohou2 --limit 3   # ← ここで failure が見える
+gh run view <id> --repo HALab18/sangaku-yohou2 --log-failed
+```
+
+**対処**: リポジトリ直下に **`.nojekyll`** を追加して Jekyll を無効化した。
+本サイトは静的HTMLのみで Jekyll の機能を一切使っていないため副作用はない。
+これで今後 DEVLOG や README にコード片（`{{`, `{%`）を書いても壊れない。
+副次的に CLAUDE.md / DEVLOG.md / skill/*.md が勝手にHTMLページ化されるのも止まる。
+
+**次回以降の鉄則**: **push しただけで「公開できた」と判断しない。**
+`gh run list` が success であることと、公開URLの実物を確認するまでが公開作業。
+
+### 0-B. gate.js が読めないときに素通しし得た（同じ報告から見つけた副次バグ）
+
+上の障害を調べる過程で、`gate.js` の取得に失敗した場合（404・通信断・ブロッカー）に
+ゲートが開いてしまう経路が見つかったので塞いだ。
+
+- `index.html`: `#appwrap` は静的HTMLで `inert` なので閉じるが、**その外にある
+  `[data-gatelink]`（ヒーローの「天気の良い山をさがす」・フッターの「座標で予報」）は
+  初期状態が有効**で、`sync()` が動いて初めて無効化される設計だった。
+  gate.js が落ちると `sync()` ごと落ちてリンクが押せてしまう。
+  → HTML側の初期状態を `class="gate-off" aria-disabled="true"` にし、
+  **認証できたら外す**方向に反転（`#appwrap` の静的 `inert` と同じ fail-closed の考え方）。
+- `docs/find.html`(gen_find.py) / `docs/point.html`: `if(!pwGuardPage())return;` は
+  gate.js 未読込だと `ReferenceError` で止まる＝APIは叩かないが、
+  **検索カードのHTMLだけが残って「認証なしで開けた」ように見える**。
+  → `typeof pwGuardPage!=="function"` を先に判定し、`<main>` を案内に差し替えるようにした。
+  認証定数は複製せず「**判定できない = 通さない**」で倒している（定数の置き場は gate.js のみ）。
+
+検証: `gate.js` の src を存在しないパスに差し替えた複製ページで、
+検索カードが消えて案内が出ること・open-meteo へのリクエストが0件であることを実測。
+
+### 0-C. 作業開始時のブランチ元が古かった（次回のための教訓）
 
 このセッションのワークツリーは**ローカルの古い `master`(`dc4699a`)** から切られており、
 `origin/master` に既にあった `92aa7be`（16日間の見通しの折りたたみ）と `000a280`（そのDEVLOG）を

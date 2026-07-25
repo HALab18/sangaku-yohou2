@@ -333,7 +333,7 @@ footer a{color:var(--link)}
     <a class="hero-cta" href="#start">
       <span class="btnface"><svg class="mk" aria-hidden="true"><use href="#mkico"/></svg>予報をチェックする</span>
     </a>
-    <a class="hero-find" href="docs/find.html" data-gatelink>
+    <a class="hero-find gate-off" href="docs/find.html" data-gatelink aria-disabled="true">
       <span class="btnface">天気の良い山をさがす</span>
     </a>
     <span class="chev" aria-hidden="true">⌄</span>
@@ -413,7 +413,7 @@ footer a{color:var(--link)}
 製作者: ふぇと /
 データ: <a href="https://open-meteo.com/">Open-Meteo</a> (CC BY 4.0) /
 山岳座標: 国土地理院データで照合 /
-<a href="docs/point.html" data-gatelink>座標で予報</a> /
+<a class="gate-off" href="docs/point.html" data-gatelink aria-disabled="true">座標で予報</a> /
 <a href="docs/mountains.html">対応山リスト</a> /
 <a href="docs/how-it-works-web.html">仕組み解説</a> /
 <a href="docs/terms.html">利用規約・免責事項</a> /
@@ -1119,6 +1119,8 @@ function applyHash(){
         authBtn=document.getElementById("authbtn"),authMsg=document.getElementById("authmsg");
   // #appwrap の外にある操作ページへの導線 (ヒーローの「天気の良い山をさがす」・フッターの「座標で予報」)。
   // これらは inert の範囲外なので、ゲート未通過の間は個別に無効化する。
+  // HTML側の初期状態を .gate-off + aria-disabled にしてあるのは、#appwrap の静的 inert と同じ理由。
+  // gate.js の読み込みに失敗して sync() が動かなくても「無効のまま」に倒す (fail-closed)。
   const gateLinks=[...document.querySelectorAll("[data-gatelink]")];
   const sync=()=>{
     authGate.hidden=pwIsAuthed();

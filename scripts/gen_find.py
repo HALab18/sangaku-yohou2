@@ -260,6 +260,20 @@ footer a{color:var(--link)}
   // このページは Open-Meteo を最大50地点×N回まとめて叩くため、
   // 未認証のまま素通しにすると認証ゲートが守っている無料利用枠が最も削られる。
   // 以降のセレクタ生成・検索・前回条件の自動復元は一切実行しない。
+  //
+  // gate.js 自体が読めなかった場合(404・通信断・ブロッカー)も素通しさせない。
+  // ここで止めないと、検索カードのHTMLだけが残って「認証なしで開けた」ように見えてしまう。
+  // 認証定数は複製せず「判定できない = 通さない」で倒す(定数の置き場は gate.js のみ)。
+  if(typeof pwGuardPage!=="function"){
+    document.querySelector("main").innerHTML=
+      '<div style="max-width:560px;margin:26px auto;padding:22px 18px;background:#fff;'+
+      'border:1px solid #dee4ee;border-radius:12px;text-align:center;line-height:1.8">'+
+      '<p style="margin:0 0 12px;color:#44506b">ページの読み込みに失敗しました。'+
+      'お手数ですが、トップページから開き直してください。</p>'+
+      '<a href="../index.html" style="display:inline-block;padding:12px 26px;background:#4276b5;'+
+      'color:#fff;border-radius:10px;font-weight:700;text-decoration:none">PeakWeather トップページへ</a></div>';
+    return;
+  }
   if(!pwGuardPage())return;
 
   var MOUNTAINS=__MOUNTAINS_JSON__;

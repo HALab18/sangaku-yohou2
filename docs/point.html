@@ -149,6 +149,18 @@ footer a{color:var(--link)}
 // 規約同意・認証コードが済んでいなければ、フォームを出さず案内に差し替えて何も配線しない
 // (このページ自体はAPIを叩かないが、index.html を素通しで動かす入口になるため塞ぐ)
 (function(){
+// gate.js 自体が読めなかった場合(404・通信断・ブロッカー)も素通しさせない。
+// 認証定数は複製せず「判定できない = 通さない」で倒す(定数の置き場は gate.js のみ)。
+if(typeof pwGuardPage!=="function"){
+  document.querySelector("main").innerHTML=
+    '<div style="max-width:560px;margin:26px auto;padding:22px 18px;background:#fff;'+
+    'border:1px solid #dee4ee;border-radius:12px;text-align:center;line-height:1.8">'+
+    '<p style="margin:0 0 12px;color:#44506b">ページの読み込みに失敗しました。'+
+    'お手数ですが、トップページから開き直してください。</p>'+
+    '<a href="../index.html" style="display:inline-block;padding:12px 26px;background:#4276b5;'+
+    'color:#fff;border-radius:10px;font-weight:700;text-decoration:none">PeakWeather トップページへ</a></div>';
+  return;
+}
 if(!pwGuardPage())return;
 
 const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;

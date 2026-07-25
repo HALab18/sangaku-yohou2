@@ -1,0 +1,15 @@
+このファイルがあると GitHub Pages は Jekyll による変換を行わず、リポジトリの中身を
+そのまま配信する (静的HTMLのみの本サイトでは Jekyll の機能を一切使っていない)。
+
+置いている理由 (2026-07-25 の障害):
+  DEVLOG.md に書いた `{{` という文字列を Jekyll が Liquid の変数開始と解釈して
+  「Liquid syntax error」でビルドが失敗し、**サイト全体が更新されなくなった**。
+  API上は status=building のままで、失敗は Actions の "pages build and deployment" を
+  見ないと分からない。ドキュメントにコード片を書くたびに再発しうるため構造的に止める。
+
+副次的な効果:
+  - CLAUDE.md / DEVLOG.md / skill/*.md が Jekyll にHTMLページ化されなくなる
+  - ビルドが速くなる
+
+確認コマンド:
+  gh run list --repo HALab18/sangaku-yohou2 --limit 3   # 公開後は必ず success を確認する
