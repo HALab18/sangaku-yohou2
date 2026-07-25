@@ -23,7 +23,8 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 
 | パス | 役割 |
 |---|---|
-| `index.html` | Webアプリ本体（単一HTML。CSS/JS内包。CLIと同じ判定ロジックをJSで実装） |
+| `index.html` | Webアプリ本体（CSS/JS内包。CLIと同じ判定ロジックをJSで実装。ゲートのみ `gate.js` に外出し） |
+| `gate.js` | 規約同意＋認証コードの共通ゲート。**認証定数(AUTH_VER/SALT/HASH)はここが唯一の置き場**。`index.html`・`docs/find.html`・`docs/point.html` が読み込む |
 | `scripts/mountain_weather.py` | CLI本体。`--name`/`--lat --lon --elev` で予報を出力（`--html`でレポート保存） |
 | `references/mountains.csv` | 内蔵山岳DB（**BOM付きUTF-8・CRLF**）。列: name,yomi,pref,lat,lon,elev |
 | `references/criteria.md` | 登山指数A/B/Cの判定基準（閾値の根拠） |
@@ -44,7 +45,16 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 3. **CLIとWebの判定ロジックは同一に保つ。** 片方だけ閾値やロジックを変えない。基準変更は
    `references/criteria.md`・CLI・index.html・図解ページを揃える。
 4. **CLI本体に第三者パッケージを足さない**（依存ゼロを維持）。保守スクリプト側はOK。
-5. **座標変更・DB編集をしたら必ず `python scripts/check_mountains.py` を通す**（形式・CLI/Web同期・DEM照合）。
+5. **座標変更・DB編集をしたら必ず `python scripts/check_mountains.py` を通す**
+   （形式・CLI/Web同期・自動生成ページの同期・DEM照合）。
+6. **`docs/find.html` と `docs/mountains.html` は自動生成物。直接編集しない。**
+   修正は `scripts/gen_find.py` / `scripts/gen_mountain_list.py` に入れて再生成する。
+   生成物だけ直すと次の再生成で消える（実際に find.html の z-index 修正がこれで失われた）。
+   `check_mountains.py` の「[3/4] 自動生成ページの同期」がこのずれを検出する。
+7. **認証コードの定数は `gate.js` にのみ置く。** index.html や各ページに複製しない
+   （複製すると年次更新の漏れで「認証済みなのに弾かれる」事故になる）。
+   新しく操作系ページを足すときは `<script src="…/gate.js">` を読み、
+   本体スクリプトの先頭で `if(!pwGuardPage())return;` を入れること。
 
 ## 山岳DB拡張パイプライン
 

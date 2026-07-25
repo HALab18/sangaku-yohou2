@@ -6,6 +6,15 @@
 <title>改訂履歴 — PeakWeather</title>
 <link rel="icon" type="image/png" href="../icons/favicon-32.png">
 <meta name="theme-color" content="#1e2d4a">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-B4FYN1EJ2S');
+</script>
 <style>
 :root{--night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
   --bg:#f4f6f9;--line:#dee4ee}
@@ -46,6 +55,25 @@ footer a{color:var(--link)}
 <main>
 
 <p class="note">主な機能の追加・変更のみを記載しています。細かな修正・調整は省略しています。</p>
+
+<h2>2026年7月25日</h2>
+<ul>
+<li><a href="find.html">「天気の良い山をさがす」</a>と<a href="point.html">「座標を指定して予報」</a>も、
+  トップページでの利用規約への同意と認証コードの入力を済ませてからご利用いただく形に変更しました
+  （これまでこの2ページだけは入力なしで開けてしまっていました。
+  認証は端末ごとに初回の1回のみで、済んでいる方の操作は今までどおりです）</li>
+<li>個別予報の「← 天気で山さがしの一覧に戻る」ボタンを、
+  <b>実際に一覧から移動してきたときだけ</b>表示するようにしました
+  （一度一覧を使うと、その後トップページで普通に検索した予報にも出続けていました）</li>
+<li><a href="find.html">「天気の良い山をさがす」</a>の表を横スクロールしたときに、
+  天気などの見出しが「山名 / スコア」の見出しに重なってしまう問題を修正しました</li>
+<li>サービスの改善に役立てるため、アクセス解析ツール（Googleアナリティクス）を導入しました。
+  どのページがよく見られているか、どの山がよく検索されているかといった統計情報を集めます。
+  <b>「現在地の予報」「座標を指定して予報」で扱う位置情報（緯度・経度）は送信しません。</b>
+  詳細と解析を停止する方法は<a href="terms.html">利用規約</a>第7条をご確認ください
+  （この追加に伴い、利用規約に第7条「アクセス解析ツールの利用」を新設し、
+  以降の条番号を1つずつ繰り下げました）</li>
+</ul>
 
 <h2>2026年7月24日</h2>
 <ul>
@@ -113,7 +141,7 @@ footer a{color:var(--link)}
 <li>ソースコードのライセンスをMIT Licenseから独自の利用許諾条件に変更しました
   （引き続き無償でご利用いただけますが、著作権は放棄しません。
   複製・改変・再配布・商用利用には事前の許諾が必要です）。
-  <a href="terms.html">利用規約</a>第7条をご確認ください</li>
+  <a href="terms.html">利用規約</a>第8条をご確認ください</li>
 </ul>
 
 <h2>2026年7月17日</h2>

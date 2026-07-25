@@ -81,12 +81,17 @@ def build_sections(grouped):
     return "\n\n".join(sections)
 
 
-def main():
+def build_html():
+    """docs/mountains.html の中身を組み立てて返す(ファイルには書かない)。
+
+    check_mountains.py の「生成物ドリフト検査」がこれを呼び、docs/mountains.html と
+    突き合わせる。生成物を直接編集して再生成で消える事故を検出するため。
+    """
     mountains = load_mountains()
     grouped = group_by_region(mountains)
     total = len(mountains)
 
-    html = f"""<!doctype html>
+    return f"""<!doctype html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -95,7 +100,17 @@ def main():
 <meta name="description" content="PeakWeather が内蔵データベースで対応している全{total}座の一覧。山名をタップすると山頂・稜線の気象予報を表示します。">
 <link rel="icon" type="image/png" href="../icons/favicon-32.png">
 <meta name="theme-color" content="#1e2d4a">
-<!-- このファイルは scripts/gen_mountain_list.py により index.html から自動生成されます。直接編集しないでください -->
+<!-- このファイルは scripts/gen_mountain_list.py により index.html から自動生成されます。直接編集しないでください
+     (直接編集すると次回の再生成で消えます。修正は必ず scripts/gen_mountain_list.py 側に入れること) -->
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){{dataLayer.push(arguments);}}
+  gtag('js', new Date());
+
+  gtag('config', 'G-B4FYN1EJ2S');
+</script>
 <style>
 :root{{--night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
   --btn:#4276b5;--bg:#f4f6f9;--line:#dee4ee;--field:#c9d2e0}}
@@ -209,15 +224,24 @@ footer a{{color:var(--link)}}
     hits.hidden=!v;
     hits.textContent=v?("全"+total+"座中 "+n+"座が該当"):"";
   }});
+  // 山名リンクを押したとき、遷移先(index.html)に「この一覧から来た」ことを1回だけ伝える。
+  // アクセス解析で「山一覧からの検索数」を数えるために使う(index.html側で読んだら即削除)。
+  document.addEventListener("click",function(e){{
+    var a=e.target.closest?e.target.closest("td.nm a"):null;
+    if(a)try{{sessionStorage.setItem("pw_entry","list")}}catch(err){{}}
+  }});
 }})();
 </script>
 
 </body>
 </html>
 """
-    OUT.write_text(html, encoding="utf-8", newline="\n")
+def main():
+    mountains = load_mountains()
+    grouped = group_by_region(mountains)
+    OUT.write_text(build_html(), encoding="utf-8", newline="\n")
     counts = "、".join(f"{r}{len(grouped[r])}" for r, _ in REGIONS if grouped[r])
-    print(f"docs/mountains.html を生成しました (全{total}座: {counts})")
+    print(f"docs/mountains.html を生成しました (全{len(mountains)}座: {counts})")
 
 
 if __name__ == "__main__":

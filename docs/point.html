@@ -7,6 +7,16 @@
 <meta name="description" content="国土地理院の地理院地図などで調べた緯度経度を貼り付けると、その地点の山岳気象予報を表示します。">
 <link rel="icon" type="image/png" href="../icons/favicon-32.png">
 <meta name="theme-color" content="#1e2d4a">
+<script src="../gate.js"></script>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-B4FYN1EJ2S');
+</script>
 <style>
 :root{--night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
   --btn:#4276b5;--btn-d:#3a68a3;--sel:#dceaf9;--bg:#f4f6f9;--line:#dee4ee;--field:#c9d2e0}
@@ -136,6 +146,11 @@ footer a{color:var(--link)}
 
 <script>
 "use strict";
+// 規約同意・認証コードが済んでいなければ、フォームを出さず案内に差し替えて何も配線しない
+// (このページ自体はAPIを叩かないが、index.html を素通しで動かす入口になるため塞ぐ)
+(function(){
+if(!pwGuardPage())return;
+
 const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
 const md=d=>`${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")}`;
@@ -188,11 +203,16 @@ document.getElementById("f").addEventListener("submit",e=>{
   if(label)sessionStorage.setItem("pw-coord-label",label);
   else sessionStorage.removeItem("pw-coord-label");
 
+  // 遷移先(index.html)に「座標指定から来た」ことを1回だけ伝える。
+  // 戻り導線の出し分けとアクセス解析の入口集計に使う(index.html側で読んだら即削除される)
+  sessionStorage.setItem("pw_entry","point");
+
   const date=document.getElementById("mdate").value;
   const step=document.querySelector('input[name="mstep"]:checked').value;
   const hash=`${lat},${lon}${elev!=null?","+elev:""}/${date}${step==="1"?"/1h":""}`;
   location.href=`../index.html#${hash}`;
 });
+})();
 </script>
 </body>
 </html>

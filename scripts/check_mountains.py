@@ -4,7 +4,10 @@
 チェック内容:
   1. CSVの形式 (名前の重複・空欄・緯度経度標高が日本の範囲内か)
   2. index.html 内蔵DB(MOUNTAINS配列)との同期 (CSVと1件ずつ突き合わせ)
-  3. Open-Meteo Elevation API による標高の照合
+  3. 自動生成ページ(docs/find.html・docs/mountains.html)が生成元と一致しているか
+     - 生成物を直接編集すると、次に生成スクリプトを流した時点で修正が消える。
+       実際に find.html の z-index 修正がこの経路で失われた前例があるため検査する
+  4. Open-Meteo Elevation API による標高の照合
      - 座標が山頂から外れていると、その地点のDEM標高がCSVの山頂標高より
        大幅に低くなることを利用して座標ミスを検出する
      - DEMはCopernicus GLO-90 (90m格子) のため、尖った岩峰(槍ヶ岳・剱岳・権現岳等)は
@@ -88,6 +91,26 @@ def check_sync(rows):
     return errors
 
 
+def check_generated():
+    """自動生成ページが生成元と一致しているか(生成物の直接編集を検出する)
+
+    生成物を手で直すと再生成で消える。差分が出たら「生成元(scripts/gen_*.py)に
+    修正を入れ直してから再生成する」のが正しい直し方。
+    """
+    import gen_find
+    import gen_mountain_list
+    errors = []
+    for mod, path in ((gen_find, ROOT / "docs" / "find.html"),
+                      (gen_mountain_list, ROOT / "docs" / "mountains.html")):
+        expected = mod.build_html()
+        actual = path.read_text(encoding="utf-8")
+        if expected != actual:
+            errors.append(
+                f"{path.relative_to(ROOT).as_posix()} が {Path(mod.__file__).name} の出力と一致しません"
+                f" (生成元を直して python scripts/{Path(mod.__file__).name} を実行してください)")
+    return errors
+
+
 def fetch_elevations(chunk):
     """1チャンク分のDEM標高を取得。429/5xx は RETRY_WAITS の間隔で再試行する"""
     q = urllib.parse.urlencode({
@@ -137,19 +160,25 @@ def main():
     ng = False
 
     fmt = check_format(rows)
-    print(f"\n[1/3] CSV形式: {'OK' if not fmt else f'{len(fmt)}件のエラー'}")
+    print(f"\n[1/4] CSV形式: {'OK' if not fmt else f'{len(fmt)}件のエラー'}")
     for e in fmt:
         print(f"  ✕ {e}")
     ng = ng or bool(fmt)
 
     sync = check_sync(rows)
-    print(f"[2/3] index.html との同期: {'OK' if not sync else f'{len(sync)}件のずれ'}")
+    print(f"[2/4] index.html との同期: {'OK' if not sync else f'{len(sync)}件のずれ'}")
     for e in sync:
         print(f"  ✕ {e}")
     ng = ng or bool(sync)
 
+    gen = check_generated()
+    print(f"[3/4] 自動生成ページの同期: {'OK' if not gen else f'{len(gen)}件のずれ'}")
+    for e in gen:
+        print(f"  ✕ {e}")
+    ng = ng or bool(gen)
+
     suspects, warns = check_elevation(rows)
-    print(f"[3/3] DEM標高照合 (Open-Meteo Elevation API): "
+    print(f"[4/4] DEM標高照合 (Open-Meteo Elevation API): "
           f"{'OK' if not suspects and not warns else f'疑い{len(suspects)}件 / 要確認{len(warns)}件'}")
     for e in suspects:
         print(f"  ✕ {e}")

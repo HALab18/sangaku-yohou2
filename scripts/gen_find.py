@@ -47,7 +47,18 @@ TEMPLATE = r"""<!doctype html>
 <meta name="description" content="エリアと日付を指定すると、その日にコンディションの良さそうな山を晴天度でランキング表示。気になる山をタップするとその山頂・稜線の詳しい気象予報へ。">
 <link rel="icon" type="image/png" href="../icons/favicon-32.png">
 <meta name="theme-color" content="#1e2d4a">
-<!-- このファイルは scripts/gen_find.py により index.html から自動生成されます。直接編集しないでください -->
+<!-- このファイルは scripts/gen_find.py により index.html から自動生成されます。直接編集しないでください
+     (直接編集すると次回の再生成で消えます。修正は必ず scripts/gen_find.py 側に入れること) -->
+<script src="../gate.js"></script>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-B4FYN1EJ2S');
+</script>
 <style>
 :root{--night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
   --btn:#4276b5;--bg:#f4f6f9;--line:#dee4ee;--field:#c9d2e0}
@@ -115,6 +126,9 @@ th:first-child,td.rank{width:34px;min-width:34px;max-width:34px;padding-left:6px
 th:first-child,td.rank{position:sticky;left:0}
 th:nth-child(2),td.nm{position:sticky;left:34px}
 td.rank,td.nm{z-index:1}
+/* sticky-left の角セル(th)は sticky-top の他ヘッダ(z-index:2)より前面に置き、
+   横スクロール時に天気以降の列ヘッダが山名/ランク列の下に潜るようにする(index.htmlと同方式)。 */
+th:first-child,th:nth-child(2){z-index:3}
 /* 偶数行の背景色が透けないよう明示 (sticky で親の背景が引き継がれないため) */
 tr:nth-child(even) td.rank,tr:nth-child(even) td.nm{background:#eef1f6}
 /* 山名列の右端に境界線 (横スクロール時に固定範囲の右端が視認しやすい) */
@@ -242,6 +256,12 @@ footer a{color:var(--link)}
 <script>
 "use strict";
 (function(){
+  // 規約同意・認証コードが済んでいなければ、ここで打ち切って案内に差し替える。
+  // このページは Open-Meteo を最大50地点×N回まとめて叩くため、
+  // 未認証のまま素通しにすると認証ゲートが守っている無料利用枠が最も削られる。
+  // 以降のセレクタ生成・検索・前回条件の自動復元は一切実行しない。
+  if(!pwGuardPage())return;
+
   var MOUNTAINS=__MOUNTAINS_JSON__;
   var REGION_ORDER=__REGION_ORDER__;
   var CHUNK=50;                 // 1リクエストあたりの最大地点数(負荷抑制)
@@ -665,8 +685,11 @@ footer a{color:var(--link)}
       var cautionN=rows.length-safeN;
       elStatus.textContent=r+(p?" / "+p:"")+" の "+date+" — 登れそう "+safeN+"座"+
         (cautionN?" / 要慎重 "+cautionN+"座":"");
+      // アクセス解析: 前回条件の自動復元(fromRestore)は利用者の検索操作ではないので数えない
+      if(!fromRestore)pwTrack("find_search",{pw_region:r,pw_result:"success"});
     }catch(e){
       elStatus.className="err";elStatus.textContent=String(e.message||e);
+      if(!fromRestore)pwTrack("find_search",{pw_region:r,pw_result:"error"});
     }finally{elGo.disabled=false}
   }
 
@@ -675,13 +698,12 @@ footer a{color:var(--link)}
     var m=row.mt,s=row.sc;
     var href="../index.html#"+encodeURIComponent(m.n)+"/"+date;
     var wx=dispWx(s);
-    var oc=' onclick="sessionStorage.setItem(\'pw_from_find\',\'1\')"';
     var reason=caution?'<td class="reason">⚠ '+esc(reasonLabel(s))+'</td>':'';
     return '<tr>'+
       '<td class="rank">'+(i+1)+'</td>'+
       '<td class="nm">'+
         '<div class="nmrow">'+
-          '<a href="'+href+'"'+oc+'>'+esc(m.n)+'</a>'+
+          '<a href="'+href+'">'+esc(m.n)+'</a>'+
           '<span class="scb rank-'+rankOf(s.v)+'">'+s.v+'</span>'+
         '</div>'+
         '<small>'+esc(m.pref)+' / '+m.el+'m</small>'+
@@ -761,6 +783,14 @@ footer a{color:var(--link)}
 
   elGo.addEventListener("click",function(){search(false)});
 
+  // 山名リンクを押したとき、遷移先(index.html)に「この一覧から来た」ことを1回だけ伝える。
+  // index.html 側は読んだ直後に削除するので、その回の詳細予報にだけ「一覧に戻る」が出る。
+  // 行ごとの onclick 属性ではなく委譲リスナー1本にして、生成HTMLを軽く保つ。
+  elResults.addEventListener("click",function(e){
+    var a=e.target.closest?e.target.closest("td.nm a"):null;
+    if(a)try{sessionStorage.setItem("pw_entry","find")}catch(err){}
+  });
+
   // ---- 直近の検索条件を自動復元 ----
   // find.html を再訪した時 (bfcache が効かず新規ロードされたケース)、前回の検索条件を
   // sessionStorage から読んでセレクタを復元し、対応する cacheKey にヒットすれば
@@ -802,9 +832,13 @@ footer a{color:var(--link)}
 """
 
 
-def main():
+def build_html():
+    """docs/find.html の中身を組み立てて返す(ファイルには書かない)。
+
+    check_mountains.py の「生成物ドリフト検査」がこれを呼び、docs/find.html と
+    突き合わせる。生成物を直接編集して再生成で消える事故を検出するため。
+    """
     mountains = load_mountains()
-    total = len(mountains)
     mountains_json = build_mountain_json(mountains)
     region_order = json.dumps([name for name, _ in REGIONS], ensure_ascii=False)
     # 県の表示順は REGIONS の定義順(北→南)で安定させる
@@ -814,13 +848,17 @@ def main():
     pref2region = json.dumps({p: name for name, prefs in REGIONS for p in prefs},
                              ensure_ascii=False)
 
-    html = (TEMPLATE
+    return (TEMPLATE
             .replace("__MOUNTAINS_JSON__", mountains_json)
             .replace("__REGION_ORDER__", region_order)
             .replace("__PREF_ORDER__", pref_order)
             .replace("__PREF2REGION__", pref2region))
+
+
+def main():
+    html = build_html()
     OUT.write_text(html, encoding="utf-8", newline="\n")
-    print(f"docs/find.html を生成しました (全{total}座 / 横断検索ページ)")
+    print(f"docs/find.html を生成しました (全{len(load_mountains())}座 / 横断検索ページ)")
 
 
 if __name__ == "__main__":

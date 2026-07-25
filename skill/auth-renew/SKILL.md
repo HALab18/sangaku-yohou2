@@ -1,6 +1,6 @@
 ---
 name: peakweather-auth-renew
-description: PeakWeather(sangaku-yohou) Web版の認証コード(Open-Meteo無料枠保護のためのゲート。index.htmlのAUTH_VER/AUTH_SALT/AUTH_HASH)を更新するスキル。「認証コードを更新して」「PeakWeatherの認証コードを改定して」「認証コードを年次更新して」「認証コードをローテーションして」など、利用者向け認証コードの差し替え依頼で必ず使うこと。新コード生成・index.html更新・DEVLOG記録・YAMAPモーメント貼り付け文の作成・公開(push)確認までを一気通貫で行う。
+description: PeakWeather(sangaku-yohou) Web版の認証コード(Open-Meteo無料枠保護のためのゲート。gate.jsのPW_AUTH_VER/PW_AUTH_SALT/PW_AUTH_HASH)を更新するスキル。「認証コードを更新して」「PeakWeatherの認証コードを改定して」「認証コードを年次更新して」「認証コードをローテーションして」など、利用者向け認証コードの差し替え依頼で必ず使うこと。新コード生成・index.html更新・DEVLOG記録・YAMAPモーメント貼り付け文の作成・公開(push)確認までを一気通貫で行う。
 ---
 
 <!--
@@ -10,25 +10,29 @@ description: PeakWeather(sangaku-yohou) Web版の認証コード(Open-Meteo無�
 
 # 認証コード更新スキル (peakweather-auth-renew)
 
-PeakWeather Web版（`{{REPO_PATH}}\index.html`）は、Open-Meteoの無料APIの利用枠を守るため、
+PeakWeather Web版は、Open-Meteoの無料APIの利用枠を守るため、
 初回のみ認証コードの入力を求めるゲートを持つ（[DEVLOG.md](../../DEVLOG.md) 2026-07-18参照）。
 コード本体はソースに置かず、ソルト付きPBKDF2-SHA256ハッシュのみを埋め込む方式。
 年1回程度、コードを変更（ローテーション）する運用のための自動化スキル。
+
+**定数の置き場は `{{REPO_PATH}}\gate.js` の1ファイルだけ**（2026-07-25にindex.htmlから移設）。
+`index.html` / `docs/find.html` / `docs/point.html` がこの `gate.js` を読み込んで判定するため、
+gate.js を差し替えれば全ページに反映される。他のファイルに定数を複製しないこと。
 
 ## 前提知識
 
 - コード本体はリポジトリ・コミットメッセージ・DEVLOGに**絶対に書かない**（公開リポジトリのため）。
   伝達先はチャット（実行者）とYAMAPモーメント（閲覧許可制）のみ
-- `AUTH_VER` を変えるだけで全利用者のlocalStorageの認証済み印が無効になり、
+- `PW_AUTH_VER` を変えるだけで全利用者のlocalStorageの認証済み印が無効になり、
   次回アクセス時に自動で再入力を求められる（利用者側の追加操作は不要）
-- 生成パラメータ（trim+大文字化 / PBKDF2-SHA256 / 反復30万回）はJS側(index.html)と
+- 生成パラメータ（trim+大文字化 / PBKDF2-SHA256 / 反復30万回）はJS側(gate.js の `pwHashAuthCode`)と
   `scripts/gen_auth_hash.py` で完全に一致させること。どちらか片方だけ変えると認証不能になる
 - このコード更新自体は「大きな機能追加」ではないため、`docs/history.html`（改訂履歴ページ）
   には**記載しない**（ユーザー方針：セキュリティ・内部運用系の変更は掲載除外）
 
 ## 手順
 
-1. **現状確認**: `{{REPO_PATH}}\index.html` 内の `AUTH_VER` 定数を読み、現在の年版を把握する。
+1. **現状確認**: `{{REPO_PATH}}\gate.js` 内の `PW_AUTH_VER` 定数を読み、現在の年版を把握する。
    `git status` で作業ツリーがクリーンなことを確認する（未コミットの変更があれば先にユーザーに確認）。
 2. **新コード生成**:
    ```
@@ -37,9 +41,10 @@ PeakWeather Web版（`{{REPO_PATH}}\index.html`）は、Open-Meteoの無料API�
    通常は年版指定なし（今日の西暦年が使われる）。同一年内での追加ローテーション等、
    特定の年版にしたい場合のみ `--ver 2027b` のように指定する。
    出力される `AUTH_VER` / `AUTH_SALT` / `AUTH_HASH` の3行と、コード本体をメモする。
-3. **index.html を更新**: 同ファイル内の既存の3定数宣言（`AUTH_KEY` 定数の直後にある
-   `AUTH_VER="…", AUTH_SALT="…", AUTH_HASH="…"`）を、生成した新しい値に差し替える。
-   `AUTH_KEY` と `AUTH_ITER` は変更しない。
+3. **gate.js を更新**: 同ファイル内の既存の3定数宣言（`PW_AUTH_KEY` 定数の直後にある
+   `PW_AUTH_VER="…", PW_AUTH_SALT="…", PW_AUTH_HASH="…"`）を、生成した新しい値に差し替える。
+   `PW_AUTH_KEY` と `PW_AUTH_ITER` は変更しない。
+   **index.html や docs/ 配下には定数は無い**ので他のファイルは触らない。
 4. **DBチェック**（規約5の一環。認証まわりは対象外だが習慣として通す）:
    ```
    python {{REPO_PATH}}\scripts\check_mountains.py
@@ -70,6 +75,6 @@ PeakWeather Web版（`{{REPO_PATH}}\index.html`）は、Open-Meteoの無料API�
   ローカル確認では認証が機能しないため、確認は `python -m http.server` 等を介して行う
   （`.claude/launch.json` の `static` 設定を流用可能）
 - 生成スクリプトの反復回数(`ITERATIONS`)や正規化方式を変更する場合は、
-  index.html側の `hashAuthCode()` と `AUTH_ITER` も必ず同時に変更すること
+  gate.js側の `pwHashAuthCode()` と `PW_AUTH_ITER` も必ず同時に変更すること
 - コードは7文字・紛らわしい文字（0/O, 1/I/L）を除いた大文字英数字が標準仕様。
   文字数や許容文字種を変える場合はJS側の入力欄(`maxlength`等)や案内文言との整合も確認する

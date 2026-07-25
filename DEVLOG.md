@@ -5,7 +5,138 @@
 
 ---
 
-## ▶ 次の再開ポイント: 16日間の見通しを既定7日表示に (表示まわり3件)
+## ▶ 次の再開ポイント: ゲート全ページ適用 / 戻り導線修正 / z-index回帰 / GA4導入
+
+**現状**: 作業ブランチ `claude/mountain-app-fixes-analytics-9bfcb5`。**master 未反映・未 push**。
+`check_mountains.py` 通過 (形式OK / index同期OK / 生成物同期OK / 疑い0件・要確認11件は岩峰の既知分)。
+
+**次にやること**: master へ push（`git push origin claude/mountain-app-fixes-analytics-9bfcb5:master`）。
+push 後、GA4 管理画面でカスタムディメンション3つ（`pw_entry` / `pw_result` / `pw_region`、
+スコープ=イベント）を登録する。**登録前に発生したデータは集計されない**ので公開直後に行うこと。
+
+### 0. 作業開始時のブランチ元が古かった（次回のための教訓）
+
+このセッションのワークツリーは**ローカルの古い `master`(`dc4699a`)** から切られており、
+`origin/master` に既にあった `92aa7be`（16日間の見通しの折りたたみ）と `000a280`（そのDEVLOG）を
+含んでいなかった。そのため作業中の index.html から折りたたみ機能が消えて見え、
+ユーザーの指摘で発覚した。**`git push origin <branch>:master` は fast-forward でしか通らないので
+公開が壊れることはなかった**（push は弾かれていたはず）が、気づかなければ原因不明の失敗になる。
+
+対処: cherry-pick ではなく **`git rebase origin/master`** で正した
+（cherry-pick だと `000a280` が祖先に入らず、結局 fast-forward できない）。
+DEVLOG のみ競合したので、先頭の「▶ 次の再開ポイント」を本セッションのものに差し替え、
+16日間の折りたたみの記録は「反映済み」セクションとして残した。
+
+**次回以降**: ワークツリーを作る前に `git fetch origin && git log --oneline origin/master -1` を見て、
+ローカル `master` が `origin/master` に追いついているか確認すること。
+ローカル `master` の位置は当てにしない。
+
+### 1. 認証・規約ゲートの穴を塞いだ（報告された最重要の不具合）
+
+**症状**: 規約同意も認証コードも無しで `docs/find.html`（天気の良い山をさがす）と
+`docs/point.html`（座標で予報）が素通しで使えた。find.html は自前で Open-Meteo を
+50地点×Nチャンクでバッチ取得するため、**ゲートが守ろうとしている無料枠を最も消費する
+ページが完全に無防備**という状態だった。原因は、ゲートが index.html の `#appwrap` に
+`inert` を付ける仕組みしか無く、docs/ 配下の各ページが独立したHTMLだったこと。
+
+**対応**:
+1. **`gate.js` をリポジトリ直下に新設**（この変更で index.html は単一HTMLではなくなった）。
+   `PW_AGREE_KEY` / `PW_AUTH_KEY` / `PW_AUTH_VER` / `PW_AUTH_SALT` / `PW_AUTH_HASH` /
+   `PW_AUTH_ITER` と `pwHashAuthCode()` / `pwGateOk()` / `pwGuardPage()` / `pwTrack()` を集約。
+   **認証定数の唯一の置き場をここにした**（値は据え置き＝既存利用者の再入力は発生しない）。
+   複数箇所に複製すると年次更新の漏れで「認証済みなのに弾かれる」事故になるため。
+   `skill/auth-renew/SKILL.md` の手順3の対象を index.html → gate.js に書き換え済み。
+2. **サブページのガード**: `docs/find.html`(gen_find.py) と `docs/point.html` の本体スクリプト
+   先頭で `if(!pwGuardPage())return;`。未通過なら `<main>` を案内に差し替え、
+   **イベント登録も fetch も一切行わない**。実測で open-meteo へのリクエスト0件を確認。
+3. **index.html の多重防御**: `inert` は Safari 15.4 以前が未対応で、その場合
+   `pointer-events:none` しか効かずキーボード操作でフォーム送信が通ってしまう。
+   `#f.onsubmit` / `locateAndGo()` / `locateCoordAndGo()` / `go()` / `applyHash()` の
+   **5つの実行入口すべてに `if(!pwGateOk())return;`** を入れた。
+   コンソールから `requestSubmit()` / `gps.click()` を直接叩いても走らないことを確認済み。
+4. **ゲート外リンクの封鎖**: ヒーローの「天気の良い山をさがす」とフッターの「座標で予報」は
+   `#appwrap` の外にあり inert が効かない。`data-gatelink` を付け `sync()` で `.gate-off`
+   （淡色 + `aria-disabled`）を付け外しし、クリックは握りつぶして同意欄へスクロールする。
+   `pointer-events:none` にしなかったのは「なぜ押せないか」を案内できなくなるため。
+
+**ゲート対象の線引き**（ユーザー確認済み）: 操作3ページ（index / find / point）のみ。
+`docs/mountains.html` は閲覧専用でAPIを叩かず、リンク先の `../index.html#山名` は
+`applyHash()` のガードで保護されるため対象外。解説ページ（find-score / how-it-works /
+terms / history）も対象外。
+
+### 2. 「一覧に戻る」の誤表示を修正
+
+**症状**: 一度でも find.html から山を開くと、その後トップページで普通に検索しただけの
+予報にも「← 天気で山さがしの一覧に戻る」が出続けた。
+**原因**: `sessionStorage.pw_from_find` が立てっぱなしのフラグで、消す処理が無かった。
+
+**対応**: `pw_from_find` を廃止し、**1回だけ消費する入口マーカー `pw_entry`** に置き換えた。
+- 書き込み: find.html / mountains.html は結果テーブルへの**委譲リスナー1本**
+  （行ごとの `onclick` 属性をやめたので生成HTMLも軽くなった）、point.html は submit 時。
+- 読み取り: index.html のスクリプト先頭で1回読んで**即 `removeItem`**、変数 `ENTRY` に保持。
+  既定値は `"link"`（共有URL・直接アクセス）。`#f.onsubmit` で `"form"`、GPSで `"gps"` に上書き。
+- 戻りリンクの条件を `ENTRY==="find"` に変更。
+
+**ハマりどころ**: `applyHash()` は `f.requestSubmit()` でフォームを自動送信するため、
+素朴に onsubmit で `ENTRY="form"` にすると **find 経由なのに戻りリンクが消える**。
+`fromHashSubmit` フラグでハッシュ由来の自動送信を除外している。ここを触るときは要注意。
+
+**確認**: find経由=出る / その後フォーム検索=出ない / リロード=出ない / 共有URL=出ない。
+
+### 3. find.html の z-index 回帰（同じ不具合の2回目）
+
+**症状**: 横スクロールで天気列ヘッダが山名/ランク列ヘッダに重なる。コミット e94bb88 で
+修正済みだったのに再発した。
+**真因**: e94bb88 が**生成物 `docs/find.html` だけを編集**しており、生成元
+`scripts/gen_find.py` に入っていなかった。その後の再生成で消えた。
+
+**対応**:
+- `gen_find.py` の CSS に `th:first-child,th:nth-child(2){z-index:3}` を入れて再生成
+  （index.html:198 の詳細表と同じ方式）。
+- **再発防止**: `check_mountains.py` に **[3/4] 自動生成ページの同期** を追加。
+  `gen_find.build_html()` / `gen_mountain_list.build_html()` の出力と
+  `docs/find.html` / `docs/mountains.html` を突き合わせ、差があればエラーにする。
+  そのため両スクリプトを「組み立てる `build_html()`」と「書き出す `main()`」に分割した。
+  find.html に1行足して検出されること・再生成で解消することを実際に確認済み。
+- `CLAUDE.md` の厳守規約に 6.（生成物を直接編集しない）と 7.（認証定数は gate.js のみ）を追加。
+
+### 4. Google Analytics 4 (G-B4FYN1EJ2S) を導入
+
+計測タイミングは**ページを開いた時点から**（ユーザー確認済み。同意後のみにすると
+①日別利用者数が「認証済みの人だけ」になり離脱や初見の訪問者が見えなくなるため）。
+
+- **基本タグ**: 全9ページの `<head>` に公式スニペット。生成ページは生成元(gen_find.py /
+  gen_mountain_list.py)に入れた（Pythonのf-string側は `{{` エスケープが要る点に注意）。
+- **`search` イベント**（index.html・予報1回につき1件）:
+  `search_term`(山名) / `pw_entry`(form/find/list/point/gps/link) / `pw_result`(success/notfound/error)。
+  `search_term` はGA4組み込みディメンションなので⑥山ランキングは登録不要で見られる。
+- **`find_search` イベント**（find.html・エリア検索1回につき1件）: `pw_region` / `pw_result`。
+  前回条件の自動復元(`search(true)`)では送らない＝実リクエスト相当の回数になる。
+- ①⑦⑧⑨（利用者数・デバイス・地域・新規/リピーター）はGA4標準で追加コード不要。
+
+**位置情報を送らないための2段構え**（利用規約 第6条2項との整合。触るときは必ず維持すること）:
+1. GPS・座標指定の `search_term` は `"(現在地)"` / `"(座標指定)"` の固定文字列に置換。
+   市町村名（「指定地点（大町市）」等）も送らない。
+2. **index.html の `gtag('config')` で `page_location` からURLフラグメントを落とす**
+   （`location.origin + location.pathname`）。既定のままだと `#36.4067,137.7127/日付` が
+   そのまま `dl=` パラメータでGAへ送られてしまう。実際に検証中に見つけて塞いだ。
+   `/g/collect` のクエリに座標が含まれないことを実測で確認済み。
+
+**GA4管理画面で必要な作業（コードでは完結しない）**: 管理 > カスタム定義 >
+カスタムディメンションを作成（スコープ=イベント）で `pw_entry`（検索の入口）/
+`pw_result`（検索結果）/ `pw_region`（エリア）の3つを登録する。
+
+### 5. 利用規約の改訂
+
+`docs/terms.html` に **第7条（アクセス解析ツールの利用）を新設**し以降を繰り下げ（全10条）。
+Cookie利用・収集する統計情報の範囲・**位置情報は送らない旨**・Googleのポリシーへのリンク・
+オプトアウト手段・電気通信事業法の外部送信規律への対応を記載。最終更新日を2026-07-25に。
+条番号がずれるため `docs/history.html` の「利用規約第7条をご確認ください」を第8条に追随修正した
+（第6条を追加した2026-07-18と同じ繰り下げ方式）。
+
+---
+
+## 16日間の見通しを既定7日表示に (表示まわり3件) — 反映済み
 
 **現状**: 作業ブランチ `claude/jinba-weather-display-logic-87a373` → **master 反映済み (`92aa7be`)**。
 GitHub Pages 公開済み。`check_mountains.py` 通過 (疑い0件 / 要確認11件は岩峰の既知分)。
