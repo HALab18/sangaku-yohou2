@@ -209,6 +209,14 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
 .wxconn{color:#6b7280;font-size:.82em;margin:0 .18em;white-space:nowrap}
 .ewnote{background:#f9d9cf;border-left:5px solid #a03415;padding:8px 12px;
   border-radius:0 6px 6px 0;margin:6px 0 14px;font-size:.9em}
+/* 16日間の見通し: 8日目以降の行と開閉ボタン。
+   tr に display を指定する作者スタイルは無いが、意図を残すため [hidden] を明示する */
+.wk-more[hidden]{display:none}
+.wk-toggle{width:100%;padding:9px;font-size:.92em;font-weight:600;border-radius:10px;
+  margin:2px 0 12px;background:#fff;color:var(--link);border:1.5px solid var(--field)}
+.wk-toggle:hover{background:#eef2f8}
+.wk-toggle::after{content:"▾";margin-left:6px;display:inline-block;transition:transform .15s}
+.wk-toggle[aria-expanded="true"]::after{transform:rotate(180deg)}
 .notice{background:#edf2f9;border-left:5px solid var(--slate);color:#44506b;padding:10px 12px;
   border-radius:0 6px 6px 0;margin:18px 0;font-size:.9em}
 footer{color:#888;font-size:.82em;margin-top:8px}
@@ -791,12 +799,23 @@ async function run(mt){
       sf:d.snowfall_sum?.[di],depth:dep.length?Math.max(...dep):null,
       view:best?vhtml(best):"-"});
   }
-  htmlOut+=`<h2>16日間の見通し</h2><div class="tbl"><table>
+  // 既定は先頭7日だけ出し、8日目以降は hidden で畳む(スマホで表が長くなりすぎるため)。
+  // ただし検索した日が8日目以降なら畳む意味がない(目的の日が隠れる)ので最初から開いて描く。
+  const WK_HEAD=7;
+  const wkOpen=rows.length<=WK_HEAD||start>addDays(today,WK_HEAD-1);
+  htmlOut+=`<h2>16日間の見通し</h2><div class="tbl" id="wk-tbl"><table>
     <tr><th>日付</th><th>指数</th><th>天気</th><th>眺望(朝)</th><th>山頂気温</th><th>稜線風max(5-17時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
-  for(const r of rows)htmlOut+=`<tr><td>${md(r.d)}${wj(r.d)}</td><td>${IDX[r.idx]}${r.eve?'<span class="ew"> ⚠夕方</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
+  rows.forEach((r,i)=>{
+    const more=i>=WK_HEAD;
+    htmlOut+=`<tr${more?` class="wk-more"${wkOpen?"":" hidden"}`:""}><td>${md(r.d)}${wj(r.d)}</td><td>${IDX[r.idx]}${r.eve?'<span class="ew"> ⚠夕方</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
     <td>${r.view}</td><td>${f0(r.tmin)}〜${f0(r.tmax)}℃</td><td>${wdir(r.wd)} ${f1(r.ws)}m/s</td>
     <td>${r.pr==null?"-":r.pr.toFixed(1)}mm</td><td>${f0(r.prob)}%</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
+  });
   htmlOut+=`</table></div>`;
+  // 残り日数は rows.length から作る(end_date クランプ等で16日に満たないことがあるため決め打ちしない)
+  if(rows.length>WK_HEAD)
+    htmlOut+=`<button type="button" class="wk-toggle" aria-controls="wk-tbl" aria-expanded="${wkOpen}">`+
+      `${wkOpen?"折りたたむ":`残り${rows.length-WK_HEAD}日を表示`}</button>`;
   if(rows.some(r=>r.eve))htmlOut+=`<p class="ewnote">⚠夕方: 17〜20時に天候の急変(C相当)が予想されます。日中の指数には含めていませんが、下山遅れ・テント泊・ご来光待ちの際は特に注意してください。</p>`;
 
   // 詳細 (表示間隔 step=3 or 1)
@@ -1133,6 +1152,17 @@ function applyHash(){
     requestAnimationFrame(()=>{btn.classList.toggle("show",scrollY>innerHeight*.8);tick=false});
   },{passive:true});
 }
+
+// 16日間の見通しの開閉。#out は検索のたびに innerHTML ごと差し替わるので、
+// ボタン本体ではなく #out に一度だけ委譲で張る(直接張ると次の検索で消える)。
+document.getElementById("out").addEventListener("click",e=>{
+  const btn=e.target.closest(".wk-toggle");if(!btn)return;
+  const open=btn.getAttribute("aria-expanded")!=="true";
+  const more=document.querySelectorAll("#wk-tbl tr.wk-more");
+  more.forEach(tr=>{tr.hidden=!open});
+  btn.setAttribute("aria-expanded",open);
+  btn.textContent=open?"折りたたむ":`残り${more.length}日を表示`;
+});
 
 // ヒーローCTA: ハッシュを変えずにフォームへスクロール (#startが残ると共有URLと紛らわしいため)
 document.querySelector(".hero-cta").addEventListener("click",e=>{
