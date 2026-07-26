@@ -226,6 +226,12 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
 .wxnote{display:block;font-size:.78em;color:#6b7280;margin-top:2px;line-height:1.3}
 .wxico{width:1.15em;height:1.15em;vertical-align:-.22em;margin-right:1px}
 .wxconn{color:#6b7280;font-size:.82em;margin:0 .18em;white-space:nowrap}
+/* 発雷リスク列: アイコン(本数+色)と段階ラベル、下段に CAPE/CIN の実数値を小さく併記。
+   文字色はアイコンより濃い同系色にして白/薄灰の行背景でもコントラストを確保する */
+.lt{display:inline-flex;align-items:center;gap:3px;font-weight:600;white-space:nowrap}
+.lt svg{width:1.9em;height:1.15em;flex:none}
+.lt-0{color:#7b6a00}.lt-1{color:#8a5a00}.lt-2{color:#8f4212}.lt-3{color:#a03415}
+.ltnum{display:block;font-size:.76em;color:#6b7280;margin-top:2px;line-height:1.3}
 .ewnote{background:#f9d9cf;border-left:5px solid #a03415;padding:8px 12px;
   border-radius:0 6px 6px 0;margin:6px 0 14px;font-size:.9em}
 /* 16日間の見通し: 8日目以降の行と開閉ボタン。
@@ -290,6 +296,22 @@ footer a{color:var(--link)}
   <symbol id="wx-thunder" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M7.3 13.5h8.6a3.9 3.9 0 0 0 .4-7.78A5.6 5.6 0 0 0 5.55 4.37 3.85 3.85 0 0 0 7.3 13.5Z" stroke="#8b93a3"/>
     <path d="M12.5 15.5 9.5 20h3l-1 3" stroke="#f5a623"/>
+  </symbol>
+  <!-- 発雷リスク(CAPE+CIN)の4段階アイコン。稲妻の本数(1〜4)と色(黄→赤)の二重表現で、
+       色覚特性によらず段階が伝わるようにしている。低=黄/やや注意=黄橙/注意=橙/高い=赤 -->
+  <symbol id="lt-0" viewBox="0 0 40 24" fill="#f5c542">
+    <path d="M22 2 14 13h5l-2 9 8-11h-5z"/>
+  </symbol>
+  <symbol id="lt-1" viewBox="0 0 40 24" fill="#f0a020">
+    <path d="M15 2 7 13h5l-2 9 8-11h-5z"/><path d="M29 2 21 13h5l-2 9 8-11h-5z"/>
+  </symbol>
+  <symbol id="lt-2" viewBox="0 0 40 24" fill="#e2701a">
+    <path d="M11 2 3 13h5l-2 9 8-11H9z"/><path d="M22 2 14 13h5l-2 9 8-11h-5z"/>
+    <path d="M33 2 25 13h5l-2 9 8-11h-5z"/>
+  </symbol>
+  <symbol id="lt-3" viewBox="0 0 40 24" fill="#c0392b">
+    <path d="M8 2 0 13h5l-2 9 8-11H6z"/><path d="M18 2 10 13h5l-2 9 8-11h-5z"/>
+    <path d="M28 2 20 13h5l-2 9 8-11h-5z"/><path d="M38 2 30 13h5l-2 9 8-11h-5z"/>
   </symbol>
 </svg>
 
@@ -642,6 +664,25 @@ function blockIndex(ws,pr3,cape,th){
   if(cape!=null){if(cape>=1000)worse("C");else if(cape>=500)worse("B")}
   return idx;
 }
+// 発雷リスク(表示専用。A/B/C 指数の判定には使わない。mountain_weather.py の lightning_risk と同一)。
+// CAPE = 対流の「燃料」、CIN = 上昇を抑える「蓋」。燃料が多くても蓋が厚ければ発雷しにくい。
+// そこで CAPE で大枠の段階を決め、蓋が厚いぶんだけ段階を下げる。
+// CAPE の区切りは A/B/C 判定と同じ 500/1000 に、最上段だけ 2500 を足して4段階にしている。
+// CIN 側は「下げる」方向にのみ効かせる。Open-Meteo の convective_inhibition は絶対値(J/kg)で返り、
+// 実データでは中央値 1〜15・約半数が 0 と「蓋なし」が既定状態のため、蓋が薄いことを理由に
+// 段階を上げると、ほぼ全ての時刻が上振れして意味を成さなくなる。
+// ブロック集計側では「蓋が最も薄い時刻」= |CIN| の最小値を渡す(安全側)。
+const LT_LABEL=["低","やや注意","注意","高い"];
+function lightningRisk(cape,cin){
+  if(cape==null)return null;
+  let lv=cape>=2500?3:cape>=1000?2:cape>=500?1:0;
+  if(cin!=null){
+    const a=Math.abs(cin);
+    if(a>=100)lv-=2;else if(a>=50)lv-=1;
+  }
+  lv=Math.max(0,Math.min(3,lv));
+  return{lv,label:LT_LABEL[lv]};
+}
 function feelsLike(temp,ws){
   // 風冷指数(JAG/TI式)。風速4.8km/h未満は気温をそのまま採用
   if(temp==null||ws==null)return temp;
@@ -661,6 +702,15 @@ function viewScore(elev,low,mid,pr3,vis){
   return["○",unkai?"雲海":""];
 }
 const vhtml=([v,n])=>`<span class="${VCLS[v]}">${v}${n?`(${n})`:""}</span>`;
+// 発雷リスク列の表示。上段= アイコン(本数+色)とラベル、下段= 元の CAPE/CIN 値
+function ltCell(lt,cape,cin){
+  if(!lt)return"-";
+  // CIN は API が絶対値で返すが、慣例に合わせて負値表記で見せる(0 は素の 0)
+  const a=cin==null?null:Math.round(Math.abs(cin));
+  const num=`CAPE ${Math.round(cape)}`+(a==null?"":` / CIN ${a===0?0:-a}`);
+  return`<span class="lt lt-${lt.lv}"><svg aria-hidden="true"><use href="#lt-${lt.lv}"/></svg>${lt.label}</span>`+
+    `<span class="ltnum">${num}</span>`;
+}
 function snowCell(depthM,sfCm){
   // 積雪列の表示。「85cm(+12)」= 積雪深85cm・新雪12cm
   if(depthM==null&&sfCm==null)return"-";
@@ -731,7 +781,7 @@ async function run(mt){
   const levels=lo[0]===hi[0]?[lo]:[lo,hi];
   const hourly=["temperature_2m","precipitation","precipitation_probability","weather_code",
     "cloud_cover_low","cloud_cover_mid","cloud_cover_high","wind_speed_10m","wind_gusts_10m",
-    "cape","visibility","snow_depth","snowfall",
+    "cape","convective_inhibition","visibility","snow_depth","snowfall",
     ...levels.flatMap(p=>[`wind_speed_${p[0]}hPa`,`wind_direction_${p[0]}hPa`])];
   status.className="";status.textContent="予報を取得中…";
   const data=await apiJson("https://api.open-meteo.com/v1/forecast",{
@@ -760,7 +810,10 @@ async function run(mt){
     <li>登山指数: <span class="b b-a">A</span>=登山適 / <span class="b b-b">B</span>=要注意(経験者向き・行程短縮検討) / <span class="b b-c">C</span>=登山不適。
       ${seasonTh(start.getMonth()+1).mode}モード基準
       (風 ${seasonTh(start.getMonth()+1).wind.join("/")}m/s・降水 ${seasonTh(start.getMonth()+1).precip.join("/")}mm/3h・CAPE 500/1000)。
-      夏山=6〜10月/冬山・残雪期=11〜5月を対象日の月で自動切替。降水確率は参考表示</li></ul>`;
+      夏山=6〜10月/冬山・残雪期=11〜5月を対象日の月で自動切替。降水確率は参考表示</li>
+    <li>⚡発雷リスク: CAPE(対流の燃料)と CIN(上昇を抑える蓋)から算出した4段階の参考表示
+      (低/やや注意/注意/高い)。指数A/B/Cの判定には使いません
+      (<a href="docs/how-it-works-web.html#lightning">考え方</a>)</li></ul>`;
 
   // 直近実況(モデル解析値・過去3日)
   const pastRows=[];
@@ -858,7 +911,7 @@ async function run(mt){
     const sun=di>=0&&d.sunrise?.[di]?` (日の出${d.sunrise[di].slice(11,16)} / 日の入${d.sunset[di].slice(11,16)})`:"";
     const thD=seasonTh(dt2.getMonth()+1);
     htmlOut+=`<h2>${ds} ${wj(dt2)} ${step===1?"1時間ごと":"3時間ごと"}詳細${sun}</h2><div class="tbl"><table>
-      <tr><th>時刻</th><th>指数</th><th>天気</th><th>眺望</th><th>気温</th><th>体感</th><th>稜線風</th><th>突風</th><th>降水</th><th>降水%(参考)</th><th>雷CAPE</th><th>雲(下/中/上)</th><th>視程</th>${hasSnow?"<th>積雪(新雪)</th>":""}</tr>`;
+      <tr><th>時刻</th><th>指数</th><th>天気</th><th>眺望</th><th>気温</th><th>体感</th><th>稜線風</th><th>突風</th><th>降水</th><th>降水%(参考)</th><th>⚡ 発雷リスク</th><th>雲(下/中/上)</th><th>視程</th>${hasSnow?"<th>積雪(新雪)</th>":""}</tr>`;
     for(let sh=0;sh<24;sh+=step){
       const blk=idxs.filter(i=>Math.floor(+times[i].slice(11,13)/step)*step===sh);
       if(!blk.length)continue;
@@ -874,6 +927,10 @@ async function run(mt){
       const prob=probArr.length?Math.max(...probArr):null;
       const capeArr=blk.map(i=>h.cape?.[i]).filter(v=>v!=null);
       const cape=capeArr.length?Math.max(...capeArr):null;
+      // CIN は「蓋が最も薄い時刻」を代表値にする(絶対値の最小 = 安全側)
+      const cinArr=blk.map(i=>h.convective_inhibition?.[i]).filter(v=>v!=null);
+      const cin=cinArr.length?cinArr.reduce((a,b)=>Math.abs(b)<Math.abs(a)?b:a):null;
+      const lt=lightningRisk(cape,cin);
       const visArr=blk.map(i=>h.visibility?.[i]).filter(v=>v!=null);
       const vis=visArr.length?Math.min(...visArr):null;
       const feel=feelsLike(temp,ws);
@@ -894,7 +951,7 @@ async function run(mt){
       const sfBlk=blk.reduce((s,i)=>s+(h.snowfall?.[i]||0),0);
       htmlOut+=`<tr><td>${String(sh).padStart(2,"0")}時</td><td>${IDX[bi]}</td><td>${wxCodeIcon(h.weather_code[i0])}</td><td>${view}</td>
         <td>${temp==null?"-":temp.toFixed(1)}℃</td><td>${f0(feel)}℃</td><td>${wdir(wd2)} ${f1(ws)}m/s</td>
-        <td>${f0(gust)}m/s</td><td>${pr.toFixed(1)}mm</td><td>${f0(prob)}%</td><td>${f0(cape)}</td>
+        <td>${f0(gust)}m/s</td><td>${pr.toFixed(1)}mm</td><td>${f0(prob)}%</td><td>${ltCell(lt,cape,cin)}</td>
         <td>${cl}</td><td>${visTxt}</td>${hasSnow?`<td>${snowCell(depArr.length?Math.max(...depArr):null,sfBlk)}</td>`:""}</tr>`;
     }
     htmlOut+=`</table></div>`;

@@ -588,9 +588,9 @@ footer a{color:var(--link)}
     else if(code!=null)s-=code<=1?0:code===2?8:code===3?18:22;
     // 天気コードの悪天(雨雪雷)を軽く上乗せ
     if(code!=null){if(code>=95)s-=8;else if(code>=71&&code<=86)s-=5;else if(code>=51&&code<=82)s-=4}
-    // ② 降水 (最大 -30) - 確率と量で 15点ずつ
-    if(pprob!=null)s-=pprob/100*15;
-    if(psum!=null)s-=Math.min(psum,10)/10*15;
+    // ② 降水 (最大 -30) - 確率 -10 / 量 -20 (行動可否に効くのは実際に降る量なので量を重視)
+    if(pprob!=null)s-=pprob/100*10;
+    if(psum!=null)s-=Math.min(psum,10)/10*20;
     // ③ 稜線風 (最大 -32) - 6m/s以下=0、18m/s以上=最大
     if(ridgeWmax!=null)s-=Math.max(0,Math.min(1,(ridgeWmax-6)/12))*32;
     // ④ 雪・寒気 (最大 -10)
@@ -621,12 +621,13 @@ footer a{color:var(--link)}
 
   // ---- 検索実行 ----
   // キー接頭辞の数字は保存形式のバージョン。sc の中身を変えたら必ず上げる
-  // (find2: 代表天気 wxRep を追加 / find3: wxRep.notes を [{h,t}] 形式にし fair を追加)。
+  // (find2: 代表天気 wxRep を追加 / find3: wxRep.notes を [{h,t}] 形式にし fair を追加
+  //  / find4: 降水の配点を 確率-10・量-20 に変更しスコア値の意味が変わった)。
   // 上げ忘れると旧キャッシュがそのまま復元され、天気列だけ古い表示になる。
-  function cacheKey(r,p,date){return "find3:"+r+":"+p+":"+date}
+  function cacheKey(r,p,date){return "find4:"+r+":"+p+":"+date}
   // 直近の検索条件を保存するキー。ページを再訪した時にセレクタと結果を復元する用途
   // (bfcache が効かない iOS 直リンク等のフォールバック。詳細は末尾の restoreLastSearch)。
-  var LAST_KEY="find3:last";
+  var LAST_KEY="find4:last";
   async function search(fromRestore){
     if(needsPrefSelection()){elStatus.textContent="都道府県を選択してから検索してください";return}
     var ms=targets(),date=elDate.value,r=elRegion.value,p=elPref.value;

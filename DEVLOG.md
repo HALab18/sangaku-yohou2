@@ -5,7 +5,65 @@
 
 ---
 
-## ▶ 次の再開ポイント: ゲート全ページ適用 / 戻り導線修正 / z-index回帰 / GA4導入
+## ▶ 次の再開ポイント: 降水配点の変更 / 発雷リスク(CAPE+CIN)表示の新設
+
+**現状**: 作業ブランチ `claude/precipitation-scoring-lightning-risk-ac707c`。**master 未反映・未 push**。
+`check_mountains.py` 通過 (形式OK / index同期OK / 生成物同期OK / 疑い0件・要確認11件は岩峰の既知分)。
+
+**次にやること**: master へ push
+（`git push origin claude/precipitation-scoring-lightning-risk-ac707c:master`）。
+push 後は `gh run list` の success と公開URLの実物を必ず確認する（下の 0-A の教訓）。
+
+### 1. find のスコア: 降水の配点を 確率-10 / 量-20 に変更
+
+降水の合計 -30 は据え置きのまま、内訳を **確率 -15/量 -15 → 確率 -10/量 -20** に振り替えた。
+行動可否に効くのは「降るかどうか」より「どれだけ降るか」であるため。
+
+- 変更元は **`scripts/gen_find.py`**（`docs/find.html` は生成物。直接編集しない）。
+- **`cacheKey` を `find3:` → `find4:` に上げた**（`LAST_KEY` も）。スコア値の意味が
+  変わるため、上げないと sessionStorage の旧スコアがそのまま復元される。
+- `docs/find-score.html` の 計算式・サンプル値・要素表・足切り注記(-15→-20)・
+  計算例A(90→**91点**)・計算例B(-16.5→**-16.0**、43点でランクCは不変) を全て更新。
+- 実測確認: 鹿狼山 日照0%・霧雨・降水確率100%・降水量6.0mm →
+  100 − 28 − 4 − (1.00×10 + 6.0/10×20) = **46点**（表示値と一致）。
+
+### 2. 詳細表の「雷CAPE」を「⚡ 発雷リスク」4段階に変更（CLI/Web 両方）
+
+CAPE の生値だけでは一般利用者に伝わらず、また CAPE は「燃料」でしかないため
+CIN（上昇を抑える蓋）と組み合わせて **低 / やや注意 / 注意 / 高い** の4段階表示にした。
+下段に `CAPE 820 / CIN -40` と元の数値を併記（詳しい人向け）。
+
+- `index.html`: hourly に `convective_inhibition` を追加。SVGシンボル `lt-0`〜`lt-3`
+  （稲妻 **1〜4本** ＋ 黄`#f5c542`→黄橙`#f0a020`→橙`#e2701a`→赤`#c0392b`）を新設し、
+  `lightningRisk()` / `ltCell()` を追加。
+- `scripts/mountain_weather.py`: 同一ロジックの `lightning_risk()` / `lightning_cell()`。
+  Markdown 表なので `⚡⚡⚡ 注意 (CAPE 820 / CIN -40)` の文字表現にし、
+  `--html` 側は `_decorate_cell()` の正規表現で同じ配色の span に変換する。
+- **A/B/C 指数の判定 (`blockIndex` の CAPE 500/1000) には一切手を入れていない。**
+  発雷リスクは表示専用の新規指標。
+
+**閾値**（`references/criteria.md` にも記載。CLI/Web で必ず同一に保つこと）:
+CAPE で 500 / 1000 / 2500 の4段階 → |CIN| ≥100 で2段下げ・≥50 で1段下げ。
+集計は CAPE=最大値 / CIN=絶対値の最小値（蓋が最も薄い時刻＝安全側）。
+
+**⚠ ここでハマった**: 当初は「蓋が薄い(|CIN|≤25)なら1段**上げる**」補正を入れていたが、
+実測すると富士山の全時刻が「高い」になった。**Open-Meteo の `convective_inhibition` は
+絶対値(正数)で返り、実データでは中央値 1〜15・約半数が 0**（＝蓋なしが既定状態）。
+そのため上げる補正はほぼ常時発火して全体が上振れし、段階が機能しなくなる。
+**CIN は下げる方向にのみ効かせること。** 表示は慣例に合わせて負値(`CIN -40`)にしている。
+
+### 3. 発雷リスクの解説を追加
+
+`docs/how-it-works.html` と `docs/how-it-works-web.html` の**両方**に
+`<h2 id="lightning">5. ⚡ 発雷リスク（CAPE と CIN）— 参考表示</h2>` を新設し、
+以降の見出し番号を1つずつ繰り下げた（index.html のメタ行から `#lightning` にリンク）。
+内容: CAPE=燃料 / CIN=蓋 / CAPEだけでは判断できない理由 / 4段階の決め方 /
+「雷の予報ではない・局地現象は当てられない」という限界の明示。
+A/B/C 節にあった CAPE 段落は新章へのリンクを追記して残した。
+
+---
+
+## ゲート全ページ適用 / 戻り導線修正 / z-index回帰 / GA4導入
 
 **現状**: 作業ブランチ `claude/mountain-app-fixes-analytics-9bfcb5`。**master 未反映・未 push**。
 `check_mountains.py` 通過 (形式OK / index同期OK / 生成物同期OK / 疑い0件・要確認11件は岩峰の既知分)。

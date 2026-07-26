@@ -349,6 +349,47 @@ def block_index(ridge_ws, precip_3h, cape, th):
     return idx
 
 
+LT_LABEL = ("低", "やや注意", "注意", "高い")
+
+
+def lightning_risk(cape, cin):
+    """発雷リスク(表示専用。A/B/C 指数の判定には使わない。index.html の lightningRisk と同一)
+
+    CAPE = 対流の「燃料」、CIN = 上昇を抑える「蓋」。燃料が多くても蓋が厚ければ発雷しにくい。
+    そこで CAPE で大枠の段階を決め、蓋が厚いぶんだけ段階を下げる。
+    CAPE の区切りは A/B/C 判定と同じ 500/1000 に、最上段だけ 2500 を足して4段階にしている。
+
+    CIN 側は「下げる」方向にのみ効かせる。Open-Meteo の convective_inhibition は
+    絶対値(J/kg)で返り、実データでは中央値 1〜15・約半数が 0 と「蓋なし」が既定状態のため、
+    蓋が薄いことを理由に段階を上げると、ほぼ全ての時刻が上振れして意味を成さなくなる。
+    呼び出し側は「蓋が最も薄い時刻」= |CIN| 最小値を渡す(安全側)。
+    """
+    if cape is None:
+        return None
+    lv = 3 if cape >= 2500 else 2 if cape >= 1000 else 1 if cape >= 500 else 0
+    if cin is not None:
+        a = abs(cin)
+        if a >= 100:
+            lv -= 2  # 強い蓋。よほどの引き金がなければ対流は始まらない
+        elif a >= 50:
+            lv -= 1  # ある程度の蓋
+    lv = max(0, min(3, lv))
+    return lv, LT_LABEL[lv]
+
+
+def lightning_cell(cape, cin):
+    """詳細表の発雷リスクセル。アイコンの本数(1〜4)と段階ラベル、続けて元の数値を併記"""
+    lt = lightning_risk(cape, cin)
+    if lt is None:
+        return "-"
+    lv, label = lt
+    # CIN は API が絶対値で返すが、慣例に合わせて負値表記で見せる(0 は素の 0)
+    num = f"CAPE {cape:.0f}"
+    if cin is not None:
+        num += f" / CIN {0 if abs(cin) < 0.5 else -abs(cin):.0f}"
+    return f"{'⚡' * (lv + 1)} {label} ({num})"
+
+
 def feels_like(temp, ridge_ws):
     """体感温度: 風冷指数(JAG/TI式)。風速4.8km/h未満では気温をそのまま採用"""
     if temp is None or ridge_ws is None:
@@ -391,7 +432,7 @@ def fetch_forecast(lat, lon, elev, start, end, levels):
     hourly = ["temperature_2m", "precipitation", "precipitation_probability",
               "weather_code", "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high",
               "wind_speed_10m", "wind_gusts_10m",
-              "cape", "visibility",
+              "cape", "convective_inhibition", "visibility",
               "snow_depth", "snowfall"]
     for p, _ in levels:
         hourly += [f"wind_speed_{p}hPa", f"wind_direction_{p}hPa"]
@@ -518,7 +559,7 @@ def print_detail_day(data, date, lo, hi, t, elev, has_snow=False, step=3):
 
     print(f"\n### {date.isoformat()} ({'月火水木金土日'[date.weekday()]}) "
           f"{'1時間ごと' if step == 1 else '3時間ごと'}詳細{suntxt}")
-    print(f"| 時刻 | 指数 | 天気 | 眺望 | 気温 | 体感 | 稜線風 | 突風 | 降水 | 降水%(参考) | 雷CAPE | 雲(下/中/上) | 視程 |{snow_h}")
+    print(f"| 時刻 | 指数 | 天気 | 眺望 | 気温 | 体感 | 稜線風 | 突風 | 降水 | 降水%(参考) | ⚡発雷リスク | 雲(下/中/上) | 視程 |{snow_h}")
     print(f"|---|---|---|---|---|---|---|---|---|---|---|---|---|{snow_sep}")
     for start_h in range(0, 24, step):
         block = [i for i in idxs if int(times[i][11:13]) // step * step == start_h]
@@ -534,6 +575,10 @@ def print_detail_day(data, date, lo, hi, t, elev, has_snow=False, step=3):
         prob = max((h["precipitation_probability"][i] for i in block
                     if h["precipitation_probability"][i] is not None), default=None)
         cape = max((h["cape"][i] for i in block if h["cape"][i] is not None), default=None)
+        # CIN は「蓋が最も薄い時刻」を代表値にする(絶対値の最小 = 安全側)
+        cin_all = h.get("convective_inhibition") or []
+        cin = min((cin_all[i] for i in block if i < len(cin_all) and cin_all[i] is not None),
+                  key=abs, default=None)
         feel = feels_like(temp, ws)
         cl = f'{fnum(h["cloud_cover_low"][i0])}/{fnum(h["cloud_cover_mid"][i0])}/{fnum(h["cloud_cover_high"][i0])}%'
         vis_all = h.get("visibility") or []
@@ -551,7 +596,7 @@ def print_detail_day(data, date, lo, hi, t, elev, has_snow=False, step=3):
             snow_c = f" {snow_cell(depth, sf_blk)} |"
         print(f"| {start_h:02d}時 | {IDX_MARK.get(bi, '-')} | {wcode(h['weather_code'][i0])} | {vw_txt} | {fnum(temp, '{:.1f}')}℃ "
               f"| {fnum(feel, '{:.0f}')}℃ | {wdir(wd)} {fnum(ws, '{:.1f}')}m/s | {fnum(gust, '{:.0f}')}m/s "
-              f"| {pr:.1f}mm | {fnum(prob)}% | {fnum(cape)} | {cl} | {vis_txt} |{snow_c}")
+              f"| {pr:.1f}mm | {fnum(prob)}% | {lightning_cell(cape, cin)} | {cl} | {vis_txt} |{snow_c}")
 
 
 def morning_view(h, times, idxs, elev):
@@ -713,6 +758,10 @@ tr:nth-child(even) td{background:#f3f0e8}
 .v-ex{color:#1c5b3f;font-weight:700}.v-ok{color:#2d6a4f}.v-so{color:#7b5e00}
 .v-ng{color:#a03415}
 .sat{color:#1857a4;font-weight:600}.sun{color:#c0392b;font-weight:600}
+/* 発雷リスク: 稲妻の本数と色の二重表現。下段に CAPE/CIN の実数値 */
+.lt{font-weight:600;white-space:nowrap}
+.lt-0{color:#7b6a00}.lt-1{color:#8a5a00}.lt-2{color:#8f4212}.lt-3{color:#a03415}
+.ltnum{display:block;font-size:.78em;color:#6b7280;margin-top:2px;line-height:1.3}
 .notice{background:#fff8e6;border-left:5px solid var(--warn);padding:10px 12px;
   border-radius:0 6px 6px 0;margin:18px 0;font-size:.92em}
 footer{color:#888;font-size:.85em;margin-top:20px}
@@ -727,6 +776,12 @@ def _decorate_cell(cell):
     if m:
         cls = {"A": "b b-a", "B": "b b-b", "C": "b b-c"}[m.group(1)]
         return f'<span class="{cls}">{m.group(1)}</span>{m.group(2)}'
+    m = re.match(r"^(⚡+)\s(低|やや注意|注意|高い)\s\((.+)\)$", c)
+    if m:
+        # 発雷リスク: 段階に応じた色を付け、CAPE/CIN の実数値は下段に小さく表示
+        lv = min(len(m.group(1)) - 1, 3)
+        return (f'<span class="lt lt-{lv}">{m.group(1)} {m.group(2)}</span>'
+                f'<span class="ltnum">{m.group(3)}</span>')
     m = re.match(r"^([◎○△✕])(\(.+\))?$", c)
     if m:
         cls = {"◎": "v-ex", "○": "v-ok", "△": "v-so", "✕": "v-ng"}[m.group(1)]
@@ -852,6 +907,8 @@ def main():
               f"{th0['mode']}モード基準 (風 {th0['wind'][0]}/{th0['wind'][1]}m/s・"
               f"降水 {th0['precip'][0]}/{th0['precip'][1]}mm/3h・CAPE 500/1000)。"
               f"夏山=6〜10月/冬山・残雪期=11〜5月を対象日の月で自動切替。降水確率は参考表示")
+        print("- ⚡発雷リスク: CAPE(対流の燃料)と CIN(上昇を抑える蓋)から算出した4段階の参考表示"
+              "(低/やや注意/注意/高い)。指数A/B/Cの判定には使いません")
         print(f"- 体感温度 = 風冷指数 (JAG/TI式。風速4.8km/h未満は気温をそのまま採用) "
               f"/ 取得: {dt.datetime.now():%Y-%m-%d %H:%M} / 出典: Open-Meteo")
 
