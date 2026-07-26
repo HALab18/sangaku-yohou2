@@ -318,8 +318,12 @@ def season_thresholds(month):
     return {"mode": "冬山・残雪期", "wind": (8, 12), "precip": (1, 3)}
 
 
-def block_index(ridge_ws, precip_3h, cape, th):
-    """3時間ブロックの登山指数 A/B/C (最悪値採用)。降水確率は判定に使わない(参考表示のみ)"""
+def block_index(ridge_ws, precip_3h, th):
+    """3時間ブロックの登山指数 A/B/C (最悪値採用)
+
+    判定に使うのは稜線風と降水量の2項目だけ。降水確率は参考表示のみ。
+    雷(CAPE)は局地性が高く「その時間帯に登山行動が適しているか」とは性質が異なるため
+    指数には含めず、⚡発雷リスクとして独立表示する(lightning_risk)。"""
     idx = "A"
 
     def worse(v):
@@ -341,11 +345,6 @@ def block_index(ridge_ws, precip_3h, cape, th):
             worse("C")
         elif precip_3h >= p_b:
             worse("B")
-    if cape is not None:
-        if cape >= 1000:
-            worse("C")
-        elif cape >= 500:
-            worse("B")
     return idx
 
 
@@ -357,7 +356,8 @@ def lightning_risk(cape, cin):
 
     CAPE = 対流の「燃料」、CIN = 上昇を抑える「蓋」。燃料が多くても蓋が厚ければ発雷しにくい。
     そこで CAPE で大枠の段階を決め、蓋が厚いぶんだけ段階を下げる。
-    CAPE の区切りは A/B/C 判定と同じ 500/1000 に、最上段だけ 2500 を足して4段階にしている。
+    CAPE の区切り 500/1000/2500 は一般的な雷雨の目安に合わせたもの
+    (references/criteria.md の「CAPEの目安」参照)。
 
     CIN 側は「下げる」方向にのみ効かせる。Open-Meteo の convective_inhibition は
     絶対値(J/kg)で返り、実データでは中央値 1〜15・約半数が 0 と「蓋なし」が既定状態のため、
@@ -403,10 +403,16 @@ def feels_like(temp, ridge_ws):
 IDX_MARK = {"A": "A", "B": "B", "C": "C"}
 
 
-# ---------------------------------------------------------------- 眺望
-def view_score(elev, low, mid, high, precip_3h, vis):
-    """山頂からの眺望 ◎/○/△/✕。雲層(下層<2km/中層2-7km/上層>7km)を山頂標高と比較。
-    山頂レベルの雲=ガス、山頂より下の雲=雲海の可能性。"""
+# ---------------------------------------------------------------- 景色(眺望)
+V_LABEL = {"◎": "展望良好", "○": "良好", "△": "ガス", "✕": "雨・濃霧"}
+# ✕ は原因(雨/ガス)が分かるので、そのときは「雨・濃霧」より具体的なラベルにする
+V_LABEL_NG = {"雨": "雨", "ガス": "濃霧"}
+
+
+def view_score(elev, low, mid, precip_3h, vis):
+    """山頂からの景色(眺望) ◎/○/△/✕。雲層(下層<2km/中層2-7km/上層>7km)を山頂標高と比較。
+    山頂レベルの雲=ガス、山頂より下の雲=雲海の可能性。
+    上層雲(すじ雲等)は眺望を妨げないため引数に取らない。"""
     if elev < 2000:
         summit_cl = max(v for v in (low, mid) if v is not None) if (low is not None or mid is not None) else None
         below_cl = None  # 低山は下に雲層バンドなし(谷霧は表現できない)
@@ -425,6 +431,23 @@ def view_score(elev, low, mid, high, precip_3h, vis):
     if (summit_cl or 0) <= 20 and (vis is None or vis >= 20000):
         return "◎", "雲海" if unkai else ""
     return "○", "雲海" if unkai else ""
+
+
+def vis_text(vis):
+    """視程の表記。1km以上はkm・未満はmで丸める"""
+    if vis is None:
+        return None
+    return f"{vis / 1000:.0f}km" if vis >= 1000 else f"{vis:.0f}m"
+
+
+def view_cell(vw, note, vis=None):
+    """景色(眺望)セル。記号+ラベル、雲海なら付記、判定に使った視程を括弧で併記
+    (Web版 index.html の vhtml と同じ内容。Markdownは改行できないので1行にまとめる)。
+    雨/ガスの付記は ✕「雨・濃霧」/ △「ガス」のラベル自体に含まれるので出さない。"""
+    label = V_LABEL_NG.get(note, V_LABEL[vw]) if vw == "✕" else V_LABEL[vw]
+    s = f"{vw} {label}" + ("(雲海)" if note == "雲海" else "")
+    vt = vis_text(vis)
+    return s + (f" (視程{vt})" if vt else "")
 
 
 # ---------------------------------------------------------------- 予報取得
@@ -554,13 +577,12 @@ def print_detail_day(data, date, lo, hi, t, elev, has_snow=False, step=3):
         rws3 = [ridge_wind(h, i, lo, hi, t) for i in blk3]
         ws3 = max((s for s, _ in rws3 if s is not None), default=None)
         pr3 = sum(h["precipitation"][i] or 0 for i in blk3)
-        cape3 = max((h["cape"][i] for i in blk3 if h["cape"][i] is not None), default=None)
-        return block_index(ws3, pr3, cape3, th)
+        return block_index(ws3, pr3, th)
 
     print(f"\n### {date.isoformat()} ({'月火水木金土日'[date.weekday()]}) "
           f"{'1時間ごと' if step == 1 else '3時間ごと'}詳細{suntxt}")
-    print(f"| 時刻 | 指数 | 天気 | 眺望 | 気温 | 体感 | 稜線風 | 突風 | 降水 | 降水%(参考) | ⚡発雷リスク | 雲(下/中/上) | 視程 |{snow_h}")
-    print(f"|---|---|---|---|---|---|---|---|---|---|---|---|---|{snow_sep}")
+    print(f"| 時刻 | 指数 | 天気 | 🏔 景色(眺望) | 気温 | 体感 | 稜線風 | 突風 | 降水 | 降水%(参考) | ⚡発雷リスク | 雲(下/中/上) |{snow_h}")
+    print(f"|---|---|---|---|---|---|---|---|---|---|---|---|{snow_sep}")
     for start_h in range(0, 24, step):
         block = [i for i in idxs if int(times[i][11:13]) // step * step == start_h]
         if not block:
@@ -583,10 +605,8 @@ def print_detail_day(data, date, lo, hi, t, elev, has_snow=False, step=3):
         cl = f'{fnum(h["cloud_cover_low"][i0])}/{fnum(h["cloud_cover_mid"][i0])}/{fnum(h["cloud_cover_high"][i0])}%'
         vis_all = h.get("visibility") or []
         vis = min((vis_all[i] for i in block if i < len(vis_all) and vis_all[i] is not None), default=None)
-        vw, note = view_score(elev, h["cloud_cover_low"][i0], h["cloud_cover_mid"][i0],
-                              h["cloud_cover_high"][i0], pr * 3 / step, vis)
-        vw_txt = vw + (f"({note})" if note else "")
-        vis_txt = "-" if vis is None else (f"{vis / 1000:.0f}km" if vis >= 1000 else f"{vis:.0f}m")
+        vw_txt = view_cell(*view_score(elev, h["cloud_cover_low"][i0], h["cloud_cover_mid"][i0],
+                                       pr * 3 / step, vis), vis)
         bi = block_abc(start_h // 3 * 3)
         snow_c = ""
         if has_snow:
@@ -596,13 +616,14 @@ def print_detail_day(data, date, lo, hi, t, elev, has_snow=False, step=3):
             snow_c = f" {snow_cell(depth, sf_blk)} |"
         print(f"| {start_h:02d}時 | {IDX_MARK.get(bi, '-')} | {wcode(h['weather_code'][i0])} | {vw_txt} | {fnum(temp, '{:.1f}')}℃ "
               f"| {fnum(feel, '{:.0f}')}℃ | {wdir(wd)} {fnum(ws, '{:.1f}')}m/s | {fnum(gust, '{:.0f}')}m/s "
-              f"| {pr:.1f}mm | {fnum(prob)}% | {lightning_cell(cape, cin)} | {cl} | {vis_txt} |{snow_c}")
+              f"| {pr:.1f}mm | {fnum(prob)}% | {lightning_cell(cape, cin)} | {cl} |{snow_c}")
 
 
 def morning_view(h, times, idxs, elev):
-    """朝(4-8時)の眺望の最良値。ご来光・朝の展望の目安"""
+    """朝(4-8時)の景色の最良値。ご来光・朝の展望の目安。
+    併記する視程は「採用した時刻そのもの」の値を使う(ブロックの最小値ではない)"""
     order = {"◎": 0, "○": 1, "△": 2, "✕": 3}
-    best, best_note = None, ""
+    best, best_note, best_vis = None, "", None
     vis_all = h.get("visibility") or []
     for i in idxs:
         hr = int(times[i][11:13])
@@ -610,13 +631,12 @@ def morning_view(h, times, idxs, elev):
             continue
         vis = vis_all[i] if i < len(vis_all) else None
         pr3 = (h["precipitation"][i] or 0) * 3
-        vw, note = view_score(elev, h["cloud_cover_low"][i], h["cloud_cover_mid"][i],
-                              h["cloud_cover_high"][i], pr3, vis)
+        vw, note = view_score(elev, h["cloud_cover_low"][i], h["cloud_cover_mid"][i], pr3, vis)
         if best is None or order[vw] < order[best]:
-            best, best_note = vw, note
+            best, best_note, best_vis = vw, note, vis
     if best is None:
         return "-"
-    return best + (f"({best_note})" if best_note else "")
+    return view_cell(best, best_note, best_vis)
 
 
 def daily_summary_rows(data, dates, lo, hi, t, elev):
@@ -648,19 +668,25 @@ def daily_summary_rows(data, dates, lo, hi, t, elev):
                 ws_max = ws
                 wd_max = next((dd for s, dd in rws if s == ws), None)
             pr = sum(h["precipitation"][i] or 0 for i in block)
-            cape = max((h["cape"][i] for i in block if h["cape"][i] is not None), default=None)
-            bi = block_index(ws, pr, cape, th)
+            bi = block_index(ws, pr, th)
             if bi == "C" or (bi == "B" and day_idx == "A"):
                 day_idx = bi
-        # 日中がA/Bで夕方(17-20時)がC相当なら急変警告フラグ (日中の指数は変えない)
+        # 日中がA/Bで夕方(17-20時)が荒れるなら急変警告フラグ (日中の指数は変えない)。
+        # 風雨がC相当のときに加えて、発雷リスクが「注意」以上のときも立てる
         eve = [i for i in idxs if 17 <= int(times[i][11:13]) <= 20]
         evening = False
         if eve and day_idx != "C":
             rws = [ridge_wind(h, i, lo, hi, t) for i in eve]
             ws_e = max((s for s, _ in rws if s is not None), default=None)
             pr_e = sum(h["precipitation"][i] or 0 for i in eve)
-            cape_e = max((h["cape"][i] for i in eve if h["cape"][i] is not None), default=None)
-            evening = block_index(ws_e, pr_e, cape_e, th) == "C"
+            evening = block_index(ws_e, pr_e, th) == "C"
+            if not evening:
+                cape_e = max((h["cape"][i] for i in eve if h["cape"][i] is not None), default=None)
+                cin_all = h.get("convective_inhibition") or []
+                cin_e = min((cin_all[i] for i in eve if i < len(cin_all) and cin_all[i] is not None),
+                            key=abs, default=None)
+                lt_e = lightning_risk(cape_e, cin_e)
+                evening = lt_e is not None and lt_e[0] >= 2
         depth = max((depth_all[i] for i in idxs if i < len(depth_all) and depth_all[i] is not None),
                     default=None)
         wxd = wx.get(date.isoformat(), {})
@@ -680,7 +706,7 @@ def print_daily_summary(rows, title, has_snow=False):
     print(f"\n### {title}")
     snow_h = " 積雪max(新雪) |" if has_snow else ""
     snow_sep = "---|" if has_snow else ""
-    print(f"| 日付 | 指数 | 天気 | 眺望(朝) | 山頂気温 | 稜線風max(5-17時) | 降水量 | 降水%(参考) |{snow_h}")
+    print(f"| 日付 | 指数 | 天気 | 🏔 景色(朝) | 山頂気温 | 稜線風max(5-17時) | 降水量 | 降水%(参考) |{snow_h}")
     print(f"|---|---|---|---|---|---|---|---|{snow_sep}")
     for r in rows:
         wj = "月火水木金土日"[r["date"].weekday()]
@@ -691,7 +717,8 @@ def print_daily_summary(rows, title, has_snow=False):
               f"| {wdir(r['wd'])} {fnum(r['ws'], '{:.1f}')}m/s "
               f"| {fnum(r['pr'], '{:.1f}')}mm | {fnum(r['prob'])}% |{snow_c}")
     if any(r.get("evening") for r in rows):
-        print("- ⚠夕方: 17〜20時に天候の急変(C相当)が予想されます。日中の指数には含めていませんが、"
+        print("- ⚠夕方: 17〜20時に天候の急変(C相当)、または発雷リスク「注意」以上が予想されます。"
+              "日中の指数には含めていませんが、"
               "下山遅れ・テント泊・ご来光待ちの際は特に注意してください。")
 
 
@@ -761,7 +788,7 @@ tr:nth-child(even) td{background:#f3f0e8}
 /* 発雷リスク: 稲妻の本数と色の二重表現。下段に CAPE/CIN の実数値 */
 .lt{font-weight:600;white-space:nowrap}
 .lt-0{color:#7b6a00}.lt-1{color:#8a5a00}.lt-2{color:#8f4212}.lt-3{color:#a03415}
-.ltnum{display:block;font-size:.78em;color:#6b7280;margin-top:2px;line-height:1.3}
+.ltnum,.vwnum{display:block;font-size:.78em;color:#6b7280;margin-top:2px;line-height:1.3}
 .notice{background:#fff8e6;border-left:5px solid var(--warn);padding:10px 12px;
   border-radius:0 6px 6px 0;margin:18px 0;font-size:.92em}
 footer{color:#888;font-size:.85em;margin-top:20px}
@@ -782,10 +809,12 @@ def _decorate_cell(cell):
         lv = min(len(m.group(1)) - 1, 3)
         return (f'<span class="lt lt-{lv}">{m.group(1)} {m.group(2)}</span>'
                 f'<span class="ltnum">{m.group(3)}</span>')
-    m = re.match(r"^([◎○△✕])(\(.+\))?$", c)
+    m = re.match(r"^([◎○△✕])\s(\S+?)(\s\(視程(.+)\))?$", c)
     if m:
+        # 景色(眺望): 判定色を付け、併記の視程は下段に小さく表示 (Web版の2段構成に合わせる)
         cls = {"◎": "v-ex", "○": "v-ok", "△": "v-so", "✕": "v-ng"}[m.group(1)]
-        return f'<span class="{cls}">{c}</span>'
+        vis = f'<span class="vwnum">視程 {m.group(4)}</span>' if m.group(4) else ""
+        return f'<span class="{cls}">{m.group(1)} {m.group(2)}</span>{vis}'
     c = c.replace("(土)", '<span class="sat">(土)</span>').replace("(日)", '<span class="sun">(日)</span>')
     return c
 
@@ -904,11 +933,14 @@ def main():
         print(f"- 稜線風: {lv} の風を山頂標高に合わせて算出 / 気温は標高{elev:.0f}m面の値")
         th0 = season_thresholds(start.month)
         print(f"- 登山指数: A=登山適 / B=要注意(経験者向き・行程短縮検討) / C=登山不適。"
+              f"判定は稜線風速と降水量の2項目のみ。"
               f"{th0['mode']}モード基準 (風 {th0['wind'][0]}/{th0['wind'][1]}m/s・"
-              f"降水 {th0['precip'][0]}/{th0['precip'][1]}mm/3h・CAPE 500/1000)。"
+              f"降水 {th0['precip'][0]}/{th0['precip'][1]}mm/3h)。"
               f"夏山=6〜10月/冬山・残雪期=11〜5月を対象日の月で自動切替。降水確率は参考表示")
         print("- ⚡発雷リスク: CAPE(対流の燃料)と CIN(上昇を抑える蓋)から算出した4段階の参考表示"
               "(低/やや注意/注意/高い)。指数A/B/Cの判定には使いません")
+        print("- 🏔 景色(眺望): 山頂付近の雲・視程・降水の3つを組み合わせた4段階(◎○△✕)。"
+              "視程は判定に使っている内部要素で、参考として景色欄に併記しています")
         print(f"- 体感温度 = 風冷指数 (JAG/TI式。風速4.8km/h未満は気温をそのまま採用) "
               f"/ 取得: {dt.datetime.now():%Y-%m-%d %H:%M} / 出典: Open-Meteo")
 

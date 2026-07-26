@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PeakWeather — 山頂コンディションをもっと手軽に。</title>
-<meta name="description" content="PeakWeather: 山名を入れるだけで山頂・稜線の気象予報（稜線風・山頂気温・体感温度・雷CAPE・眺望・登山指数）を表示。データ: Open-Meteo">
+<meta name="description" content="PeakWeather: 山名を入れるだけで山頂・稜線の気象予報（稜線風・山頂気温・体感温度・発雷リスク・景色（眺望）・登山指数）を表示。データ: Open-Meteo">
 <link rel="icon" type="image/png" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
@@ -232,6 +232,11 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
 .lt svg{width:1.9em;height:1.15em;flex:none}
 .lt-0{color:#7b6a00}.lt-1{color:#8a5a00}.lt-2{color:#8f4212}.lt-3{color:#a03415}
 .ltnum{display:block;font-size:.76em;color:#6b7280;margin-top:2px;line-height:1.3}
+/* 景色(眺望)列: 発雷リスクと同じ2段構成。上段=アイコン+記号+ラベル / 下段=視程を小さく併記。
+   視程は単独の列にはせず、景色を読むための補足情報として置く。svg は 1.5em=21px */
+.vw{display:inline-flex;align-items:center;gap:3px;font-weight:600;white-space:nowrap}
+.vw svg{width:1.5em;height:1.5em;flex:none}
+.vwnum{display:block;font-size:.76em;color:#6b7280;margin-top:2px;line-height:1.3}
 .ewnote{background:#f9d9cf;border-left:5px solid #a03415;padding:8px 12px;
   border-radius:0 6px 6px 0;margin:6px 0 14px;font-size:.9em}
 /* 16日間の見通し: 8日目以降の行と開閉ボタン。
@@ -312,6 +317,54 @@ footer a{color:var(--link)}
   <symbol id="lt-3" viewBox="0 0 40 24" fill="#c0392b">
     <path d="M8 2 0 13h5l-2 9 8-11H6z"/><path d="M18 2 10 13h5l-2 9 8-11h-5z"/>
     <path d="M28 2 20 13h5l-2 9 8-11h-5z"/><path d="M38 2 30 13h5l-2 9 8-11h-5z"/>
+  </symbol>
+  <!-- 景色(眺望)の4段階アイコン。線画ではなく「面塗りの山＋線画の天候」で立体感を出す。
+       山(#view-mt)は4種で共有する二峰(左が高い)のシルエット。右斜面に白20%の面を重ねて陰影を、
+       各ピークに雪渓を置く。fill="currentColor" なので、山の色は使用側の .v-ex/.v-ok/.v-so/.v-ng
+       (判定色) がそのまま乗る = 色の定義が1箇所で済む。グラデーション・フィルタは使わない。
+       天候は天気アイコンと同じ配色(晴=#f5a623 / 雲=#8b93a3 / 雨=#3f83d6)。
+       雲は wx-cloud と同じ形を transform で配置し、stroke-width は縮尺で割り戻して線幅を揃える。
+       ◎○は天候を山の後ろ(空)に、△✕は山の前(かぶさる)に描いて奥行きを出している。 -->
+  <g id="view-mt">
+    <path d="M1.5 26 11 9l5.2 9L21 14.5 30.5 26Z" fill="currentColor"/>
+    <path d="M11 9l5.2 9-1.6 8H8.2Z" fill="#fff" opacity=".2"/>
+    <path d="M11 9 8.3 13.8l1.6-.7 1.1 1.2 1.2-1.3 1.3 1.1Z" fill="#fff" opacity=".92"/>
+    <path d="M21 14.5l-1.7 3.1 1.1-.5.8.9.9-1 .9.8Z" fill="#fff" opacity=".92"/>
+  </g>
+  <symbol id="view-ex" viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="23.5" cy="7.5" r="3.7" fill="#f5a623"/>
+    <circle cx="22.2" cy="6.2" r="1.3" fill="#fff" opacity=".42"/>
+    <path d="M23.5 2.2V.4M23.5 12.8v1.8M28.8 7.5h1.8M18.2 7.5h-1.8M27.3 3.7l1.3-1.3M19.7 11.3l-1.3 1.3M27.3 11.3l1.3 1.3M19.7 3.7 18.4 2.4"
+          stroke="#f5a623" stroke-width="1.9"/>
+    <use href="#view-mt"/>
+  </symbol>
+  <symbol id="view-ok" viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="17" cy="7" r="3.3" fill="#f5a623"/>
+    <circle cx="15.9" cy="5.9" r="1.15" fill="#fff" opacity=".42"/>
+    <path d="M17 2.1V.4M12.1 7h-1.7M13.5 3.5 12.3 2.3M13.5 10.5l-1.2 1.2M17 11.9v1.7"
+          stroke="#f5a623" stroke-width="1.8"/>
+    <g transform="translate(16.4 3.2) scale(.62)" stroke-width="3.4">
+      <path d="M7.3 13.5h8.6a3.9 3.9 0 0 0 .4-7.78A5.6 5.6 0 0 0 5.55 4.37 3.85 3.85 0 0 0 7.3 13.5Z"
+            fill="#fff" stroke="#8b93a3"/>
+    </g>
+    <use href="#view-mt"/>
+  </symbol>
+  <symbol id="view-so" viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <use href="#view-mt"/>
+    <g transform="translate(2.4 5.2) scale(.72)" stroke-width="2.9">
+      <path d="M7.3 13.5h8.6a3.9 3.9 0 0 0 .4-7.78A5.6 5.6 0 0 0 5.55 4.37 3.85 3.85 0 0 0 7.3 13.5Z"
+            fill="#eef0f4" stroke="#8b93a3"/>
+    </g>
+    <path d="M5.6 20.6h8.2M11.8 23.6h11.4" stroke="#c2c9d4" stroke-width="2.3"/>
+  </symbol>
+  <symbol id="view-ng" viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <use href="#view-mt"/>
+    <g transform="translate(3.1 1.1) scale(1.05)" stroke-width="2.1">
+      <path d="M7.3 13.5h8.6a3.9 3.9 0 0 0 .4-7.78A5.6 5.6 0 0 0 5.55 4.37 3.85 3.85 0 0 0 7.3 13.5Z"
+            fill="#8b93a3" stroke="#6b7280"/>
+    </g>
+    <path d="M8.6 19.2 6.9 22.8M14.2 19.2l-1.7 3.6M19.8 19.2l-1.7 3.6M25.2 18.4l-1.7 3.6"
+          stroke="#3f83d6" stroke-width="2.2"/>
   </symbol>
 </svg>
 
@@ -473,7 +526,10 @@ const DIR16=["北","北北東","北東","東北東","東","東南東","南東","
 const WJA="日月火水木金土";
 const PAST_DAYS=3; // 直近実況(モデル解析値)として遡る日数
 const IDX={A:'<span class="b b-a">A</span>',B:'<span class="b b-b">B</span>',C:'<span class="b b-c">C</span>'};
-const VCLS={"◎":"v-ex","○":"v-ok","△":"v-so","✕":"v-ng"};
+// 景色(眺望)の記号 → [色クラス, ラベル]。アイコンIDは色クラスから作る (v-ex → #view-ex)
+const VCLS={"◎":["v-ex","展望良好"],"○":["v-ok","良好"],"△":["v-so","ガス"],"✕":["v-ng","雨・濃霧"]};
+// ✕ は原因(雨/ガス)が分かるので、そのときは「雨・濃霧」より具体的なラベルにする
+const VNG={"雨":"雨","ガス":"濃霧"};
 
 const wdir=d=>d==null?"-":DIR16[Math.floor(((d+11.25)%360)/22.5)];
 const wcode=c=>c==null?"-":(WMO[c]||`code${c}`);
@@ -656,18 +712,18 @@ function seasonTh(month){
     ?{mode:"夏山",wind:[10,15],precip:[1,5]}
     :{mode:"冬山・残雪期",wind:[8,12],precip:[1,3]};
 }
-function blockIndex(ws,pr3,cape,th){
-  // 降水確率は判定に使わない(参考表示のみ)
+function blockIndex(ws,pr3,th){
+  // 判定は稜線風と降水量の2項目のみ。降水確率は参考表示。
+  // 雷(CAPE)は局地性が高く登山可否とは性質が異なるため指数に含めず、発雷リスクとして独立表示する
   let idx="A";const worse=v=>{if(v==="C"||idx==="C")idx="C";else if(v==="B")idx="B"};
   if(ws!=null){if(ws>=th.wind[1])worse("C");else if(ws>=th.wind[0])worse("B")}
   if(pr3!=null){if(pr3>=th.precip[1])worse("C");else if(pr3>=th.precip[0])worse("B")}
-  if(cape!=null){if(cape>=1000)worse("C");else if(cape>=500)worse("B")}
   return idx;
 }
 // 発雷リスク(表示専用。A/B/C 指数の判定には使わない。mountain_weather.py の lightning_risk と同一)。
 // CAPE = 対流の「燃料」、CIN = 上昇を抑える「蓋」。燃料が多くても蓋が厚ければ発雷しにくい。
 // そこで CAPE で大枠の段階を決め、蓋が厚いぶんだけ段階を下げる。
-// CAPE の区切りは A/B/C 判定と同じ 500/1000 に、最上段だけ 2500 を足して4段階にしている。
+// CAPE の区切り 500/1000/2500 は一般的な雷雨の目安に合わせたもの(criteria.md の「CAPEの目安」)。
 // CIN 側は「下げる」方向にのみ効かせる。Open-Meteo の convective_inhibition は絶対値(J/kg)で返り、
 // 実データでは中央値 1〜15・約半数が 0 と「蓋なし」が既定状態のため、蓋が薄いことを理由に
 // 段階を上げると、ほぼ全ての時刻が上振れして意味を成さなくなる。
@@ -701,7 +757,16 @@ function viewScore(elev,low,mid,pr3,vis){
   if((summit??0)<=20&&(vis==null||vis>=20000))return["◎",unkai?"雲海":""];
   return["○",unkai?"雲海":""];
 }
-const vhtml=([v,n])=>`<span class="${VCLS[v]}">${v}${n?`(${n})`:""}</span>`;
+const visTxt=vis=>vis==null?null:vis>=1000?`${Math.round(vis/1000)}km`:`${Math.round(vis)}m`;
+// 景色(眺望)セル。上段= アイコン+記号+ラベル(雲海なら付記)、下段= 判定に使った視程を小さく併記。
+// 雨/ガスの付記は ✕「雨・濃霧」/ △「ガス」のラベル自体に含まれるので出さない。
+function vhtml([v,n],vis){
+  const[cls,label0]=VCLS[v];
+  const label=v==="✕"?(VNG[n]||label0):label0;
+  return`<span class="vw ${cls}"><svg aria-hidden="true"><use href="#view-${cls.slice(2)}"/></svg>`+
+    `${v} ${label}${n==="雲海"?"(雲海)":""}</span>`+
+    (visTxt(vis)?`<span class="vwnum">視程 ${visTxt(vis)}</span>`:"");
+}
 // 発雷リスク列の表示。上段= アイコン(本数+色)とラベル、下段= 元の CAPE/CIN 値
 function ltCell(lt,cape,cin){
   if(!lt)return"-";
@@ -808,12 +873,15 @@ async function run(mt){
     <li>稜線風: ${lo[0]===hi[0]?lo[0]+"hPa":lo[0]+"/"+hi[0]+"hPa補間"} / 気温は標高${Math.round(mt.elev)}m面 /
       体感温度 = 風冷指数 (JAG/TI式。風速4.8km/h未満は気温をそのまま採用)</li>
     <li>登山指数: <span class="b b-a">A</span>=登山適 / <span class="b b-b">B</span>=要注意(経験者向き・行程短縮検討) / <span class="b b-c">C</span>=登山不適。
-      ${seasonTh(start.getMonth()+1).mode}モード基準
-      (風 ${seasonTh(start.getMonth()+1).wind.join("/")}m/s・降水 ${seasonTh(start.getMonth()+1).precip.join("/")}mm/3h・CAPE 500/1000)。
+      判定は<b>稜線風速と降水量</b>の2項目のみ。${seasonTh(start.getMonth()+1).mode}モード基準
+      (風 ${seasonTh(start.getMonth()+1).wind.join("/")}m/s・降水 ${seasonTh(start.getMonth()+1).precip.join("/")}mm/3h)。
       夏山=6〜10月/冬山・残雪期=11〜5月を対象日の月で自動切替。降水確率は参考表示</li>
     <li>⚡発雷リスク: CAPE(対流の燃料)と CIN(上昇を抑える蓋)から算出した4段階の参考表示
       (低/やや注意/注意/高い)。指数A/B/Cの判定には使いません
-      (<a href="docs/how-it-works-web.html#lightning">考え方</a>)</li></ul>`;
+      (<a href="docs/how-it-works-web.html#lightning">考え方</a>)</li>
+    <li>🏔 景色(眺望): 山頂付近の雲・視程・降水の3つを組み合わせた4段階(◎○△✕)。
+      視程は判定に使っている内部要素で、参考として景色欄に併記しています
+      (<a href="docs/how-it-works-web.html#view">考え方</a>)</li></ul>`;
 
   // 直近実況(モデル解析値・過去3日)
   const pastRows=[];
@@ -854,11 +922,11 @@ async function run(mt){
       const ws=Math.max(...rw.map(x=>x[0]??-1));
       if(ws>=0&&(wsMax==null||ws>wsMax)){wsMax=ws;wdMax=rw.find(x=>x[0]===ws)?.[1]}
       const pr=blk.reduce((s,i)=>s+(h.precipitation[i]||0),0);
-      const cape=Math.max(...blk.map(i=>h.cape?.[i]??-1));
-      const bi=blockIndex(ws<0?null:ws,pr,cape<0?null:cape,th);
+      const bi=blockIndex(ws<0?null:ws,pr,th);
       if(bi==="C"||(bi==="B"&&dayIdxV==="A"))dayIdxV=bi;
     }
-    // 日中がA/Bで夕方(17-20時)がC相当なら急変警告フラグ (日中の指数は変えない)
+    // 日中がA/Bで夕方(17-20時)が荒れるなら急変警告フラグ (日中の指数は変えない)。
+    // 風雨がC相当のときに加えて、発雷リスクが「注意」以上のときも立てる
     let evening=false;
     if(dayIdxV!=="C"){
       const eve=idxs.filter(i=>{const hr=+times[i].slice(11,13);return hr>=17&&hr<=20});
@@ -866,31 +934,38 @@ async function run(mt){
         const rw=eve.map(i=>ridgeWind(h,i,lo,hi,t));
         const wsE=Math.max(...rw.map(x=>x[0]??-1));
         const prE=eve.reduce((s,i)=>s+(h.precipitation[i]||0),0);
-        const capeE=Math.max(...eve.map(i=>h.cape?.[i]??-1));
-        evening=blockIndex(wsE<0?null:wsE,prE,capeE<0?null:capeE,th)==="C";
+        evening=blockIndex(wsE<0?null:wsE,prE,th)==="C";
+        if(!evening){
+          const capeArrE=eve.map(i=>h.cape?.[i]).filter(v=>v!=null);
+          const cinArrE=eve.map(i=>h.convective_inhibition?.[i]).filter(v=>v!=null);
+          const ltE=lightningRisk(capeArrE.length?Math.max(...capeArrE):null,
+            cinArrE.length?cinArrE.reduce((a,b)=>Math.abs(b)<Math.abs(a)?b:a):null);
+          evening=ltE!=null&&ltE.lv>=2;
+        }
       }
     }
-    // 朝の眺望 (4-8時の最良)
-    const order={"◎":0,"○":1,"△":2,"✕":3};let best=null;
+    // 朝の景色 (4-8時の最良)。併記する視程は「採用した時刻そのもの」の値を持ち回る
+    const order={"◎":0,"○":1,"△":2,"✕":3};let best=null,bestVis=null;
     for(const i of idxs){
       const hr=+times[i].slice(11,13);if(hr<4||hr>8)continue;
+      const vi=h.visibility?.[i];
       const v=viewScore(mt.elev,h.cloud_cover_low[i],h.cloud_cover_mid[i],
-        (h.precipitation[i]||0)*3,h.visibility?.[i]);
-      if(best==null||order[v[0]]<order[best[0]])best=v;
+        (h.precipitation[i]||0)*3,vi);
+      if(best==null||order[v[0]]<order[best[0]]){best=v;bestVis=vi}
     }
     const dep=idxs.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
     rows.push({d:new Date(dt2),idx:dayIdxV,eve:evening,code:wxByDate.get(ds)?.code??d.weather_code[di],notes:wxByDate.get(ds)?.notes||[],phrase:wxByDate.get(ds)?.phrase,
       tmin:d.temperature_2m_min[di],tmax:d.temperature_2m_max[di],
       ws:wsMax,wd:wdMax,pr:d.precipitation_sum[di],prob:d.precipitation_probability_max[di],
       sf:d.snowfall_sum?.[di],depth:dep.length?Math.max(...dep):null,
-      view:best?vhtml(best):"-"});
+      view:best?vhtml(best,bestVis):"-"});
   }
   // 既定は先頭7日だけ出し、8日目以降は hidden で畳む(スマホで表が長くなりすぎるため)。
   // ただし検索した日が8日目以降なら畳む意味がない(目的の日が隠れる)ので最初から開いて描く。
   const WK_HEAD=7;
   const wkOpen=rows.length<=WK_HEAD||start>addDays(today,WK_HEAD-1);
   htmlOut+=`<h2>16日間の見通し</h2><div class="tbl" id="wk-tbl"><table>
-    <tr><th>日付</th><th>指数</th><th>天気</th><th>眺望(朝)</th><th>山頂気温</th><th>稜線風max(5-17時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
+    <tr><th>日付</th><th>指数</th><th>天気</th><th>🏔 景色(朝)</th><th>山頂気温</th><th>稜線風max(5-17時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
   rows.forEach((r,i)=>{
     const more=i>=WK_HEAD;
     htmlOut+=`<tr${more?` class="wk-more"${wkOpen?"":" hidden"}`:""}><td>${md(r.d)}${wj(r.d)}</td><td>${IDX[r.idx]}${r.eve?'<span class="ew"> ⚠夕方</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
@@ -902,7 +977,7 @@ async function run(mt){
   if(rows.length>WK_HEAD)
     htmlOut+=`<button type="button" class="wk-toggle" aria-controls="wk-tbl" aria-expanded="${wkOpen}">`+
       `${wkOpen?"折りたたむ":`残り${rows.length-WK_HEAD}日を表示`}</button>`;
-  if(rows.some(r=>r.eve))htmlOut+=`<p class="ewnote">⚠夕方: 17〜20時に天候の急変(C相当)が予想されます。日中の指数には含めていませんが、下山遅れ・テント泊・ご来光待ちの際は特に注意してください。</p>`;
+  if(rows.some(r=>r.eve))htmlOut+=`<p class="ewnote">⚠夕方: 17〜20時に天候の急変(C相当)、または発雷リスク「注意」以上が予想されます。日中の指数には含めていませんが、下山遅れ・テント泊・ご来光待ちの際は特に注意してください。</p>`;
 
   // 詳細 (表示間隔 step=3 or 1)
   for(let dt2=new Date(start);dt2<=detailEnd;dt2=addDays(dt2,1)){
@@ -911,7 +986,7 @@ async function run(mt){
     const sun=di>=0&&d.sunrise?.[di]?` (日の出${d.sunrise[di].slice(11,16)} / 日の入${d.sunset[di].slice(11,16)})`:"";
     const thD=seasonTh(dt2.getMonth()+1);
     htmlOut+=`<h2>${ds} ${wj(dt2)} ${step===1?"1時間ごと":"3時間ごと"}詳細${sun}</h2><div class="tbl"><table>
-      <tr><th>時刻</th><th>指数</th><th>天気</th><th>眺望</th><th>気温</th><th>体感</th><th>稜線風</th><th>突風</th><th>降水</th><th>降水%(参考)</th><th>⚡ 発雷リスク</th><th>雲(下/中/上)</th><th>視程</th>${hasSnow?"<th>積雪(新雪)</th>":""}</tr>`;
+      <tr><th>時刻</th><th>指数</th><th>天気</th><th>🏔 景色(眺望)</th><th>気温</th><th>体感</th><th>稜線風</th><th>突風</th><th>降水</th><th>降水%(参考)</th><th>⚡ 発雷リスク</th><th>雲(下/中/上)</th>${hasSnow?"<th>積雪(新雪)</th>":""}</tr>`;
     for(let sh=0;sh<24;sh+=step){
       const blk=idxs.filter(i=>Math.floor(+times[i].slice(11,13)/step)*step===sh);
       if(!blk.length)continue;
@@ -934,9 +1009,8 @@ async function run(mt){
       const visArr=blk.map(i=>h.visibility?.[i]).filter(v=>v!=null);
       const vis=visArr.length?Math.min(...visArr):null;
       const feel=feelsLike(temp,ws);
-      const view=vhtml(viewScore(mt.elev,h.cloud_cover_low[i0],h.cloud_cover_mid[i0],pr*3/step,vis));
+      const view=vhtml(viewScore(mt.elev,h.cloud_cover_low[i0],h.cloud_cover_mid[i0],pr*3/step,vis),vis);
       const cl=`${f0(h.cloud_cover_low[i0])}/${f0(h.cloud_cover_mid[i0])}/${f0(h.cloud_cover_high[i0])}%`;
-      const visTxt=vis==null?"-":vis>=1000?`${Math.round(vis/1000)}km`:`${Math.round(vis)}m`;
       // 指数は表示間隔によらず3時間ブロック単位で判定する (A/B/Cの降水閾値がmm/3h定義のため)
       const sh3=Math.floor(sh/3)*3;
       const blk3=idxs.filter(i=>Math.floor(+times[i].slice(11,13)/3)*3===sh3);
@@ -944,15 +1018,13 @@ async function run(mt){
       const ws3Arr=rw3.map(x=>x[0]).filter(v=>v!=null);
       const ws3=ws3Arr.length?Math.max(...ws3Arr):null;
       const pr3=blk3.reduce((s,i)=>s+(h.precipitation[i]||0),0);
-      const cape3Arr=blk3.map(i=>h.cape?.[i]).filter(v=>v!=null);
-      const cape3=cape3Arr.length?Math.max(...cape3Arr):null;
-      const bi=blockIndex(ws3,pr3,cape3,thD);
+      const bi=blockIndex(ws3,pr3,thD);
       const depArr=blk.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
       const sfBlk=blk.reduce((s,i)=>s+(h.snowfall?.[i]||0),0);
       htmlOut+=`<tr><td>${String(sh).padStart(2,"0")}時</td><td>${IDX[bi]}</td><td>${wxCodeIcon(h.weather_code[i0])}</td><td>${view}</td>
         <td>${temp==null?"-":temp.toFixed(1)}℃</td><td>${f0(feel)}℃</td><td>${wdir(wd2)} ${f1(ws)}m/s</td>
         <td>${f0(gust)}m/s</td><td>${pr.toFixed(1)}mm</td><td>${f0(prob)}%</td><td>${ltCell(lt,cape,cin)}</td>
-        <td>${cl}</td><td>${visTxt}</td>${hasSnow?`<td>${snowCell(depArr.length?Math.max(...depArr):null,sfBlk)}</td>`:""}</tr>`;
+        <td>${cl}</td>${hasSnow?`<td>${snowCell(depArr.length?Math.max(...depArr):null,sfBlk)}</td>`:""}</tr>`;
     }
     htmlOut+=`</table></div>`;
   }

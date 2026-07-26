@@ -46,6 +46,10 @@ tr:nth-child(even) td{background:#eef1f6}
 /* 発雷リスクの4段階(稲妻の本数+色)。index.html の詳細表と同じ配色 */
 .lt{font-weight:700;white-space:nowrap}
 .lt-0{color:#7b6a00}.lt-1{color:#8a5a00}.lt-2{color:#8f4212}.lt-3{color:#a03415}
+/* 景色(眺望)の凡例。アプリ本体と同じアイコン・同じ判定色 */
+.vw{display:inline-flex;align-items:center;gap:4px;font-weight:700;white-space:nowrap}
+.vw svg{width:1.5em;height:1.5em;flex:none}
+.v-ex{color:#1c5b3f}.v-ok{color:#2d6a4f}.v-so{color:#7b5e00}.v-ng{color:#a03415}
 .notice{background:#fde3d3;border-left:5px solid #a03415;padding:10px 12px;
   border-radius:0 6px 6px 0;margin:14px 0;font-size:.9em;color:#44506b}
 .point{background:#edf2f9;border-left:5px solid var(--slate);padding:10px 12px;
@@ -114,7 +118,7 @@ footer a{color:var(--link)}
 <b>気象庁（日本）・ECMWF（欧州）・GFS（米国）</b>など世界の気象機関の数値予報モデルが集約されていて、
 地点に応じて最適なモデルを合成した予報を返してくれます。登録もAPIキーも不要です。</p>
 <h3>③ 計算・判定して出力する</h3>
-<p>取得した生データから「稜線の風」「体感温度」「登山指数」「眺望」を計算し、表に整形します。
+<p>取得した生データから「稜線の風」「体感温度」「登山指数」「景色（眺望）」を計算し、表に整形します。
 この部分はすべて<b>あらかじめ決めたルール（数式としきい値）</b>で動くので、
 同じデータなら誰が実行しても同じ結果になります。</p>
 </div>
@@ -159,17 +163,17 @@ footer a{color:var(--link)}
 表には両方の性質を持つ「突風」も併記しています。</div>
 
 <h2>4. 判定基準①: 登山指数 A/B/C</h2>
-<p>1日を3時間ごとのブロックに割り、各ブロックを下の表で採点します。
+<p>登山指数は「その時間帯に登山行動が適しているか」だけを表す指標で、判定に使うのは
+<b>稜線風速と降水量</b>の2つだけです。1日を3時間ごとのブロックに割り、各ブロックを下の表で採点します。
 複数の項目に引っかかる場合は<b>いちばん悪い評価を採用</b>（安全側に倒す）。
 日単位の指数は、行動時間帯（5〜17時）の中の最悪値です。
-風速・降水の基準は<b>予報対象日の月</b>で夏山と冬山・残雪期を自動で切り替えます。</p>
+基準は<b>予報対象日の月</b>で夏山と冬山・残雪期を自動で切り替えます。</p>
 
 <p><b>夏山モード（6月〜10月）</b></p>
 <div class="tbl"><table>
 <tr><th>項目</th><th><span class="b b-a">A</span> 登山適</th><th><span class="b b-b">B</span> 要注意</th><th><span class="b b-c">C</span> 登山不適</th></tr>
 <tr><td>稜線風速</td><td>10m/s未満</td><td>10〜15m/s</td><td>15m/s以上</td></tr>
 <tr><td>降水量(3時間)</td><td>1mm未満</td><td>1〜5mm</td><td>5mm以上</td></tr>
-<tr><td>雷エネルギー(CAPE)</td><td>500未満</td><td>500〜1000</td><td>1000以上</td></tr>
 </table></div>
 
 <p><b>冬山・残雪期モード（11月〜5月）</b></p>
@@ -177,20 +181,24 @@ footer a{color:var(--link)}
 <tr><th>項目</th><th><span class="b b-a">A</span> 登山適</th><th><span class="b b-b">B</span> 要注意</th><th><span class="b b-c">C</span> 登山不適</th></tr>
 <tr><td>稜線風速</td><td>8m/s未満</td><td>8〜12m/s</td><td>12m/s以上</td></tr>
 <tr><td>降水量(3時間)</td><td>1mm未満</td><td>1〜3mm</td><td>3mm以上（降雪リスク）</td></tr>
-<tr><td>雷エネルギー(CAPE)</td><td>500未満</td><td>500〜1000</td><td>1000以上</td></tr>
 </table></div>
 
 <p>降水確率は表に参考として表示しますが、<b>判定には使いません</b>
 （判定に使うのは実測ベースの降水量です）。</p>
 
-<p><b>CAPE（ケープ）</b>は「大気にたまった雷雨の燃料」を表す気象指標です（単位 J/kg）。
-値が大きいほど積乱雲が発達しやすく、夏山の午後の雷雨リスクの先読みに使えます
-（詳しくは<a href="#lightning">次章「発雷リスク」</a>で解説します）。
-風速15m/sは「歩行がふらつき、耐風姿勢が必要になり始める」レベルで、
+<p><b>雷（CAPE）は登山指数に含めていません。</b>雷は数kmの広がりしかない局地的な現象で、
+「その時間帯に行動できるか」という指数の性質とは大きく異なるためです。雷については
+<a href="#lightning">「⚡ 発雷リスク」</a>として独立に表示しています。同じ考え方で、
+体感温度（防寒の目安）と<a href="#view">🏔 景色（眺望）</a>も指数には混ぜず、別の情報として並べています。
+「登れるか」「雷はどうか」「寒さはどうか」「景色はどうか」を、それぞれ切り分けて
+判断していただくための構成です。</p>
+
+<p>風速15m/sは「歩行がふらつき、耐風姿勢が必要になり始める」レベルで、
 一般的な山岳気象の目安と同じ線を採用しています。冬は同じ風速でも低体温リスクが
 段違いに上がるため、閾値を8/12m/sに引き下げています。</p>
 
-<div class="point">⚠ <b>夕方急変の警告</b>: 行動時間帯の外である17〜20時がC相当と予想される日は、
+<div class="point">⚠ <b>夕方急変の警告</b>: 行動時間帯の外である17〜20時が
+<b>C相当</b>、または<b>発雷リスクが「注意」以上</b>と予想される日は、
 日中の指数は変えずに「⚠夕方」の警告マークを付けます。下山が遅れたときやテント泊のときは
 この印が付いた日の夕方以降に注意してください。</div>
 
@@ -217,8 +225,8 @@ CAPE が中くらいでも、日中に山の斜面を這い上がる風（谷風
 このためです。<b>燃料（CAPE）と蓋（CIN）はセットで見る必要があります。</b></p>
 
 <h3>4段階の決め方</h3>
-<p>まず CAPE で大枠の段階を決めます。区切りは登山指数 A/B/C と同じ 500・1000 を使い、
-いちばん上の段だけ 2500 を足しています。</p>
+<p>まず CAPE で大枠の段階を決めます。区切りの 500・1000・2500 は、一般的に使われている
+雷雨の目安に合わせたものです。</p>
 
 <div class="tbl"><table>
 <tr><th style="width:9em">表示</th><th style="width:9em">CAPE の目安</th><th>読み方</th></tr>
@@ -243,7 +251,8 @@ CAPE が中くらいでも、日中に山の斜面を這い上がる風（谷風
 慣れている方はそちらを直接ご覧ください。</p>
 
 <div class="point">この4段階は<b>参考表示</b>で、登山指数 A/B/C の判定には使っていません。
-指数側はこれまでどおり CAPE 500/1000 だけを見ています。</div>
+登山指数は<b>稜線風速と降水量だけ</b>で判定しており、CAPE は一切使っていません。
+ただし17〜20時の発雷リスクが「注意」以上の日には、日別表に「⚠夕方」の警告マークが付きます。</div>
 
 <div class="notice">⚠ <b>これは雷の予報ではありません。</b>雷雨は数kmの広がりしかない局地的な
 現象で、格子状の予報データからは「どこで・何時に鳴るか」までは決められません。
@@ -259,7 +268,10 @@ CAPE が中くらいでも、日中に山の斜面を這い上がる風（谷風
 例: 気温0℃・風14m/s → 体感約−8℃。夏でも稜線では防寒着が要る、が数字で見えます。
 雨や汗で濡れるとさらに下がるため、表の値は「良くてこれくらい」と読んでください。</div>
 
-<h2>7. 判定基準③: 眺望 ◎○△✕</h2>
+<h2 id="view">7. 判定基準③: 🏔 景色（眺望）◎○△✕</h2>
+<p>景色（眺望）は「<b>山頂付近の雲・視程・降水</b>」の3つを組み合わせて判定しています。
+視程は景色判定に利用しており、詳細表では景色の補足情報として併記しています
+（視程だけの列は設けていません。最終的な「🏔 景色」の4段階を見れば判断できます）。</p>
 <p>雲の予報は「下層（〜2km）・中層（2〜7km）・上層（7km〜）」の3階建てで出てきます。
 これを<b>山頂の高さと見比べる</b>のがミソです。</p>
 
@@ -291,15 +303,73 @@ CAPE が中くらいでも、日中に山の斜面を這い上がる風（谷風
 <figcaption>同じ「曇り」でも、雲が山頂より下なら絶景（雲海）、山頂の高さなら真っ白（ガス）</figcaption>
 </figure>
 
+<h3>4つのアイコン</h3>
+<p>同じ山のシルエットに、上空の天候だけを重ねた4種類のアイコンで表示します。
+色だけに頼らずに済むよう、◎○△✕ の記号と言葉も必ず添えています。</p>
+
+<!-- アプリ本体(index.html)と同一のスプライト。変更するときは両方そろえること -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <g id="view-mt">
+    <path d="M1.5 26 11 9l5.2 9L21 14.5 30.5 26Z" fill="currentColor"/>
+    <path d="M11 9l5.2 9-1.6 8H8.2Z" fill="#fff" opacity=".2"/>
+    <path d="M11 9 8.3 13.8l1.6-.7 1.1 1.2 1.2-1.3 1.3 1.1Z" fill="#fff" opacity=".92"/>
+    <path d="M21 14.5l-1.7 3.1 1.1-.5.8.9.9-1 .9.8Z" fill="#fff" opacity=".92"/>
+  </g>
+  <symbol id="view-ex" viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="23.5" cy="7.5" r="3.7" fill="#f5a623"/>
+    <circle cx="22.2" cy="6.2" r="1.3" fill="#fff" opacity=".42"/>
+    <path d="M23.5 2.2V.4M23.5 12.8v1.8M28.8 7.5h1.8M18.2 7.5h-1.8M27.3 3.7l1.3-1.3M19.7 11.3l-1.3 1.3M27.3 11.3l1.3 1.3M19.7 3.7 18.4 2.4"
+          stroke="#f5a623" stroke-width="1.9"/>
+    <use href="#view-mt"/>
+  </symbol>
+  <symbol id="view-ok" viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="17" cy="7" r="3.3" fill="#f5a623"/>
+    <circle cx="15.9" cy="5.9" r="1.15" fill="#fff" opacity=".42"/>
+    <path d="M17 2.1V.4M12.1 7h-1.7M13.5 3.5 12.3 2.3M13.5 10.5l-1.2 1.2M17 11.9v1.7"
+          stroke="#f5a623" stroke-width="1.8"/>
+    <g transform="translate(16.4 3.2) scale(.62)" stroke-width="3.4">
+      <path d="M7.3 13.5h8.6a3.9 3.9 0 0 0 .4-7.78A5.6 5.6 0 0 0 5.55 4.37 3.85 3.85 0 0 0 7.3 13.5Z"
+            fill="#fff" stroke="#8b93a3"/>
+    </g>
+    <use href="#view-mt"/>
+  </symbol>
+  <symbol id="view-so" viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <use href="#view-mt"/>
+    <g transform="translate(2.4 5.2) scale(.72)" stroke-width="2.9">
+      <path d="M7.3 13.5h8.6a3.9 3.9 0 0 0 .4-7.78A5.6 5.6 0 0 0 5.55 4.37 3.85 3.85 0 0 0 7.3 13.5Z"
+            fill="#eef0f4" stroke="#8b93a3"/>
+    </g>
+    <path d="M5.6 20.6h8.2M11.8 23.6h11.4" stroke="#c2c9d4" stroke-width="2.3"/>
+  </symbol>
+  <symbol id="view-ng" viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <use href="#view-mt"/>
+    <g transform="translate(3.1 1.1) scale(1.05)" stroke-width="2.1">
+      <path d="M7.3 13.5h8.6a3.9 3.9 0 0 0 .4-7.78A5.6 5.6 0 0 0 5.55 4.37 3.85 3.85 0 0 0 7.3 13.5Z"
+            fill="#8b93a3" stroke="#6b7280"/>
+    </g>
+    <path d="M8.6 19.2 6.9 22.8M14.2 19.2l-1.7 3.6M19.8 19.2l-1.7 3.6M25.2 18.4l-1.7 3.6"
+          stroke="#3f83d6" stroke-width="2.2"/>
+  </symbol>
+</svg>
+
 <div class="tbl"><table>
-<tr><th>判定</th><th>条件（山頂の高さにかかる雲＋視程＋雨で判定）</th></tr>
-<tr><td>◎</td><td>山頂レベルの雲20%以下 かつ 視程20km以上</td></tr>
-<tr><td>○</td><td>山頂レベルの雲50%未満</td></tr>
-<tr><td>△</td><td>山頂レベルの雲50%以上 または 視程10km未満</td></tr>
-<tr><td>✕</td><td>雨(3時間1mm以上) / 視程2km未満 / 山頂レベルの雲80%以上</td></tr>
-<tr><td>(雲海)</td><td>山頂より下の雲60%以上＋山頂レベル30%以下 → ○/◎に付記</td></tr>
+<tr><th style="width:11em">表示</th><th>条件（山頂の高さにかかる雲＋視程＋雨で判定）</th></tr>
+<tr><td><span class="vw v-ex"><svg aria-hidden="true"><use href="#view-ex"/></svg>◎ 展望良好</span></td>
+    <td>山頂レベルの雲20%以下 かつ 視程20km以上（快晴・展望良好）</td></tr>
+<tr><td><span class="vw v-ok"><svg aria-hidden="true"><use href="#view-ok"/></svg>○ 良好</span></td>
+    <td>山頂レベルの雲50%未満（薄い雲。おおむね見える）</td></tr>
+<tr><td><span class="vw v-so"><svg aria-hidden="true"><use href="#view-so"/></svg>△ ガス</span></td>
+    <td>山頂レベルの雲50%以上 または 視程10km未満（山頂に雲がかかり、景色は限定的）</td></tr>
+<tr><td><span class="vw v-ng"><svg aria-hidden="true"><use href="#view-ng"/></svg>✕ 雨 / 濃霧</span></td>
+    <td>雨(3時間1mm以上)＝「雨」 / 視程2km未満・山頂レベルの雲80%以上＝「濃霧」</td></tr>
+<tr><td>(雲海)</td>
+    <td>山頂より下の雲60%以上＋山頂レベル30%以下 → ○/◎に付記</td></tr>
 </table></div>
-<p>日別表の「眺望(朝)」は<b>4〜8時のいちばん良い時間帯</b>の値で、ご来光が狙えるかの目安です。</p>
+<p>景色の欄には、判定に使った視程を下段に小さく併記しています
+（例: <b>◎ 展望良好</b> / 視程 25km）。「なぜこの判定になったのか」を
+確かめたいときの手がかりとしてお使いください。</p>
+<p>日別表の「景色(朝)」は<b>4〜8時のいちばん良い時間帯</b>の値で、ご来光が狙えるかの目安です
+（併記する視程も、その採用した時刻の値です）。</p>
 
 <h3>日別表の「天気」は行動時間帯から自前で代表を決める</h3>
 <p>予報APIが返す「その日の天気」は<b>24時間の中で最も悪い1時間</b>を採用する仕様のため、
@@ -348,7 +418,8 @@ CAPE が中くらいでも、日中に山の斜面を這い上がる風（谷風
 <div class="point">
 ① 山の名前から緯度経度と山頂標高を特定する（604座は照合済みデータベース）<br>
 ② 世界の気象モデルの予報を「山頂の高さ」を指定して取得する<br>
-③ 上空の風から「稜線の風」を、雲の高さから「眺望」を、複数指標の最悪値から「登山指数A/B/C」を計算する<br>
+③ 上空の風から「稜線の風」を、雲の高さ・視程・降水から「景色（眺望）」を、
+稜線風と降水量の悪いほうから「登山指数A/B/C」を計算する<br>
 ④ 予報の前に直近3日の実況（モデル解析値）も表示。雪のある期間は積雪列を自動追加<br>
 ⑤ 数字はぜんぶ決まったルール（数式としきい値）の計算
 </div>
