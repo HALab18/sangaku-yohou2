@@ -5,15 +5,139 @@
 
 ---
 
-## ▶ 次の再開ポイント: 登山指数からCAPEを除外 / 景色(眺望)の整理
+## ▶ 次の再開ポイント: ver 2.11β (山さがしに降水確率を復活 / 解説ページ整理)
 
-**現状**: 作業ブランチ `claude/climbing-index-logic-review-eaf598`（worktree）。**master 未反映・未 push**。
+**現状**: 作業ブランチ `claude/peakweather-api-spec-change-9d346f`（worktree）。**master 未反映・未 push**。
+下の「気象庁モデルに変更」も同じブランチに載っているので、1回の push で両方公開される。
 
 **次にやること**: master へ push
-（`git push origin claude/climbing-index-logic-review-eaf598:master`）。
-このブランチは**下の「降水配点の変更 / 発雷リスク表示の新設」の未 push 分も含む**ので、
-1回の push で両方が公開される。
+（`git push origin claude/peakweather-api-spec-change-9d346f:master`）。
 push 後は `gh run list` の success と公開URLの実物を必ず確認する。
+
+### 1. 山さがしに降水確率を「表示だけ」復活
+
+JMA 化の副作用で消えた列を戻す。**スコアには入れない**（配点は降水量-30の一本化のまま）。
+異なるモデルの値を同じ点数に混ぜると点数の意味が説明しづらくなるため。
+
+取得方法は2案を実測比較した（3地点・1日で計測）:
+
+| 案 | リクエスト | データ量 | 判断 |
+|---|---|---|---|
+| A: `models=jma_seamless,best_match` で1本 | 1本 | 全10変数が2モデル分 = **約2倍** | 不要な気圧面風6本まで二重取得。却下 |
+| B: 降水確率1変数だけ別リクエスト | 2本 | 7354 + 2504 = **+34%** | **採用**。index.html の「JMA+補完」と作りが揃う |
+
+- `fetchChunk` で2本を `Promise.all` で並行に投げ、地点ごとに `mergeSeries`（時刻キー）で貼り合わせ。
+  同じ座標列を送るので地点の並びは一致するが、地点内の時系列は時刻突き合わせにしている。
+- `score()` に `pprob` を戻したが **`s-=` の行には一切足していない**。
+  回帰確認は `grep -n "pprob" scripts/gen_find.py` が取得・コメント・戻り値・表示の4系統だけであること。
+- **キャッシュキー find5 → find6**（`cacheKey` と `LAST_KEY` 両方）。`sc` に新フィールドが増えたため。
+- 実測検証: 富士山/飯豊山/槍ヶ岳の3地点バッチで、補完列の長さが `time` と一致し、
+  値が補完元と完全一致することを確認（`precipitation_probability_jma_seamless` は 0/24 で全null＝
+  JMA に無いことの再確認）。
+
+### 2. 3日間である経緯を利用者に見える形で明記
+
+「天気の正確性を担保するため、日照を配信している範囲に合わせた」「別モデル併用での期間延長は検討中」を
+`find.html` の notice（検索前から見える位置）・`find-score.html`・`history.html` の3箇所に記載。
+
+### 3. 解説ページから AI の章を削除
+
+`docs/how-it-works.html` の「10. コードとAIの分担」を削除し 11→10 / 12→11 に繰り上げ。
+「まとめ」⑤も Web版と同じ `数字はぜんぶ決まったルール（数式としきい値）の計算` に統一。
+**`how-it-works-web.html` は元から AI の記述が1箇所も無いので無変更**。
+目次は無く、ページ内アンカーは `#lightning`(5章)/`#view`(7章) だけで10章より前なのでリンク切れなし。
+
+あわせて `docs/history.html` の how-it-works リンクを**全て `-web` 版に統一**した
+（Webページから CLI 版へ誘導していた既存の不整合。`find-score.html` の1箇所も同様に修正）。
+
+### 4. バージョン `ver 2.11β`
+
+`index.html` フッターのみがライブなバージョン表記。**βは外さない**（ユーザー指示）。
+`docs/history.html` の見出しを `2026年7月28日（ver 2.11β）` に。
+全角カッコ形式は ver 1.01 / 1.00 の既存書式に合わせたもの。
+なお `Introduction image/moment-v2/card-01-intro.svg` の `ver 2.01`（β無し）は
+YAMAP 紹介カード画像で公開アプリの表記ではないため対象外にした。
+
+---
+
+## 気象データ取得元を気象庁モデル(JMA)に変更 — 未 push
+
+**現状**: コミット済みだが master 未反映。上の ver 2.11β と同じブランチに載っており、
+1回の push でまとめて公開される。
+
+### 0. 着手前の実測検証（ここが設計の前提。指示書の想定と食い違った）
+
+`api.open-meteo.com` に実リクエストして確認した結果:
+
+| 確認 | 結果 |
+|---|---|
+| `/v1/jma` の気圧面風(925〜600hPa)を11日間 | **全期間で値あり**。稜線風の再設計は不要だった |
+| `forecast_days=11` | 264h 返るが非nullは**11日目の約14:00まで**。11日目の daily 集計は null |
+| `forecast_days=16` | **HTTP 200 で通る**。11日目以降が黙って null になるだけ |
+| `end_date` 超過時の 400 reason | `...out of allowed range from … to YYYY-MM-DD` → 既存クランプ正規表現がそのまま効く |
+| `elevation=` パラメータ | `/v1/jma` でも有効（標高ダウンスケーリングが効く） |
+| gusts/visibility/snow_depth/prob/cape/cin を `/v1/jma` に要求 | **HTTP 200 だが 264h 全て null**（400 にならない） |
+| 同6項目を `/v1/forecast` で11日 | 全 264h 値あり |
+| `sunshine_duration` を `/v1/jma` | **MSM 期間の76hのみ**。7:00〜15:59 は `1日目9/9・2日目9/9・3日目9/9・4日目0/9` |
+| `/v1/jma` と `/v1/forecast?models=jma_seamless` | 出力完全一致（同一物） |
+| `/v1/jma` の多地点バッチ（lat/lon カンマ区切り） | 動作する（find で必要）。elevation も地点ごとに効く |
+
+**教訓**: このAPIは「存在しない項目」も「長すぎる期間」も**エラーにせず null を返す**。
+「400 が出ないから取れている」は成り立たない。必ず非null件数を数えて確認すること。
+
+### 1. メイン予報を「気象庁モデル + 不足分の補完」の2本立てに
+
+`fetch_forecast` / `run()` を `/v1/jma`（基本）と `/v1/forecast`（補完6項目）の2リクエストに分割。
+`SUPPLEMENT_HOURLY` = prob/gusts/cape/cin/visibility/snow_depth、`SUPPLEMENT_DAILY` = prob_max。
+
+- マージは `_merge_series` / `mergeSeries` で**時刻をキーに貼り直す**。添字一致は前提にしない
+  （2本のAPIで `end_date` のクランプ結果が食い違いうるため）。欠落時刻は None/null 埋めなので
+  下流は必ず `time` と同長の列を得る → 表示ロジックは**一切変更不要**だった。
+- 判定ロジック（`block_index` / `blockIndex`）・`view_score` / `viewScore` は無変更。
+- `compare_models` は別目的の機能なので `/v1/forecast?models=` のまま（現状維持）。
+
+### 2. 予報期間 16日 → 11日（`JMA_DAYS` 定数を CLI・Web 両方に）
+
+`horizon = today + (JMA_DAYS-1)`。セレクタのループ・見出し・エラー文言をすべて定数から作る。
+`docs/point.html` の開始日セレクタ（別ページ・自動生成物ではない）も 11 に合わせた。
+
+**11日目の daily 欠損フォールバックを追加**: GSM が昼過ぎで切れるため
+`weather_code / temperature_2m_max/min / precipitation_sum / snowfall_sum` が常に null で返る。
+何もしないと見通し表の最終行がダッシュだらけになるので、同日の hourly から作り直す。
+`summarize_daily_weather` / `summarizeDailyWeather` も **code が None の時刻を落とす**ように修正
+（混ざると重症度比較が壊れる）。
+実測で CLI と Web が同値になることを確認（08/07: 霧雨(弱) / 2〜3℃ / 3.4mm で一致）。
+
+### 3. 山さがし(find)は「気象庁モデル + 3日間 + 降水量-30」に
+
+`sunshine_duration`（スコア -28 の主要素）が MSM 期間しか来ないため、**4日目は 0/9 で丸ごと欠測**。
+「日照ぬきの薄いスコア」を出すより確実に採点できる範囲に絞る判断で、**日付選択肢を14日→3日**に。
+
+- 降水確率は気象庁モデルに無いので**配点廃止**。`確率-10 + 量-20` を **`量-30` に一本化**
+  （`min(psum,10)/10*30`）。満点100のスケールと A≧70 / B≧45 は維持。表の「降水確率」列も削除。
+- **キャッシュキーを find4 → find5 に更新**（`cacheKey` と `LAST_KEY` の両方）。
+  上げ忘れると意味の変わった旧スコアがそのまま復元される。
+- `docs/find.html` は `python scripts/gen_find.py` で再生成（規約6。直接編集していない）。
+- `docs/find-score.html` は**自動生成物ではない**（`gen_find.py` の `OUT` は find.html のみ）。
+  手書きページなので直接編集した。計算例4件は新配点で再計算し、コードと突き合わせて検証済み
+  （例A 92/A・例B 44/C・例C 100/A・例D 65/B）。
+
+### 4. ドキュメント同期
+
+`references/criteria.md`（find の記述が daily値・地表10m風・標高補間なしと**実装とずれていた**のも合わせて修正）/
+`docs/how-it-works*.html`（データソース節を新設）/ `docs/history.html` / `README.md` /
+`skill/SKILL.md` / `references/moment-v2.md` / `CLAUDE.md`（取得元の注意点を新節に）。
+
+`python scripts/check_mountains.py` は [1/4]〜[4/4] すべて OK（DEM 要確認11件は既存の岩峰ぶん）。
+
+---
+
+## 登山指数からCAPEを除外 / 景色(眺望)の整理 — 未 push
+
+**現状**: コミット済みだが **master 未反映・未 push**。
+上の「気象庁モデルに変更」の作業ブランチ `claude/peakweather-api-spec-change-9d346f` が
+この分と「降水配点の変更 / 発雷リスク表示の新設」の未 push 分を**すべて含む**ので、
+1回の push でまとめて公開される。
 
 ### 1. 登山指数 A/B/C の判定を「稜線風速・降水量」の2項目のみに変更
 

@@ -36,6 +36,26 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 
 **公開URL**: https://halab18.github.io/sangaku-yohou2/
 
+## 気象データの取得元
+
+基本は Open-Meteo の**気象庁モデル** `/v1/jma`（0〜4日目=MSM 約5km / 5〜11日目=GSM。自動切替）。
+**予報期間は11日**（`JMA_DAYS`。CLI・index.html の両方に定数を置いて揃える）。
+
+- 気象庁モデルに**無い**項目 = `precipitation_probability` / `wind_gusts_10m` / `cape` /
+  `convective_inhibition` / `visibility` / `snow_depth`。これらだけ `/v1/forecast` から補完し、
+  **時刻をキーにして**貼り合わせる（`_merge_series` / `mergeSeries`）。添字一致は前提にしない
+  （2本のAPIで `end_date` のクランプ結果が食い違いうるため）。
+- **要注意**: 存在しない項目を `/v1/jma` に投げても **400 にはならず全て null で返る**。
+  「エラーが出ないから取れている」と誤解しやすい。期間も同様で、11日を超えて要求しても
+  エラーにならず黙って null が並ぶ。**日数はコード側で必ず制限する**。
+- 11日目は昼過ぎでモデルが切れ daily 集計値が null になるため、hourly から作り直して表を埋める。
+- `docs/find.html`（山さがし）も気象庁モデルだが、**対象は3日間**。スコア主要素の
+  `sunshine_duration` が MSM 期間ぶんしか来ず、4日目以降は 7:00〜15:59 が丸ごと欠測になるため。
+  find も降水確率だけ `/v1/forecast` から補完するが、**表示専用でスコアには入れない**
+  （`score()` の `pprob`）。減点式を触るときは `s-=` の行に `pprob` を足さないこと。
+  `sc` の中身を変えたら `cacheKey` / `LAST_KEY` の `findN:` を必ず上げる。
+- モデル比較表（`compare_models`）は別目的の機能なので `/v1/forecast?models=` のまま。
+
 ## 厳守する規約
 
 1. **既存の山名(mountains.csv の name)は絶対に変えない。** 検索結果URL（`#燕岳/2026-07-19`）が

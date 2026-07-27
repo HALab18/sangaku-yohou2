@@ -2,9 +2,16 @@
 """index.html の MOUNTAINS 配列から docs/find.html (コンディション横断検索) を生成する。
 
 「その日に天気の良さそうな山を、まず見つけたい」という逆引きの入口。
-エリア(9地方)+ 任意で県 + 単日 を指定 → その範囲の山を Open-Meteo の daily 値だけ
+エリア(9地方)+ 任意で県 + 単日 を指定 → その範囲の山を Open-Meteo の気象庁モデルから
 バッチ取得し、簡易スコア(晴天度を最重視)でランキング表示。行をタップすると
 既存の詳細予報 (../index.html#山名/日付) が開く。
+
+対象は今日〜2日先の3日間。気象庁モデルはスコアの主要素である日照(sunshine_duration)を
+MSM 期間ぶんしか配信せず、4日目以降は 7:00〜15:59 が丸ごと欠測になるため。
+別の予報モデルを組み合わせて期間を延ばすかは検討中(判断材料は DEVLOG 参照)。
+
+降水確率は気象庁モデルに無いので別モデルから補完するが、**表示だけで採点には使わない**。
+モデルが違う値をスコアに混ぜると、スコアの意味が説明しづらくなるため。
 
 山岳DBを更新したら再実行して同期する:
     python scripts/gen_find.py
@@ -238,9 +245,17 @@ footer a{color:var(--link)}
 <p id="status"></p>
 
 <div class="notice">
-この一覧は<b>晴天度を最重視した「ざっくり比較用」の簡易スコア</b>です(山頂への標高補正はしていません。
-<a href="find-score.html">スコアの計算方法</a>)。
+この一覧は<b>晴天度を最重視した「ざっくり比較用」の簡易スコア</b>です
+(<a href="find-score.html">スコアの計算方法</a>)。
 実際に登る前に、気になる山をタップして<b>正式な登山指数A/B/C・稜線の風・時間帯別</b>の詳しい予報を必ず確認してください。
+</div>
+
+<div class="notice">
+📅 対象は<b>今日〜2日先の3日間</b>です。天気の正確性を担保するため、日本域に最適化された
+<b>気象庁モデル（MSM・約5kmメッシュ）</b>が採点に必要なデータ（とくに日照）を配信する範囲に
+合わせて期間を絞りました。以前は14日間表示していましたが、後半は精度が「傾向」の域を出ず、
+山を選び分ける用途には向かなかったためです。
+今後、別の予報モデルと組み合わせて期間を延ばすかは<b>検討中</b>です。
 </div>
 
 <div id="results"></div>
@@ -248,7 +263,7 @@ footer a{color:var(--link)}
 <footer>
 <a href="../index.html">← PeakWeather トップへ戻る</a> /
 <a href="mountains.html">対応している山の一覧</a> /
-天気データ: Open-Meteo (CC BY 4.0)
+天気データ: Open-Meteo (CC BY 4.0) / 気象庁モデル (MSM)
 </footer>
 
 </main>
@@ -443,7 +458,11 @@ footer a{color:var(--link)}
       elHint=document.getElementById("hint"),elStatus=document.getElementById("status"),
       elResults=document.getElementById("results");
 
-  // ---- 日付の選択肢 (今日〜13日先の14個・曜日つき) ----
+  // ---- 日付の選択肢 (今日〜2日先の3個・曜日つき) ----
+  // 3日なのは気象庁モデル(MSM)の都合。スコアの主要素である日照(sunshine_duration)は
+  // MSM 期間ぶんしか配信されず、4日目以降は 7:00〜15:59 が丸ごと欠測になる。
+  // 「日照ぬきの薄いスコア」を出すより、確実に採点できる範囲に絞る方針。
+  // 別モデルの併用で期間を延ばすかは検討中。延ばすならまず日照の代替をどう作るかから。
   // index.html と同じ方式: <select> に「07/25(土) 今日」形式の option を並べる。
   // input[type=date] だと iOS/PCで曜日が出ない・実装差でカードから溢れるなどの問題が
   // あったため、明示的に「日付+曜日」を全部option文言に埋め込む方式に統一。
@@ -452,7 +471,7 @@ footer a{color:var(--link)}
   function md(d){return String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0")}
   (function(){
     var today=new Date();today.setHours(0,0,0,0);
-    for(var i=0;i<14;i++){
+    for(var i=0;i<3;i++){
       var d=new Date(today);d.setDate(d.getDate()+i);
       var o=document.createElement("option");
       o.value=iso(d);
@@ -540,11 +559,30 @@ footer a{color:var(--link)}
   // 対象時間帯: 7:00〜15:59 (hour 7〜15 の 9時間、登山コアタイム)
   function inRange(t){var h=parseInt(t.slice(11,13),10);return h>=7&&h<=15}
 
-  // ---- Open-Meteo (daily は積雪のみ、hourly で7:00〜15:59集計) ----
+  // ---- Open-Meteo 気象庁モデル (daily は積雪のみ、hourly で7:00〜15:59集計) ----
+  // 降水確率は気象庁モデルに存在しない(投げても 400 にならず全 null で返る)ため、
+  // 本体(index.html)と同じく別モデルから補完する。ただし find では
+  // 「表に出す参考値」だけの扱いで、スコアの減点には一切使わない(降水量-30に一本化したまま)。
+  var JMA_URL="https://api.open-meteo.com/v1/jma";
+  var FC_URL="https://api.open-meteo.com/v1/forecast";
   var DAILY="snowfall_sum";
-  var HOURLY="weather_code,temperature_2m,precipitation,precipitation_probability,"+
+  var HOURLY="weather_code,temperature_2m,precipitation,"+
     "sunshine_duration,wind_speed_925hPa,wind_speed_900hPa,wind_speed_850hPa,"+
     "wind_speed_800hPa,wind_speed_700hPa,wind_speed_600hPa";
+  var SUPP_HOURLY="precipitation_probability";
+  // extra の系列を base の time 軸に「時刻をキーにして」貼り直す(index.html の mergeSeries と同じ)。
+  // 2本のAPIで時系列が食い違いうるので添字が揃っている前提を置かない。
+  // 足りない時刻は null で埋めるため、下流は必ず base.time と同じ長さの列を得る。
+  function mergeSeries(base,extra,keys){
+    var pos={},et=(extra&&extra.time)||[],i;
+    for(i=0;i<et.length;i++)pos[et[i]]=i;
+    keys.forEach(function(k){
+      var src=(extra&&extra[k])||[];
+      base[k]=base.time.map(function(t){
+        return (t in pos)&&pos[t]<src.length?src[pos[t]]:null;
+      });
+    });
+  }
   async function apiJson(url,params,retries){
     retries=retries||3;var lastErr;
     for(var a=1;a<=retries;a++){
@@ -557,19 +595,29 @@ footer a{color:var(--link)}
     throw new Error("API呼び出しに失敗しました: "+(lastErr&&lastErr.message||lastErr));
   }
   async function fetchChunk(ms,date){
-    var params={
-      latitude:ms.map(function(m){return m.lat}).join(","),
-      longitude:ms.map(function(m){return m.lon}).join(","),
-      elevation:ms.map(function(m){return m.el}).join(","),
-      daily:DAILY,hourly:HOURLY,timezone:"Asia/Tokyo",wind_speed_unit:"ms",
-      start_date:date,end_date:date
-    };
-    var data=await apiJson("https://api.open-meteo.com/v1/forecast",params);
-    return Array.isArray(data)?data:[data]; // 単一地点はオブジェクトで返る
+    var lat=ms.map(function(m){return m.lat}).join(","),
+        lon=ms.map(function(m){return m.lon}).join(","),
+        el =ms.map(function(m){return m.el }).join(",");
+    // 基本は気象庁モデル。降水確率だけ別モデルから補完する(1変数だけの軽いリクエスト)。
+    // 2本を並行に投げ、地点ごとに時刻キーで貼り合わせる。
+    var res=await Promise.all([
+      apiJson(JMA_URL,{latitude:lat,longitude:lon,elevation:el,
+        daily:DAILY,hourly:HOURLY,timezone:"Asia/Tokyo",wind_speed_unit:"ms",
+        start_date:date,end_date:date}),
+      apiJson(FC_URL,{latitude:lat,longitude:lon,elevation:el,
+        hourly:SUPP_HOURLY,timezone:"Asia/Tokyo",
+        start_date:date,end_date:date})
+    ]);
+    var base=Array.isArray(res[0])?res[0]:[res[0]]; // 単一地点はオブジェクトで返る
+    var sup =Array.isArray(res[1])?res[1]:[res[1]];
+    // 同じ座標列を送っているので地点の並びは一致する
+    for(var i=0;i<base.length;i++)
+      mergeSeries(base[i].hourly,(sup[i]&&sup[i].hourly)||{},[SUPP_HOURLY]);
+    return base;
   }
 
   // ---- 安全性優先スコア(0-100)。稜線風と降水を最重視、対象時間帯 7:00〜15:59 ----
-  // 重み: ①晴天度-28 / ②降水-30 / ③稜線風-32 / ④雪寒気-10  (合計-100)
+  // 重み: ①晴天度-28 / ②降水量-30 / ③稜線風-32 / ④雪寒気-10  (合計-100)
   function score(d, mt){
     var hr=d.hourly, times=(hr&&hr.time)||[], N=times.length;
     // 7:00〜15:59 の hourly 値を集計するヘルパ
@@ -617,8 +665,9 @@ footer a{color:var(--link)}
       win.push({hour:parseInt(times[wi].slice(11,13),10),code:wc});
     }
     var wxRep=repWeather(win);
-    var pprob=agg("precipitation_probability","max");
     var psum=agg("precipitation","sum");
+    // 降水確率は「表に出す参考値」だけ。下の減点計算では一切使わない
+    var pprob=agg("precipitation_probability","max");
     var tmin=agg("temperature_2m","min");
     var tmax=agg("temperature_2m","max");
     var snow=d.daily&&d.daily.snowfall_sum?d.daily.snowfall_sum[0]:null;
@@ -628,16 +677,17 @@ footer a{color:var(--link)}
     else if(code!=null)s-=code<=1?0:code===2?8:code===3?18:22;
     // 天気コードの悪天(雨雪雷)を軽く上乗せ
     if(code!=null){if(code>=95)s-=8;else if(code>=71&&code<=86)s-=5;else if(code>=51&&code<=82)s-=4}
-    // ② 降水 (最大 -30) - 確率 -10 / 量 -20 (行動可否に効くのは実際に降る量なので量を重視)
-    if(pprob!=null)s-=pprob/100*10;
-    if(psum!=null)s-=Math.min(psum,10)/10*20;
+    // ② 降水量 (最大 -30) - 行動可否に効くのは実際に降る量。
+    // 以前は「確率-10 / 量-20」だったが、気象庁モデルに降水確率が無いため量に一本化した。
+    // 降水確率(pprob)は表には出すが、ここには足さない(スコアの意味を変えないため)
+    if(psum!=null)s-=Math.min(psum,10)/10*30;
     // ③ 稜線風 (最大 -32) - 6m/s以下=0、18m/s以上=最大
     if(ridgeWmax!=null)s-=Math.max(0,Math.min(1,(ridgeWmax-6)/12))*32;
     // ④ 雪・寒気 (最大 -10)
     if(snow!=null&&snow>0)s-=Math.min(snow,5)/5*5;
     if(tmin!=null&&tmin<-5)s-=Math.min((-5-tmin),15)/15*5;
     return {v:Math.round(Math.max(0,Math.min(100,s))),sunFrac:sunFrac,code:code,wxRep:wxRep,
-      pprob:pprob,psum:psum,ridgeWmax:ridgeWmax,tmax:tmax,tmin:tmin};
+      psum:psum,pprob:pprob,ridgeWmax:ridgeWmax,tmax:tmax,tmin:tmin};
   }
   // 安全性の足切り: 稜線風速 >=18m/s または 降水量 >=10mm のいずれかで別表送り
   function isDangerous(s){
@@ -662,12 +712,14 @@ footer a{color:var(--link)}
   // ---- 検索実行 ----
   // キー接頭辞の数字は保存形式のバージョン。sc の中身を変えたら必ず上げる
   // (find2: 代表天気 wxRep を追加 / find3: wxRep.notes を [{h,t}] 形式にし fair を追加
-  //  / find4: 降水の配点を 確率-10・量-20 に変更しスコア値の意味が変わった)。
+  //  / find4: 降水の配点を 確率-10・量-20 に変更しスコア値の意味が変わった
+  //  / find5: 取得元を気象庁モデルに変更・対象を3日に短縮・降水を量-30に一本化
+  //  / find6: 降水確率を別モデルから取り直し、表示専用フィールド pprob として復活)。
   // 上げ忘れると旧キャッシュがそのまま復元され、天気列だけ古い表示になる。
-  function cacheKey(r,p,date){return "find4:"+r+":"+p+":"+date}
+  function cacheKey(r,p,date){return "find6:"+r+":"+p+":"+date}
   // 直近の検索条件を保存するキー。ページを再訪した時にセレクタと結果を復元する用途
   // (bfcache が効かない iOS 直リンク等のフォールバック。詳細は末尾の restoreLastSearch)。
-  var LAST_KEY="find4:last";
+  var LAST_KEY="find6:last";
   async function search(fromRestore){
     if(needsPrefSelection()){elStatus.textContent="都道府県を選択してから検索してください";return}
     var ms=targets(),date=elDate.value,r=elRegion.value,p=elPref.value;
@@ -764,7 +816,9 @@ footer a{color:var(--link)}
       '山頂標高で標高補正済み (Open-Meteo の elevation パラメータ経由。乾燥断熱減率 約0.65℃/100m)</dd>'+
     '<dt>稜線風</dt><dd>山頂標高で推定した稜線風速の 7:00〜15:59 最大値 (m/s)。'+
       '地表10mではなく気圧面から線形補間した値</dd>'+
-    '<dt>降水確率</dt><dd>7:00〜15:59 の1時間ごとの降水確率の最大値 (%)</dd>'+
+    '<dt>降水確率</dt><dd>7:00〜15:59 の1時間ごとの降水確率の最大値 (%)。'+
+      '<b>参考表示のみでスコアには影響しません</b>。気象庁モデルは降水確率を配信していないため、'+
+      'この列だけ別の予報モデルから取得しています(隣の降水量とは出どころが違います)</dd>'+
     '<dt>降水量</dt><dd>7:00〜15:59 の降水量の合計 (mm)。'+
       'スコアと足切り(⚠ 慎重に判断が必要)に直接影響する</dd>'+
     '</dl></div>');
@@ -827,7 +881,7 @@ footer a{color:var(--link)}
     if(Array.prototype.some.call(elDate.options,function(o){return o.value===last.date})){
       elDate.value=last.date;
     }else{
-      // 日付が期限切れ (14日ウインドウを外れた) 場合は復元スキップ (キャッシュヒットしない)
+      // 日付が期限切れ (3日ウインドウを外れた) 場合は復元スキップ (キャッシュヒットしない)
       return;
     }
     updateHint();

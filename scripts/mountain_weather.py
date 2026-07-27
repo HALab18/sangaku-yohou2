@@ -29,8 +29,16 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
+# 基本の取得元は日本域に最適化された気象庁モデル (0-4日=MSM 約5km / 5-11日=GSM。自動で切替わる)。
+# JMA_URL に無い項目 (降水確率・突風・CAPE/CIN・視程・積雪深) だけ FORECAST_URL から補完する。
+# FORECAST_URL はモデル比較(compare_models)でも引き続き使う。
+JMA_URL = "https://api.open-meteo.com/v1/jma"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
+
+# 気象庁モデルの予報長。forecast_days=16 等を投げてもAPIはエラーを返さず黙って null を並べるので、
+# 期間は必ずこちらで 11日 (today+10) に制限する。
+JMA_DAYS = 11
 MOUNTAINS_CSV = Path(__file__).resolve().parent.parent / "references" / "mountains.csv"
 
 # 気圧面と標準高度 (m)。山頂標高を挟む2面から線形補間して稜線風を出す
@@ -133,6 +141,9 @@ def summarize_daily_weather(times, codes):
     戻り値: {date_iso: {"code": int, "notes": [str, ...]}}。表示ラベルは既存 wcode を使う。"""
     by_date = {}
     for i, t in enumerate(times):
+        # 予報末端(GSM打ち切り後)の時刻は code が None で返る。混ぜると重症度比較が壊れるので落とす
+        if codes[i] is None:
+            continue
         by_date.setdefault(t[:10], []).append({"hour": int(t[11:13]), "code": codes[i]})
     result = {}
     for date, entries in by_date.items():
@@ -181,7 +192,7 @@ def wx_note_text(notes):
 
 def http_json(url, params, retries=3):
     """一時的な通信エラー(接続断・SSLハンドシェイクタイムアウト・5xx等)は指数バックオフで再試行する。
-    予報モデルの更新時刻によっては end_date が16日先まで受け付けられず HTTP 400 になるため、
+    予報モデルの更新時刻によっては end_date が予報長ぶん受け付けられず HTTP 400 になるため、
     その場合は応答の reason から許容最終日をパースして end_date を縮め、1回だけ再試行する"""
     last_err = None
     clamped = False
@@ -451,23 +462,44 @@ def view_cell(vw, note, vis=None):
 
 
 # ---------------------------------------------------------------- 予報取得
+# 気象庁モデルに存在しない項目。JMA_URL に投げても 400 にはならず全て null で返ってくるため、
+# 「エラーが出ないから取れている」と誤解しやすい。必ず FORECAST_URL 側から補完する。
+SUPPLEMENT_HOURLY = ["precipitation_probability", "wind_gusts_10m",
+                     "cape", "convective_inhibition", "visibility", "snow_depth"]
+SUPPLEMENT_DAILY = ["precipitation_probability_max"]
+
+
+def _merge_series(base, extra, keys):
+    """extra の系列を base の time 軸に「時刻をキーにして」貼り直す。
+    2本のAPIは end_date のクランプ結果が食い違いうるので、添字が揃っている前提を置かない。
+    足りない時刻は None で埋めるため、下流は必ず base["time"] と同じ長さの列を得る。"""
+    pos = {t: i for i, t in enumerate(extra.get("time") or [])}
+    for k in keys:
+        src = extra.get(k) or []
+        base[k] = [src[pos[t]] if t in pos and pos[t] < len(src) else None
+                   for t in base["time"]]
+
+
 def fetch_forecast(lat, lon, elev, start, end, levels):
-    hourly = ["temperature_2m", "precipitation", "precipitation_probability",
+    hourly = ["temperature_2m", "precipitation",
               "weather_code", "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high",
-              "wind_speed_10m", "wind_gusts_10m",
-              "cape", "convective_inhibition", "visibility",
-              "snow_depth", "snowfall"]
+              "wind_speed_10m", "snowfall"]
     for p, _ in levels:
         hourly += [f"wind_speed_{p}hPa", f"wind_direction_{p}hPa"]
-    params = {
+    common = {
         "latitude": lat, "longitude": lon, "elevation": elev,
-        "hourly": ",".join(dict.fromkeys(hourly)),
-        "daily": "weather_code,temperature_2m_max,temperature_2m_min,"
-                 "precipitation_sum,snowfall_sum,precipitation_probability_max,sunrise,sunset",
         "timezone": "Asia/Tokyo", "wind_speed_unit": "ms",
         "start_date": start.isoformat(), "end_date": end.isoformat(),
     }
-    return http_json(FORECAST_URL, params)
+    data = http_json(JMA_URL, dict(common,
+        hourly=",".join(dict.fromkeys(hourly)),
+        daily="weather_code,temperature_2m_max,temperature_2m_min,"
+              "precipitation_sum,snowfall_sum,sunrise,sunset"))
+    sup = http_json(FORECAST_URL, dict(common,
+        hourly=",".join(SUPPLEMENT_HOURLY), daily=",".join(SUPPLEMENT_DAILY)))
+    _merge_series(data["hourly"], sup.get("hourly") or {}, SUPPLEMENT_HOURLY)
+    _merge_series(data["daily"], sup.get("daily") or {}, SUPPLEMENT_DAILY)
+    return data
 
 
 def day_indices(times, date):
@@ -689,14 +721,36 @@ def daily_summary_rows(data, dates, lo, hi, t, elev):
                 evening = lt_e is not None and lt_e[0] >= 2
         depth = max((depth_all[i] for i in idxs if i < len(depth_all) and depth_all[i] is not None),
                     default=None)
+        # 最終日(11日目)は GSM が昼過ぎで切れるため daily の集計値が丸ごと null で返る。
+        # その日の hourly が部分的にでも残っていれば、そこから同じ値を作り直して行を埋める。
+        def hmax(key, fn=max):
+            vs = [h[key][i] for i in idxs if h.get(key) and h[key][i] is not None]
+            return fn(vs) if vs else None
+
+        def hsum(key):
+            vs = [h[key][i] for i in idxs if h.get(key) and h[key][i] is not None]
+            return sum(vs) if vs else None
+
+        tmax = d["temperature_2m_max"][di]
+        tmin = d["temperature_2m_min"][di]
+        pr_d = d["precipitation_sum"][di]
+        sf_d = sf_all[di]
+        if tmax is None:
+            tmax = hmax("temperature_2m")
+        if tmin is None:
+            tmin = hmax("temperature_2m", min)
+        if pr_d is None:
+            pr_d = hsum("precipitation")
+        if sf_d is None:
+            sf_d = hsum("snowfall")
         wxd = wx.get(date.isoformat(), {})
         rows.append({
             "date": date, "idx": day_idx, "evening": evening,
             "code": wxd.get("code", d["weather_code"][di]), "notes": wxd.get("notes", []),
-            "tmin": d["temperature_2m_min"][di], "tmax": d["temperature_2m_max"][di],
+            "tmin": tmin, "tmax": tmax,
             "ws": ws_max, "wd": wd_max,
-            "pr": d["precipitation_sum"][di], "prob": d["precipitation_probability_max"][di],
-            "sf": sf_all[di], "depth": depth,
+            "pr": pr_d, "prob": d["precipitation_probability_max"][di],
+            "sf": sf_d, "depth": depth,
             "view": morning_view(h, times, idxs, elev),
         })
     return rows
@@ -890,7 +944,7 @@ def main():
     ap.add_argument("--interval", type=int, choices=[1, 3], default=3,
                     help="詳細の表示間隔 (時間)。既定3、1で1時間ごと")
     # 旧オプション。互換のため受け付けるが動作には影響しない
-    # (常に4日詳細・16日見通し・モデル比較を表示)
+    # (常に4日詳細・11日見通し・モデル比較を表示)
     ap.add_argument("--days", type=int, default=None, help=argparse.SUPPRESS)
     ap.add_argument("--weekly", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--compare-models", action="store_true", help=argparse.SUPPRESS)
@@ -909,11 +963,11 @@ def main():
         ap.error("--name か --lat/--lon/--elev を指定してください")
 
     today = dt.date.today()
-    horizon = today + dt.timedelta(days=15)
+    horizon = today + dt.timedelta(days=JMA_DAYS - 1)
     if args.date:
         start = dt.date.fromisoformat(args.date)
         if start > horizon:
-            sys.exit(f"ERROR: {args.date} は予報範囲外です(最長16日先={horizon}まで)。"
+            sys.exit(f"ERROR: {args.date} は予報範囲外です(最長{JMA_DAYS}日先={horizon}まで)。"
                      f"直前に再確認してください。")
         if start < today:
             sys.exit(f"ERROR: {args.date} は過去日です。予報は本日以降のみ対応です。")
@@ -921,7 +975,7 @@ def main():
         start = today
     detail_end = min(start + dt.timedelta(days=3), horizon)  # 詳細は固定4日間
     fetch_start = today - dt.timedelta(days=PAST_DAYS)  # 直近実況ぶんを遡って取得
-    fetch_end = horizon  # 常に16日見通しを表示
+    fetch_end = horizon  # 常に11日見通しを表示
 
     lo, hi, t = bracket_levels(elev)
     data = fetch_forecast(lat, lon, elev, fetch_start, fetch_end, {lo, hi})
@@ -941,8 +995,10 @@ def main():
               "(低/やや注意/注意/高い)。指数A/B/Cの判定には使いません")
         print("- 🏔 景色(眺望): 山頂付近の雲・視程・降水の3つを組み合わせた4段階(◎○△✕)。"
               "視程は判定に使っている内部要素で、参考として景色欄に併記しています")
-        print(f"- 体感温度 = 風冷指数 (JAG/TI式。風速4.8km/h未満は気温をそのまま採用) "
-              f"/ 取得: {dt.datetime.now():%Y-%m-%d %H:%M} / 出典: Open-Meteo")
+        print(f"- 体感温度 = 風冷指数 (JAG/TI式。風速4.8km/h未満は気温をそのまま採用)")
+        print(f"- データ: 気象庁モデル (0〜4日目=MSM 約5km / 5〜{JMA_DAYS}日目=GSM。自動切替)。"
+              f"降水確率・突風・CAPE/CIN・視程・積雪深は気象庁モデルに無いため別モデルで補完"
+              f" / 取得: {dt.datetime.now():%Y-%m-%d %H:%M} / 出典: Open-Meteo")
 
         has_snow = has_snow_period(data["hourly"])
         past_dates = [today - dt.timedelta(days=i) for i in range(PAST_DAYS, 0, -1)]
@@ -951,7 +1007,7 @@ def main():
         n_days = (fetch_end - today).days + 1
         dates = [today + dt.timedelta(days=i) for i in range(n_days)]
         rows = daily_summary_rows(data, dates, lo, hi, t, elev)
-        print_daily_summary(rows, "16日間の見通し", has_snow)
+        print_daily_summary(rows, f"{JMA_DAYS}日間の見通し", has_snow)
 
         d = start
         while d <= detail_end:
