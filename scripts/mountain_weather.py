@@ -329,12 +329,25 @@ def season_thresholds(month):
     return {"mode": "冬山・残雪期", "wind": (8, 12), "precip": (1, 3)}
 
 
+def sum_or_none(vals):
+    """合計。ただし有効値が1つも無ければ None を返す。
+    `sum(v or 0 ...)` だと「0mm」と「データ無し」が区別できず、データ欠測が
+    「降水量0mm＝好条件」に化けてしまうため、区別できる形で合計する。"""
+    vs = [v for v in vals if v is not None]
+    return sum(vs) if vs else None
+
+
 def block_index(ridge_ws, precip_3h, th):
-    """3時間ブロックの登山指数 A/B/C (最悪値採用)
+    """3時間ブロックの登山指数 A/B/C (最悪値採用)。判定材料が無ければ None
 
     判定に使うのは稜線風と降水量の2項目だけ。降水確率は参考表示のみ。
     雷(CAPE)は局地性が高く「その時間帯に登山行動が適しているか」とは性質が異なるため
     指数には含めず、⚡発雷リスクとして独立表示する(lightning_risk)。"""
+    # 両方とも欠測なら「判定不能」。ここで A を返すと、データが無いだけの時間帯が
+    # 「登山適」として表示され、安全と逆方向に誤解させる (Open-Meteo は非対応項目や
+    # 予報期間外を 400 ではなく null で返すため、欠測は現実に起こりうる)
+    if ridge_ws is None and precip_3h is None:
+        return None
     idx = "A"
 
     def worse(v):
@@ -423,7 +436,12 @@ V_LABEL_NG = {"雨": "雨", "ガス": "濃霧"}
 def view_score(elev, low, mid, precip_3h, vis):
     """山頂からの景色(眺望) ◎/○/△/✕。雲層(下層<2km/中層2-7km/上層>7km)を山頂標高と比較。
     山頂レベルの雲=ガス、山頂より下の雲=雲海の可能性。
-    上層雲(すじ雲等)は眺望を妨げないため引数に取らない。"""
+    上層雲(すじ雲等)は眺望を妨げないため引数に取らない。
+    判定材料(雲量・視程・降水)が1つも無ければ None を返す。"""
+    # 全部欠測のまま進むと「雲量0扱い・視程不明」で ◎(展望良好) が出てしまい、
+    # データが無いだけの時間帯を好条件と誤解させる
+    if low is None and mid is None and vis is None and precip_3h is None:
+        return None
     if elev < 2000:
         summit_cl = max(v for v in (low, mid) if v is not None) if (low is not None or mid is not None) else None
         below_cl = None  # 低山は下に雲層バンドなし(谷霧は表現できない)
@@ -608,7 +626,7 @@ def print_detail_day(data, date, lo, hi, t, elev, has_snow=False, step=3):
             return "-"
         rws3 = [ridge_wind(h, i, lo, hi, t) for i in blk3]
         ws3 = max((s for s, _ in rws3 if s is not None), default=None)
-        pr3 = sum(h["precipitation"][i] or 0 for i in blk3)
+        pr3 = sum_or_none(h["precipitation"][i] for i in blk3)
         return block_index(ws3, pr3, th)
 
     print(f"\n### {date.isoformat()} ({'月火水木金土日'[date.weekday()]}) "
@@ -625,7 +643,7 @@ def print_detail_day(data, date, lo, hi, t, elev, has_snow=False, step=3):
         ws = max((s for s, _ in rws if s is not None), default=None)
         wd = next((d for s, d in rws if s == ws), None)
         gust = max((h["wind_gusts_10m"][i] for i in block if h["wind_gusts_10m"][i] is not None), default=None)
-        pr = sum(h["precipitation"][i] or 0 for i in block)
+        pr = sum_or_none(h["precipitation"][i] for i in block)
         prob = max((h["precipitation_probability"][i] for i in block
                     if h["precipitation_probability"][i] is not None), default=None)
         cape = max((h["cape"][i] for i in block if h["cape"][i] is not None), default=None)
@@ -637,8 +655,9 @@ def print_detail_day(data, date, lo, hi, t, elev, has_snow=False, step=3):
         cl = f'{fnum(h["cloud_cover_low"][i0])}/{fnum(h["cloud_cover_mid"][i0])}/{fnum(h["cloud_cover_high"][i0])}%'
         vis_all = h.get("visibility") or []
         vis = min((vis_all[i] for i in block if i < len(vis_all) and vis_all[i] is not None), default=None)
-        vw_txt = view_cell(*view_score(elev, h["cloud_cover_low"][i0], h["cloud_cover_mid"][i0],
-                                       pr * 3 / step, vis), vis)
+        vw = view_score(elev, h["cloud_cover_low"][i0], h["cloud_cover_mid"][i0],
+                        None if pr is None else pr * 3 / step, vis)
+        vw_txt = view_cell(*vw, vis) if vw else "-"
         bi = block_abc(start_h // 3 * 3)
         snow_c = ""
         if has_snow:
@@ -648,7 +667,7 @@ def print_detail_day(data, date, lo, hi, t, elev, has_snow=False, step=3):
             snow_c = f" {snow_cell(depth, sf_blk)} |"
         print(f"| {start_h:02d}時 | {IDX_MARK.get(bi, '-')} | {wcode(h['weather_code'][i0])} | {vw_txt} | {fnum(temp, '{:.1f}')}℃ "
               f"| {fnum(feel, '{:.0f}')}℃ | {wdir(wd)} {fnum(ws, '{:.1f}')}m/s | {fnum(gust, '{:.0f}')}m/s "
-              f"| {pr:.1f}mm | {fnum(prob)}% | {lightning_cell(cape, cin)} | {cl} |{snow_c}")
+              f"| {fnum(pr, '{:.1f}')}mm | {fnum(prob)}% | {lightning_cell(cape, cin)} | {cl} |{snow_c}")
 
 
 def morning_view(h, times, idxs, elev):
@@ -662,8 +681,12 @@ def morning_view(h, times, idxs, elev):
         if not 4 <= hr <= 8:
             continue
         vis = vis_all[i] if i < len(vis_all) else None
-        pr3 = (h["precipitation"][i] or 0) * 3
-        vw, note = view_score(elev, h["cloud_cover_low"][i], h["cloud_cover_mid"][i], pr3, vis)
+        p1 = h["precipitation"][i]
+        pr3 = None if p1 is None else p1 * 3
+        sc = view_score(elev, h["cloud_cover_low"][i], h["cloud_cover_mid"][i], pr3, vis)
+        if sc is None:
+            continue  # その時刻は判定材料なし。最良値の候補に入れない
+        vw, note = sc
         if best is None or order[vw] < order[best]:
             best, best_note, best_vis = vw, note, vis
     if best is None:
@@ -688,7 +711,9 @@ def daily_summary_rows(data, dates, lo, hi, t, elev):
         th = season_thresholds(date.month)
         # 行動時間帯 5-17時で指数判定
         act = [i for i in idxs if 5 <= int(times[i][11:13]) <= 17]
-        day_idx = "A"
+        # 判定できたブロックだけを集め、その最悪値を日の指数にする。
+        # 1つも判定できなければ day_idx は None (判定不能) のままにする
+        verdicts = []
         ws_max, wd_max = None, None
         for start_h in range(3, 18, 3):
             block = [i for i in act if int(times[i][11:13]) // 3 * 3 == start_h]
@@ -699,18 +724,19 @@ def daily_summary_rows(data, dates, lo, hi, t, elev):
             if ws is not None and (ws_max is None or ws > ws_max):
                 ws_max = ws
                 wd_max = next((dd for s, dd in rws if s == ws), None)
-            pr = sum(h["precipitation"][i] or 0 for i in block)
+            pr = sum_or_none(h["precipitation"][i] for i in block)
             bi = block_index(ws, pr, th)
-            if bi == "C" or (bi == "B" and day_idx == "A"):
-                day_idx = bi
+            if bi is not None:
+                verdicts.append(bi)
+        day_idx = next((v for v in ("C", "B", "A") if v in verdicts), None)
         # 日中がA/Bで夕方(17-20時)が荒れるなら急変警告フラグ (日中の指数は変えない)。
         # 風雨がC相当のときに加えて、発雷リスクが「注意」以上のときも立てる
         eve = [i for i in idxs if 17 <= int(times[i][11:13]) <= 20]
         evening = False
-        if eve and day_idx != "C":
+        if eve and day_idx is not None and day_idx != "C":
             rws = [ridge_wind(h, i, lo, hi, t) for i in eve]
             ws_e = max((s for s, _ in rws if s is not None), default=None)
-            pr_e = sum(h["precipitation"][i] or 0 for i in eve)
+            pr_e = sum_or_none(h["precipitation"][i] for i in eve)
             evening = block_index(ws_e, pr_e, th) == "C"
             if not evening:
                 cape_e = max((h["cape"][i] for i in eve if h["cape"][i] is not None), default=None)
@@ -764,7 +790,7 @@ def print_daily_summary(rows, title, has_snow=False):
     print(f"|---|---|---|---|---|---|---|---|{snow_sep}")
     for r in rows:
         wj = "月火水木金土日"[r["date"].weekday()]
-        mark = IDX_MARK[r["idx"]] + (" ⚠夕方" if r.get("evening") else "")
+        mark = IDX_MARK.get(r["idx"], "-") + (" ⚠夕方" if r.get("evening") else "")
         snow_c = f" {snow_cell(r.get('depth'), r.get('sf'))} |" if has_snow else ""
         print(f"| {r['date'].strftime('%m/%d')}({wj}) | {mark} | {wcode(r['code'])}{wx_note_text(r.get('notes'))} "
               f"| {r['view']} | {fnum(r['tmin'], '{:.0f}')}〜{fnum(r['tmax'], '{:.0f}')}℃ "

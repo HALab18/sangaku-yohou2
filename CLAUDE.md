@@ -45,6 +45,12 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
   `convective_inhibition` / `visibility` / `snow_depth`。これらだけ `/v1/forecast` から補完し、
   **時刻をキーにして**貼り合わせる（`_merge_series` / `mergeSeries`）。添字一致は前提にしない
   （2本のAPIで `end_date` のクランプ結果が食い違いうるため）。
+- **欠測は「判定不能」に倒す**。`block_index`/`blockIndex` は稜線風・降水がどちらも欠測なら
+  `None`、`view_score`/`viewScore` は材料が1つも無ければ `None` を返し、表示は `-` になる。
+  降水の合計は `sum_or_none`/`sumOrNull` を使う（`sum(v or 0)` だと「0mm」と「データ無し」が
+  区別できず、欠測が「降水量0mm＝好条件」に化ける）。find の `score()` も主要素が全欠測なら
+  `null` を返して一覧から外す（減点方式なので引く材料が無いと100点＝ランクAになるため）。
+  **この手の「データが無い→好条件」は安全と逆方向なので、判定を足すときは必ず欠測側を確認する。**
 - **要注意**: 存在しない項目を `/v1/jma` に投げても **400 にはならず全て null で返る**。
   「エラーが出ないから取れている」と誤解しやすい。期間も同様で、11日を超えて要求しても
   エラーにならず黙って null が並ぶ。**日数はコード側で必ず制限する**。

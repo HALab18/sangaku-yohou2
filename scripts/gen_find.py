@@ -671,6 +671,10 @@ footer a{color:var(--link)}
     var tmin=agg("temperature_2m","min");
     var tmax=agg("temperature_2m","max");
     var snow=d.daily&&d.daily.snowfall_sum?d.daily.snowfall_sum[0]:null;
+    // 主要素が1つも取れていない山はスコアを出さない(呼び出し側が一覧から外す)。
+    // 減点方式なので、引く材料が無いと 100点=ランクA になり最上位に出てしまう。
+    // 「データが無い」が「最高のコンディション」に化けるのは安全と逆方向。
+    if(sunFrac==null&&code==null&&psum==null&&ridgeWmax==null)return null;
     var s=100;
     // ① 晴天度 (最大 -28)
     if(sunFrac!=null)s-=(1-sunFrac)*28;

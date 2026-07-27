@@ -736,9 +736,19 @@ function seasonTh(month){
     ?{mode:"夏山",wind:[10,15],precip:[1,5]}
     :{mode:"冬山・残雪期",wind:[8,12],precip:[1,3]};
 }
+// 合計。ただし有効値が1つも無ければ null を返す(mountain_weather.py の sum_or_none と同一)。
+// `(v||0)` の合計だと「0mm」と「データ無し」が区別できず、欠測が「降水量0mm＝好条件」に化ける。
+function sumOrNull(vals){
+  const vs=vals.filter(v=>v!=null);
+  return vs.length?vs.reduce((a,b)=>a+b,0):null;
+}
 function blockIndex(ws,pr3,th){
   // 判定は稜線風と降水量の2項目のみ。降水確率は参考表示。
   // 雷(CAPE)は局地性が高く登山可否とは性質が異なるため指数に含めず、発雷リスクとして独立表示する
+  // 両方とも欠測なら「判定不能」= null。ここで A を返すと、データが無いだけの時間帯が
+  // 「登山適」として表示され、安全と逆方向に誤解させる(Open-Meteo は非対応項目や予報期間外を
+  // 400 ではなく null で返すため、欠測は現実に起こりうる)
+  if(ws==null&&pr3==null)return null;
   let idx="A";const worse=v=>{if(v==="C"||idx==="C")idx="C";else if(v==="B")idx="B"};
   if(ws!=null){if(ws>=th.wind[1])worse("C");else if(ws>=th.wind[0])worse("B")}
   if(pr3!=null){if(pr3>=th.precip[1])worse("C");else if(pr3>=th.precip[0])worse("B")}
@@ -771,6 +781,9 @@ function feelsLike(temp,ws){
   return 13.12+0.6215*temp-11.37*v**0.16+0.3965*temp*v**0.16;
 }
 function viewScore(elev,low,mid,pr3,vis){
+  // 判定材料(雲量・視程・降水)が1つも無ければ null。全部欠測のまま進むと
+  // 「雲量0扱い・視程不明」で ◎(展望良好) が出てしまい、データが無いだけの時間帯を好条件と誤解させる
+  if(low==null&&mid==null&&vis==null&&pr3==null)return null;
   const summit=elev<2000?Math.max(low??-1,mid??-1)<0?null:Math.max(low??0,mid??0):mid;
   const below=elev<2000?null:low;
   if(pr3!=null&&pr3>=1)return["✕","雨"];
@@ -945,26 +958,29 @@ async function run(mt){
     const idxs=dayIdx(times,ds);
     const th=seasonTh(dt2.getMonth()+1);
     const act=idxs.filter(i=>{const hr=+times[i].slice(11,13);return hr>=5&&hr<=17});
-    let dayIdxV="A",wsMax=null,wdMax=null;
+    // 判定できたブロックだけを集め、その最悪値を日の指数にする。
+    // 1つも判定できなければ dayIdxV は null (判定不能) のままにする
+    const verdicts=[];let wsMax=null,wdMax=null;
     for(let sh=3;sh<18;sh+=3){
       const blk=act.filter(i=>Math.floor(+times[i].slice(11,13)/3)*3===sh);
       if(!blk.length)continue;
       const rw=blk.map(i=>ridgeWind(h,i,lo,hi,t));
       const ws=Math.max(...rw.map(x=>x[0]??-1));
       if(ws>=0&&(wsMax==null||ws>wsMax)){wsMax=ws;wdMax=rw.find(x=>x[0]===ws)?.[1]}
-      const pr=blk.reduce((s,i)=>s+(h.precipitation[i]||0),0);
+      const pr=sumOrNull(blk.map(i=>h.precipitation[i]));
       const bi=blockIndex(ws<0?null:ws,pr,th);
-      if(bi==="C"||(bi==="B"&&dayIdxV==="A"))dayIdxV=bi;
+      if(bi!=null)verdicts.push(bi);
     }
+    const dayIdxV=["C","B","A"].find(v=>verdicts.includes(v))??null;
     // 日中がA/Bで夕方(17-20時)が荒れるなら急変警告フラグ (日中の指数は変えない)。
     // 風雨がC相当のときに加えて、発雷リスクが「注意」以上のときも立てる
     let evening=false;
-    if(dayIdxV!=="C"){
+    if(dayIdxV!=null&&dayIdxV!=="C"){
       const eve=idxs.filter(i=>{const hr=+times[i].slice(11,13);return hr>=17&&hr<=20});
       if(eve.length){
         const rw=eve.map(i=>ridgeWind(h,i,lo,hi,t));
         const wsE=Math.max(...rw.map(x=>x[0]??-1));
-        const prE=eve.reduce((s,i)=>s+(h.precipitation[i]||0),0);
+        const prE=sumOrNull(eve.map(i=>h.precipitation[i]));
         evening=blockIndex(wsE<0?null:wsE,prE,th)==="C";
         if(!evening){
           const capeArrE=eve.map(i=>h.cape?.[i]).filter(v=>v!=null);
@@ -980,8 +996,10 @@ async function run(mt){
     for(const i of idxs){
       const hr=+times[i].slice(11,13);if(hr<4||hr>8)continue;
       const vi=h.visibility?.[i];
+      const p1=h.precipitation[i];
       const v=viewScore(mt.elev,h.cloud_cover_low[i],h.cloud_cover_mid[i],
-        (h.precipitation[i]||0)*3,vi);
+        p1==null?null:p1*3,vi);
+      if(v==null)continue; // その時刻は判定材料なし。最良値の候補に入れない
       if(best==null||order[v[0]]<order[best[0]]){best=v;bestVis=vi}
     }
     const dep=idxs.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
@@ -1008,7 +1026,7 @@ async function run(mt){
     <tr><th>日付</th><th>指数</th><th>天気</th><th>🏔 景色(朝)</th><th>山頂気温</th><th>稜線風max(5-17時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
   rows.forEach((r,i)=>{
     const more=i>=WK_HEAD;
-    htmlOut+=`<tr${more?` class="wk-more"${wkOpen?"":" hidden"}`:""}><td>${md(r.d)}${wj(r.d)}</td><td>${IDX[r.idx]}${r.eve?'<span class="ew"> ⚠夕方</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
+    htmlOut+=`<tr${more?` class="wk-more"${wkOpen?"":" hidden"}`:""}><td>${md(r.d)}${wj(r.d)}</td><td>${IDX[r.idx]??"-"}${r.eve?'<span class="ew"> ⚠夕方</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
     <td>${r.view}</td><td>${f0(r.tmin)}〜${f0(r.tmax)}℃</td><td>${wdir(r.wd)} ${f1(r.ws)}m/s</td>
     <td>${r.pr==null?"-":r.pr.toFixed(1)}mm</td><td>${f0(r.prob)}%</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
   });
@@ -1037,7 +1055,7 @@ async function run(mt){
       const wd2=rw.find(x=>x[0]===ws)?.[1];
       const gustArr=blk.map(i=>h.wind_gusts_10m?.[i]).filter(v=>v!=null);
       const gust=gustArr.length?Math.max(...gustArr):null;
-      const pr=blk.reduce((s,i)=>s+(h.precipitation[i]||0),0);
+      const pr=sumOrNull(blk.map(i=>h.precipitation[i]));
       const probArr=blk.map(i=>h.precipitation_probability?.[i]).filter(v=>v!=null);
       const prob=probArr.length?Math.max(...probArr):null;
       const capeArr=blk.map(i=>h.cape?.[i]).filter(v=>v!=null);
@@ -1049,7 +1067,8 @@ async function run(mt){
       const visArr=blk.map(i=>h.visibility?.[i]).filter(v=>v!=null);
       const vis=visArr.length?Math.min(...visArr):null;
       const feel=feelsLike(temp,ws);
-      const view=vhtml(viewScore(mt.elev,h.cloud_cover_low[i0],h.cloud_cover_mid[i0],pr*3/step,vis),vis);
+      const vsc=viewScore(mt.elev,h.cloud_cover_low[i0],h.cloud_cover_mid[i0],pr==null?null:pr*3/step,vis);
+      const view=vsc?vhtml(vsc,vis):"-";
       const cl=`${f0(h.cloud_cover_low[i0])}/${f0(h.cloud_cover_mid[i0])}/${f0(h.cloud_cover_high[i0])}%`;
       // 指数は表示間隔によらず3時間ブロック単位で判定する (A/B/Cの降水閾値がmm/3h定義のため)
       const sh3=Math.floor(sh/3)*3;
@@ -1057,13 +1076,13 @@ async function run(mt){
       const rw3=blk3.map(i=>ridgeWind(h,i,lo,hi,t));
       const ws3Arr=rw3.map(x=>x[0]).filter(v=>v!=null);
       const ws3=ws3Arr.length?Math.max(...ws3Arr):null;
-      const pr3=blk3.reduce((s,i)=>s+(h.precipitation[i]||0),0);
+      const pr3=sumOrNull(blk3.map(i=>h.precipitation[i]));
       const bi=blockIndex(ws3,pr3,thD);
       const depArr=blk.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
       const sfBlk=blk.reduce((s,i)=>s+(h.snowfall?.[i]||0),0);
-      htmlOut+=`<tr><td>${String(sh).padStart(2,"0")}時</td><td>${IDX[bi]}</td><td>${wxCodeIcon(h.weather_code[i0])}</td><td>${view}</td>
+      htmlOut+=`<tr><td>${String(sh).padStart(2,"0")}時</td><td>${IDX[bi]??"-"}</td><td>${wxCodeIcon(h.weather_code[i0])}</td><td>${view}</td>
         <td>${temp==null?"-":temp.toFixed(1)}℃</td><td>${f0(feel)}℃</td><td>${wdir(wd2)} ${f1(ws)}m/s</td>
-        <td>${f0(gust)}m/s</td><td>${pr.toFixed(1)}mm</td><td>${f0(prob)}%</td><td>${ltCell(lt,cape,cin)}</td>
+        <td>${f0(gust)}m/s</td><td>${pr==null?"-":pr.toFixed(1)}mm</td><td>${f0(prob)}%</td><td>${ltCell(lt,cape,cin)}</td>
         <td>${cl}</td>${hasSnow?`<td>${snowCell(depArr.length?Math.max(...depArr):null,sfBlk)}</td>`:""}</tr>`;
     }
     htmlOut+=`</table></div>`;
