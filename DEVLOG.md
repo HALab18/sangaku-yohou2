@@ -7,13 +7,18 @@
 
 ## ▶ 次の再開ポイント: 山さがしを7日間に拡張（2026-07-29）
 
-**現状**: 作業ブランチ `claude/weather-mountain-search-spec-c58dce`（worktree
-`.claude/worktrees/rainfall-calculation-logic-4389a1`）。**master 未反映・未 push**。
+**現状**: **公開済み**。`783fd20` を master へ fast-forward で反映
+（`f6fcf96..783fd20`、2026-07-29）。Pages のデプロイ success を確認し、
+公開URLの実物に `FIND_DAYS=7` / `find7:` / `sunshine_supp` / 日付の「参考」表示が
+載っていることまで確認済み。作業ブランチは `claude/weather-mountain-search-spec-c58dce`
+（worktree `.claude/worktrees/rainfall-calculation-logic-4389a1`）。
 
-**次にやること**: master へ push
-（`git push origin claude/weather-mountain-search-spec-c58dce:master`）。
-push 後は `gh run list` の success と公開URLの実物を必ず確認する。
-下の ver 2.11β が未 push なら、それも同じ push に載る。
+**次にやること**: 特になし（この項目は次の作業を始めるときに書き換える）。
+残っている検討事項は下の「未対応」を参照。
+
+> メモ: この push の直前まで、ここには「ver 2.11β は master 未反映・未 push」と
+> 書かれていたが**実際には公開済み**だった（`origin/master` は既に `f6fcf96`）。
+> 記述が古いまま残っていた。**push したらこの節を必ず更新すること。**
 
 ### 山さがし(find) を 3日 → 7日 に拡張
 
