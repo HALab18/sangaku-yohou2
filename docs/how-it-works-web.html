@@ -37,8 +37,14 @@ p{margin:8px 0}
   box-shadow:0 2px 8px rgba(30,45,74,.08)}
 .tbl{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:10px 0}
 table{border-collapse:collapse;width:100%;white-space:nowrap;background:#fff}
-th{background:var(--slate);color:#fff;padding:7px 10px;font-size:.9em;font-weight:600}
+th{background:var(--slate);color:#fff;padding:7px 10px;font-size:.9em;font-weight:600;text-align:center}
 td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:center;background:#fff}
+/* 文字列の列(左寄せ・.lbl/.desc)と数値の列(右寄せ・.num)を使い分け、
+   バッジ・記号だけの短い列は中央寄せのまま残す。右寄せ列の直後に来る
+   左寄せ列は詰まって見えるため、.desc側の左パディングを広めに取っている。 */
+th.lbl,td.lbl{text-align:left}
+th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
+th.desc,td.desc{text-align:left;white-space:normal;padding-left:16px}
 tr:nth-child(even) td{background:#eef1f6}
 .b{display:inline-block;min-width:2.6em;padding:2px 8px;border-radius:10px;font-weight:700;font-size:.85em}
 .b-a{background:#d8efe1;color:#1c5b3f}.b-b{background:#fdeec9;color:#7b5e00}
@@ -132,7 +138,7 @@ footer a{color:var(--link)}
 <h2>2. 工夫①: 「山頂の気温」をどう出すか</h2>
 <p>ふつうの天気予報APIに燕岳の座標を渡すと、予報モデルのならされた地形（実際より低い標高）の気温が返ってきます。
 このツールは<b>「標高2763mの高さの値をくれ」と明示的に指定</b>して取得しています。
-だから真夏でも「山頂は11℃」のような、街の予報と20℃近く違う値がちゃんと出ます。</p>
+だから真夏でも「山頂は11℃」のような、街の予報と20℃近く違う値を正しく算出できます。</p>
 
 <h2>3. 工夫②: 「稜線の風」をどう出すか</h2>
 <p>ここがこのツールの一番のポイントです。ふつうの「風速」は地面から10mの風で、
@@ -177,16 +183,16 @@ footer a{color:var(--link)}
 
 <p><b>夏山モード（6月〜10月）</b></p>
 <div class="tbl"><table>
-<tr><th>項目</th><th><span class="b b-a">A</span> 登山適</th><th><span class="b b-b">B</span> 要注意</th><th><span class="b b-c">C</span> 登山不適</th></tr>
-<tr><td>稜線風速</td><td>10m/s未満</td><td>10〜15m/s</td><td>15m/s以上</td></tr>
-<tr><td>降水量(3時間)</td><td>1mm未満</td><td>1〜5mm</td><td>5mm以上</td></tr>
+<tr><th class="lbl">項目</th><th><span class="b b-a">A</span> 登山適</th><th><span class="b b-b">B</span> 要注意</th><th><span class="b b-c">C</span> 登山不適</th></tr>
+<tr><td class="lbl">稜線風速</td><td>10m/s未満</td><td>10〜15m/s</td><td>15m/s以上</td></tr>
+<tr><td class="lbl">降水量(3時間)</td><td>1mm未満</td><td>1〜5mm</td><td>5mm以上</td></tr>
 </table></div>
 
 <p><b>冬山・残雪期モード（11月〜5月）</b></p>
 <div class="tbl"><table>
-<tr><th>項目</th><th><span class="b b-a">A</span> 登山適</th><th><span class="b b-b">B</span> 要注意</th><th><span class="b b-c">C</span> 登山不適</th></tr>
-<tr><td>稜線風速</td><td>8m/s未満</td><td>8〜12m/s</td><td>12m/s以上</td></tr>
-<tr><td>降水量(3時間)</td><td>1mm未満</td><td>1〜3mm</td><td>3mm以上（降雪リスク）</td></tr>
+<tr><th class="lbl">項目</th><th><span class="b b-a">A</span> 登山適</th><th><span class="b b-b">B</span> 要注意</th><th><span class="b b-c">C</span> 登山不適</th></tr>
+<tr><td class="lbl">稜線風速</td><td>8m/s未満</td><td>8〜12m/s</td><td>12m/s以上</td></tr>
+<tr><td class="lbl">降水量(3時間)</td><td>1mm未満</td><td>1〜3mm</td><td>3mm以上（降雪リスク）</td></tr>
 </table></div>
 
 <p>降水確率は表に参考として表示しますが、<b>判定には使いません</b>
@@ -235,14 +241,14 @@ CAPE が中くらいでも、日中に山の斜面を這い上がる風（谷風
 雷雨の目安に合わせたものです。</p>
 
 <div class="tbl"><table>
-<tr><th style="width:9em">表示</th><th style="width:9em">CAPE の目安</th><th>読み方</th></tr>
-<tr><td><span class="lt lt-0">⚡ 低</span></td><td>500 未満</td>
+<tr><th style="width:9em">表示</th><th style="width:9em" class="num">CAPE の目安</th><th>読み方</th></tr>
+<tr><td><span class="lt lt-0">⚡ 低</span></td><td class="num">500 未満</td>
     <td class="desc">積乱雲を育てる燃料が乏しい状態</td></tr>
-<tr><td><span class="lt lt-1">⚡⚡ やや注意</span></td><td>500 〜 1000</td>
+<tr><td><span class="lt lt-1">⚡⚡ やや注意</span></td><td class="num">500 〜 1000</td>
     <td class="desc">条件がそろえば発達しうる。空の様子を気にしておきたい</td></tr>
-<tr><td><span class="lt lt-2">⚡⚡⚡ 注意</span></td><td>1000 〜 2500</td>
+<tr><td><span class="lt lt-2">⚡⚡⚡ 注意</span></td><td class="num">1000 〜 2500</td>
     <td class="desc">燃料は十分。午後の行動は早めに切り上げる判断を</td></tr>
-<tr><td><span class="lt lt-3">⚡⚡⚡⚡ 高い</span></td><td>2500 以上</td>
+<tr><td><span class="lt lt-3">⚡⚡⚡⚡ 高い</span></td><td class="num">2500 以上</td>
     <td class="desc">激しい雷雨が起きうる量。稜線での長時間行動は避けたい</td></tr>
 </table></div>
 
@@ -359,15 +365,15 @@ CAPE が中くらいでも、日中に山の斜面を這い上がる風（谷風
 </svg>
 
 <div class="tbl"><table>
-<tr><th style="width:11em">表示</th><th>条件（山頂の高さにかかる雲＋視程＋雨で判定）</th></tr>
+<tr><th style="width:11em">表示</th><th class="desc">条件（山頂の高さにかかる雲＋視程＋雨で判定）</th></tr>
 <tr><td><span class="vw v-ex"><svg aria-hidden="true"><use href="#view-ex"/></svg>◎ 展望良好</span></td>
-    <td>山頂レベルの雲20%以下 かつ 視程20km以上（快晴・展望良好）</td></tr>
+    <td class="desc">山頂レベルの雲20%以下 かつ 視程20km以上（快晴・展望良好）</td></tr>
 <tr><td><span class="vw v-ok"><svg aria-hidden="true"><use href="#view-ok"/></svg>○ 良好</span></td>
-    <td>山頂レベルの雲50%未満（薄い雲。おおむね見える）</td></tr>
+    <td class="desc">山頂レベルの雲50%未満（薄い雲。おおむね見える）</td></tr>
 <tr><td><span class="vw v-so"><svg aria-hidden="true"><use href="#view-so"/></svg>△ ガス</span></td>
-    <td>山頂レベルの雲50%以上 または 視程10km未満（山頂に雲がかかり、景色は限定的）</td></tr>
+    <td class="desc">山頂レベルの雲50%以上 または 視程10km未満（山頂に雲がかかり、景色は限定的）</td></tr>
 <tr><td><span class="vw v-ng"><svg aria-hidden="true"><use href="#view-ng"/></svg>✕ 雨 / 濃霧</span></td>
-    <td>雨(3時間1mm以上)＝「雨」 / 視程2km未満・山頂レベルの雲80%以上＝「濃霧」</td></tr>
+    <td class="desc">雨(3時間1mm以上)＝「雨」 / 視程2km未満・山頂レベルの雲80%以上＝「濃霧」</td></tr>
 <tr><td>(雲海)</td>
     <td>山頂より下の雲60%以上＋山頂レベル30%以下 → ○/◎に付記</td></tr>
 </table></div>
@@ -389,10 +395,10 @@ CAPE が中くらいでも、日中に山の斜面を這い上がる風（谷風
 「これからの天気」だけでなく<b>「ここ数日、山でなにが起きていたか」</b>が分かると、
 登山道の状態 — ぬかるみ、沢の増水、残雪・凍結 — をある程度見立てられるからです。</p>
 <div class="tbl"><table>
-<tr><th>日付</th><th>天気</th><th>山頂気温</th><th>稜線風max(5-17時)</th><th>降水量</th></tr>
-<tr><td>07/10(金)</td><td>霧雨</td><td>8〜16℃</td><td>南西 5.0m/s</td><td>1.5mm</td></tr>
-<tr><td>07/11(土)</td><td>曇り</td><td>9〜16℃</td><td>西南西 7.9m/s</td><td>0.0mm</td></tr>
-<tr><td>07/12(日)</td><td>霧雨</td><td>9〜13℃</td><td>北西 17.7m/s</td><td>2.7mm</td></tr>
+<tr><th>日付</th><th>天気</th><th class="num">山頂気温</th><th>稜線風max(5-17時)</th><th class="num">降水量</th></tr>
+<tr><td>07/10(金)</td><td>霧雨</td><td class="num">8〜16℃</td><td>南西 5.0m/s</td><td class="num">1.5mm</td></tr>
+<tr><td>07/11(土)</td><td>曇り</td><td class="num">9〜16℃</td><td>西南西 7.9m/s</td><td class="num">0.0mm</td></tr>
+<tr><td>07/12(日)</td><td>霧雨</td><td class="num">9〜13℃</td><td>北西 17.7m/s</td><td class="num">2.7mm</td></tr>
 </table></div>
 <p>読み方の例: 直近に雨が続いていれば「ぬかるみや沢の増水がありそう」、冬に降雪が続いていれば
 「新雪のラッセルになりそう」。表示するのは事実データだけで、コンディションの断定はしません。
@@ -417,7 +423,7 @@ CAPE が中くらいでも、日中に山の斜面を這い上がる風（谷風
 ・予報は11日先まで出ますが、実用的な精度は3日先程度まで。それ以降は「傾向」として読む<br>
 ・雲海・ガスの判定は雲の高さの推定に基づく近似です。「◎でもガスることはある」<br>
 ・「直近の実況」はモデルの解析値で、アメダス等の観測実測とは差があります<br>
-・最終判断は、直前の最新予報（ヤマテン等の専門予報も併用）と現地の空を見て、自分で行ってください
+・最終判断は、直前の最新予報（登山専門の気象予報サービスも併用）と現地の空を見て、自分で行ってください
 </div>
 
 <h2>11. まとめ</h2>

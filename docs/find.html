@@ -65,6 +65,9 @@ table{border-collapse:collapse;width:100%}
 /* ヘッダはページ縦スクロール時に画面上端に固定し、どの列を見ているか分かるようにする(index.htmlと同じ挙動) */
 th{background:var(--slate);color:#fff;padding:6px 8px;font-weight:600;font-size:.86em;white-space:nowrap;position:sticky;top:0;z-index:2}
 td{padding:8px;border-bottom:1px solid var(--line);text-align:center;background:#fff;white-space:nowrap}
+/* 数値だけの列(日照・気温・稜線風・降水確率・降水量)は右揃え+tabular-numsで桁を揃える。
+   見出し(th)も同じ寄せにして、値と見出しがずれないようにする。 */
+th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 tr:nth-child(even) td{background:#eef1f6}
 /* 山名列: max-width を超える極端に長い山名(カムイエクウチカウシヤマ 等)は改行を許容する。
    word-break:keep-all を外し、overflow-wrap:anywhere で任意位置で折り返せるようにする。
@@ -747,7 +750,8 @@ footer a{color:var(--link)}
   function tableHtml(rows,date,caution){
     var head='<tr><th>#</th><th>山名 / スコア</th>'+
       (caution?'<th>理由</th>':'')+
-      '<th>天気</th><th>日照</th><th>気温</th><th>稜線風</th><th>降水確率</th><th>降水量</th></tr>';
+      '<th>天気</th><th class="num">日照</th><th class="num">気温</th><th class="num">稜線風</th>'+
+      '<th class="num">降水確率</th><th class="num">降水量</th></tr>';
     var body='';
     rows.forEach(function(row,i){body+=rowHtml(row,i,date,caution)});
     return '<div class="tbl'+(caution?' caution':'')+'"><table><thead>'+head+

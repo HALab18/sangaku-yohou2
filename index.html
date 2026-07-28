@@ -485,13 +485,6 @@ footer a{color:var(--link)}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-製作者: ふぇと /
-データ: <a href="https://open-meteo.com/">Open-Meteo</a> (CC BY 4.0) /
-山岳座標: 国土地理院データで照合 /
-<a class="gate-off" href="docs/point.html" data-gatelink aria-disabled="true">座標で予報</a> /
-<a href="docs/mountains.html">対応山リスト</a> /
-<a href="docs/how-it-works-web.html">仕組み解説</a> /
-<a href="docs/terms.html">利用規約・免責事項</a> /
 <a href="docs/history.html">改訂履歴</a> / ver 2.11β / © 2026 HALab18
 </footer>
 
@@ -911,21 +904,7 @@ async function run(mt){
     ?'<p class="backfind"><a href="docs/find.html" onclick="if(history.length>1){history.back();return false}">← 天気で山さがしの一覧に戻る</a></p>':"";
   let htmlOut=`${backToFind}<h2>${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""} の山岳気象予報</h2><ul class="meta">
     <li>地点: 北緯${mt.lat.toFixed(4)} 東経${mt.lon.toFixed(4)} / 標高 ${Math.round(mt.elev)}m
-      (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li>
-    <li>稜線風: ${lo[0]===hi[0]?lo[0]+"hPa":lo[0]+"/"+hi[0]+"hPa補間"} / 気温は標高${Math.round(mt.elev)}m面 /
-      体感温度 = 風冷指数 (JAG/TI式。風速4.8km/h未満は気温をそのまま採用)</li>
-    <li>登山指数: <span class="b b-a">A</span>=登山適 / <span class="b b-b">B</span>=要注意(経験者向き・行程短縮検討) / <span class="b b-c">C</span>=登山不適。
-      判定は<b>稜線風速と降水量</b>の2項目のみ。${seasonTh(start.getMonth()+1).mode}モード基準
-      (風 ${seasonTh(start.getMonth()+1).wind.join("/")}m/s・降水 ${seasonTh(start.getMonth()+1).precip.join("/")}mm/3h)。
-      夏山=6〜10月/冬山・残雪期=11〜5月を対象日の月で自動切替。降水確率は参考表示</li>
-    <li>⚡発雷リスク: CAPE(対流の燃料)と CIN(上昇を抑える蓋)から算出した4段階の参考表示
-      (低/やや注意/注意/高い)。指数A/B/Cの判定には使いません
-      (<a href="docs/how-it-works-web.html#lightning">考え方</a>)</li>
-    <li>🏔 景色(眺望): 山頂付近の雲・視程・降水の3つを組み合わせた4段階(◎○△✕)。
-      視程は判定に使っている内部要素で、参考として景色欄に併記しています
-      (<a href="docs/how-it-works-web.html#view">考え方</a>)</li>
-    <li>データ: 気象庁モデル (0〜4日目=MSM 約5km / 5〜${JMA_DAYS}日目=GSM。自動切替)。
-      降水確率・突風・CAPE/CIN・視程・積雪深は気象庁モデルに無いため別モデルで補完</li></ul>`;
+      (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li></ul>`;
 
   // 直近実況(モデル解析値・過去3日)
   const pastRows=[];
@@ -1118,8 +1097,7 @@ async function run(mt){
   }
 
   htmlOut+=`<div class="notice">⚠️ 数値予報は山岳地形では誤差が大きく、局地的な突風・雷雨・視界不良は表現しきれません。
-    登山指数は目安です。最終判断は最新の予報（<a href="https://i.yamatenki.co.jp/">ヤマテン</a>・
-    <a href="https://tenki.jp/mountain/">tenki.jp山の天気</a>等）と現地の状況で行ってください。</div>`;
+    登山指数は目安です。最終判断は最新の予報と現地の状況で行ってください。</div>`;
   // 「天気で山さがし」経由なら、長い予報表を読み終えた末尾にも一覧へ戻る導線を出す(先頭と同じ挙動)。
   if(backToFind)htmlOut+=`<p class="backfind bottom"><a href="docs/find.html" onclick="if(history.length>1){history.back();return false}">← 天気で山さがしの一覧に戻る</a></p>`;
   out.innerHTML=htmlOut;

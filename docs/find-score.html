@@ -39,14 +39,14 @@ p{margin:8px 0}
   box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .tbl{overflow-x:auto;margin:10px 0}
 /* table-layout:fixed で <th style="width:..."> の指定を効かせる (auto だと無視されがち)。
-   text-align は th/td を中央揃えに統一し、数値列(th.num, td.num)のみ tabular-nums で桁揃え。
-   従来は th=左揃え / td.num=右揃え で列見出しと値が離れて見えていた。 */
+   数値列(th.num, td.num)は右揃え+tabular-numsで桁を揃え、長文の列(th.desc, td.desc)は
+   左揃えにする。バッジ・記号だけの短い列は中央揃えのまま残す。右揃え列の直後に来る
+   左揃え列は詰まって見えるため、.desc側の左パディングを広めに取っている。 */
 table{border-collapse:collapse;width:100%;background:#fff;font-size:.93em;table-layout:fixed}
 th{background:var(--slate);color:#fff;padding:8px 10px;font-weight:600;text-align:center;white-space:nowrap}
 td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:center}
-th.num,td.num{white-space:nowrap;text-align:center;font-variant-numeric:tabular-nums}
-/* 長文が入るセル(理由・意味・目安など)は左寄せの方が読みやすい */
-td.desc{text-align:left}
+th.num,td.num{white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums}
+th.desc,td.desc{text-align:left;padding-left:16px}
 tr:nth-child(even) td{background:#eef1f6}
 .notice{background:#fff8e6;border-left:5px solid var(--b);padding:10px 14px;
   border-radius:0 6px 6px 0;margin:14px 0;font-size:.93em}
@@ -132,7 +132,7 @@ footer a{color:var(--link)}
 <div class="tbl">
 <table>
   <thead>
-    <tr><th style="width:8em">スコア帯</th><th style="width:6em">色</th><th>目安</th></tr>
+    <tr><th style="width:8em" class="num">スコア帯</th><th style="width:6em">色</th><th class="desc">目安</th></tr>
   </thead>
   <tbody>
     <tr><td class="num"><span class="sc-a">70 〜 100</span></td><td><span class="badge badge-a">A</span></td>
@@ -152,7 +152,7 @@ footer a{color:var(--link)}
 <div class="tbl">
 <table>
   <thead>
-    <tr><th style="width:2em">#</th><th>要素</th><th style="width:7em">最大減点</th><th>重視理由</th></tr>
+    <tr><th style="width:2em" class="num">#</th><th class="desc">要素</th><th style="width:7em" class="num">最大減点</th><th class="desc">重視理由</th></tr>
   </thead>
   <tbody>
     <tr><td class="num">①</td><td class="desc"><b>晴天度</b>(日照率 または 天気コード)</td><td class="num">-28 点</td>
@@ -201,13 +201,13 @@ footer a{color:var(--link)}
 <div class="tbl">
 <table>
   <thead>
-    <tr><th style="width:9em">天気コード</th><th>意味</th><th style="width:7em">減点</th></tr>
+    <tr><th style="width:9em" class="num">天気コード</th><th class="desc">意味</th><th style="width:7em" class="num">減点</th></tr>
   </thead>
   <tbody>
     <tr><td class="num">0, 1</td><td class="desc">快晴 / 晴れ</td><td class="num">0 点</td></tr>
     <tr><td class="num">2</td><td class="desc">晴れ時々曇り</td><td class="num">-8 点</td></tr>
     <tr><td class="num">3</td><td class="desc">曇り</td><td class="num">-18 点</td></tr>
-    <tr><td>その他</td><td class="desc">霧・雨・雪・雷雨など</td><td class="num">-22 点</td></tr>
+    <tr><td class="num">その他</td><td class="desc">霧・雨・雪・雷雨など</td><td class="num">-22 点</td></tr>
   </tbody>
 </table>
 </div>
@@ -380,7 +380,7 @@ footer a{color:var(--link)}
 <div class="tbl">
 <table>
   <thead>
-    <tr><th style="width:9em">気圧面</th><th style="width:7em">標準高度</th><th>該当する山の目安</th></tr>
+    <tr><th style="width:9em" class="num">気圧面</th><th style="width:7em" class="num">標準高度</th><th class="desc">該当する山の目安</th></tr>
   </thead>
   <tbody>
     <tr><td class="num">925 hPa</td><td class="num">760 m</td><td class="desc">低山・里山</td></tr>
