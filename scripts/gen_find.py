@@ -6,12 +6,16 @@
 バッチ取得し、簡易スコア(晴天度を最重視)でランキング表示。行をタップすると
 既存の詳細予報 (../index.html#山名/日付) が開く。
 
-対象は今日〜2日先の3日間。気象庁モデルはスコアの主要素である日照(sunshine_duration)を
-MSM 期間ぶんしか配信せず、4日目以降は 7:00〜15:59 が丸ごと欠測になるため。
-別の予報モデルを組み合わせて期間を延ばすかは検討中(判断材料は DEVLOG 参照)。
+対象は今日〜6日先の7日間(FIND_DAYS)。気象庁モデルは天気・降水・稜線風・積雪を11日ぶん
+配信するが、スコアの主要素である日照(sunshine_duration)だけは MSM 期間ぶんしか来ず、
+4日目以降は 7:00〜15:59 が丸ごと欠測になる。そこで**日照だけ**を /v1/forecast
+(ベストマッチ合成)から別名で補完し、期間を7日に延ばした。1〜3日目は気象庁モデルの
+日照を優先する(基本はMSM、足りないところだけ他モデル)。補完した日照は表に * 印を付ける。
 
 降水確率は気象庁モデルに無いので別モデルから補完するが、**表示だけで採点には使わない**。
 モデルが違う値をスコアに混ぜると、スコアの意味が説明しづらくなるため。
+(日照は「無ければスコアが成立しない主要素」なので、こちらは採点に使う。代わりに
+ 出どころが違うことを * 印と注記で開示する。)
 
 山岳DBを更新したら再実行して同期する:
     python scripts/gen_find.py
@@ -172,6 +176,8 @@ td.reason{color:#b26b00;font-weight:700;font-size:.85em;white-space:nowrap;text-
 .wxlbl{color:#556;font-size:.82em}
 /* 代表天気から降格した短時間の降水の注記 (index.html の .wxnote と同趣旨。表幅が狭いので一段小さく) */
 .wxnote{display:block;font-size:.72em;color:#6b7280;margin-top:2px;line-height:1.25}
+/* 日照が気象庁モデル外(別モデルで補完)であることの印。数値の読み取りを邪魔しない小さな * にする */
+td.num .altm{color:#8a94a8;font-weight:700;margin-left:1px}
 .num{font-variant-numeric:tabular-nums}
 .rank{color:#8a94a8;font-variant-numeric:tabular-nums}
 
@@ -254,11 +260,13 @@ footer a{color:var(--link)}
 </div>
 
 <div class="notice">
-📅 対象は<b>今日〜2日先の3日間</b>です。天気の正確性を担保するため、日本域に最適化された
-<b>気象庁モデル（MSM・約5kmメッシュ）</b>が採点に必要なデータ（とくに日照）を配信する範囲に
-合わせて期間を絞りました。以前は14日間表示していましたが、後半は精度が「傾向」の域を出ず、
-山を選び分ける用途には向かなかったためです。
-今後、別の予報モデルと組み合わせて期間を延ばすかは<b>検討中</b>です。
+📅 対象は<b>今日〜6日先の7日間</b>です。天気・降水量・稜線風・積雪は、日本域に最適化された
+<b>気象庁モデル（0〜4日目 MSM 約5kmメッシュ / 5日目以降 GSM）</b>から取得しています。
+ただしスコアの主要素である<b>日照</b>だけは気象庁モデルが MSM 期間ぶんしか配信しないため、
+届かない日（おおむね4日目以降）は<b>別の予報モデル（ベストマッチ合成）で補完</b>し、
+表の日照に <b>*</b> 印を付けています。
+後半の日ほど予報の精度は落ちます。<b>3日先までを実用域</b>とし、それ以降は
+「傾向を見る」用途でお使いください。
 </div>
 
 <div id="results"></div>
@@ -266,7 +274,7 @@ footer a{color:var(--link)}
 <footer>
 <a href="../index.html">← PeakWeather トップへ戻る</a> /
 <a href="mountains.html">対応している山の一覧</a> /
-天気データ: Open-Meteo (CC BY 4.0) / 気象庁モデル (MSM)
+天気データ: Open-Meteo (CC BY 4.0) / 気象庁モデル (MSM・GSM) ＋ 日照の一部はベストマッチ合成
 </footer>
 
 </main>
@@ -297,6 +305,14 @@ footer a{color:var(--link)}
   var MOUNTAINS=__MOUNTAINS_JSON__;
   var REGION_ORDER=__REGION_ORDER__;
   var CHUNK=50;                 // 1リクエストあたりの最大地点数(負荷抑制)
+  // 日付の選択肢の日数。気象庁モデル(MSM 0〜4日 / GSM 5〜11日)は天気コード・降水・雲量・
+  // 気圧面風を11日ぶん配信するが、日照(sunshine_duration)だけは MSM 期間ぶんしか来ない。
+  // 4日目以降の日照は /v1/forecast(ベストマッチ)から別名で補完している(SUPP_KEYS)。
+  // ・期間を伸ばすときは補完側の配信期間も必ず実測で確認すること。このAPIは期間を超過しても
+  //   エラーを返さず黙って null を並べるため、日数はコード側で制限するしかない。
+  // ・FIND_DAYS <= index.html の JMA_DAYS(11) は不変条件。山名リンク先は
+  //   ../index.html#山名/日付 なので、超えると本体の予報範囲外の日付を渡すことになる。
+  var FIND_DAYS=7;
   var PREF_ORDER=__PREF_ORDER__;
   var PREF2REGION=__PREF2REGION__;  // 県名→地方名。県境またぎ(m.pref が「岩手県・宮城県・秋田県」等)を各県で扱うため
   // 山の所属県リスト。県境をまたぐ山は各県に属するものとして数え・絞り込む(例: 栗駒山→岩手/宮城/秋田)
@@ -461,24 +477,30 @@ footer a{color:var(--link)}
       elHint=document.getElementById("hint"),elStatus=document.getElementById("status"),
       elResults=document.getElementById("results");
 
-  // ---- 日付の選択肢 (今日〜2日先の3個・曜日つき) ----
-  // 3日なのは気象庁モデル(MSM)の都合。スコアの主要素である日照(sunshine_duration)は
-  // MSM 期間ぶんしか配信されず、4日目以降は 7:00〜15:59 が丸ごと欠測になる。
-  // 「日照ぬきの薄いスコア」を出すより、確実に採点できる範囲に絞る方針。
-  // 別モデルの併用で期間を延ばすかは検討中。延ばすならまず日照の代替をどう作るかから。
+  // ---- 日付の選択肢 (今日〜FIND_DAYS-1 日先・曜日つき) ----
+  // 以前は3日だった。スコアの主要素である日照(sunshine_duration)を気象庁モデルが
+  // MSM 期間ぶんしか配信せず、4日目以降が丸ごと欠測になるためだったが、
+  // 日照だけを /v1/forecast(ベストマッチ)から補完する形にして7日に延ばした。
+  // 降水・稜線風・天気コード・積雪は7日間まるごと気象庁モデルのまま(基本はMSM/GSM、
+  // 足りないところだけ他モデル)。日数の変更は FIND_DAYS 一箇所で行うこと。
   // index.html と同じ方式: <select> に「07/25(土) 今日」形式の option を並べる。
   // input[type=date] だと iOS/PCで曜日が出ない・実装差でカードから溢れるなどの問題が
   // あったため、明示的に「日付+曜日」を全部option文言に埋め込む方式に統一。
+  //
+  // 4日目以降には「参考」を付ける。この範囲は (1)日照が別モデル由来 (2)稜線風が GSM の
+  // 気圧面欠落ぶんだけ粗い (3)予報自体の誤差が大きい、と性質が変わるため。
+  // 日照の * 印は検索した後にしか見えないので、精度の性格は日付そのものに出しておく。
   var WJA="日月火水木金土";
   function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
   function md(d){return String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0")}
   (function(){
     var today=new Date();today.setHours(0,0,0,0);
-    for(var i=0;i<3;i++){
+    for(var i=0;i<FIND_DAYS;i++){
       var d=new Date(today);d.setDate(d.getDate()+i);
       var o=document.createElement("option");
       o.value=iso(d);
-      o.textContent=md(d)+"("+WJA[d.getDay()]+")"+(i===0?" 今日":i===1?" 明日":"");
+      o.textContent=md(d)+"("+WJA[d.getDay()]+")"+
+        (i===0?" 今日":i===1?" 明日":i>=3?" 参考":"");
       elDate.appendChild(o);
     }
   })();
@@ -546,33 +568,65 @@ footer a{color:var(--link)}
   elRegion.addEventListener("change",fillPrefs);
   elPref.addEventListener("change",updateHint);
 
-  // ---- 稜線風速の補間 (index.html / mountain_weather.py と同一ロジック) ----
+  // ---- 稜線風速の補間 (index.html / mountain_weather.py と同じ LEVELS・同じ線形補間) ----
   // 山頂標高を挟む上下2気圧面の風速を線形補間して「稜線風速」を推定する。
   // LEVELS[i]=[気圧面hPa, 標準高度m]。 500m台の里山から3800m級までを 6面でカバー。
   var LEVELS=[[925,760],[900,990],[850,1460],[800,1950],[700,3010],[600,4200]];
-  function bracket(elev){
-    for(var i=0;i<LEVELS.length-1;i++){
-      var lo=LEVELS[i], hi=LEVELS[i+1];
-      if(elev>=lo[1]&&elev<=hi[1])return {lo:lo,hi:hi,t:(elev-lo[1])/(hi[1]-lo[1])};
+  // 「その時刻に実際に値がある気圧面」だけで山頂標高の風速を補間する。
+  // pts=[[標準高度m, 風速], ...] を高度の昇順で渡す。範囲外は最寄りの面の値をそのまま使う。
+  //
+  // 標高から気圧面ペアを1回だけ決め打ちにしてはいけない。気圧面のラインナップはモデルで違い、
+  // MSM(おおむね1〜3日目)は6面すべて配信するが GSM(4日目以降)は 900hPa と 800hPa を
+  // 配信しない(実測)。決め打ちだと GSM 期間の標高 760〜3010m の山 ── つまりDBの大半
+  // (604座中509座) ── が丸ごと「稜線風なし」になり、最大の減点である③(-32)が消えて
+  // スコアが不当に高く出る。「データが無い→好条件」は安全と逆方向なので、面の欠落は必ず埋める。
+  // (CLI/index.html は取得する2面のうち片方が欠測ならもう片方をそのまま使う実装。find は
+  //  6面すべて取得しているので、残った面どうしで補間できるぶん一段細かく出せる。)
+  //
+  // ★ 欠けた 900/800hPa を「日照と同じように別モデルから借りて埋める」のは**やってはいけない**。
+  //   実測で検証済み: MSM が6面そろう日に 900/800 を意図的に伏せて復元精度を比べたところ、
+  //     この実装(4面で内挿)      平均誤差 0.76 m/s (③の減点ズレ 1.8点)
+  //     icon_seamless で穴埋め   平均誤差 1.24 m/s (2.5点)
+  //     gfs_seamless  で穴埋め   平均誤差 1.32 m/s (2.6点)
+  //   借りた値は別モデルなので JMA の 925/850/700 との間に段差ができる。モデル間の風速差は
+  //   4〜7日目で平均 1.74 m/s あり、埋めたい内挿誤差 0.76 m/s より大きい。穴より段差の方が痛い。
+  //   日照を借りているのは「気象庁モデルに代わりが無い」から。風は自分の隣の面から内挿できるので
+  //   前提が違う。同一モデル内での代替も不可(GSM の配信面は 1000/925/850/700/600/500 のみ)。
+  //   残る副作用として 4日目以降は風をやや弱めに見積もる(北アルプス級で平均 -1.2m/s)。
+  //   これは補正せず、日付の「参考」表示と find-score.html で開示する方針。詳細は DEVLOG。
+  function interpWind(pts,elev){
+    if(!pts.length)return null;
+    if(elev<=pts[0][0])return pts[0][1];
+    for(var i=0;i<pts.length-1;i++){
+      var lo=pts[i], hi=pts[i+1];
+      if(elev>=lo[0]&&elev<=hi[0])return lo[1]+(hi[1]-lo[1])*((elev-lo[0])/(hi[0]-lo[0]));
     }
-    return elev<LEVELS[0][1]
-      ? {lo:LEVELS[0],hi:LEVELS[0],t:0}
-      : {lo:LEVELS[LEVELS.length-1],hi:LEVELS[LEVELS.length-1],t:0};
+    return pts[pts.length-1][1];
   }
   // 対象時間帯: 7:00〜15:59 (hour 7〜15 の 9時間、登山コアタイム)
   function inRange(t){var h=parseInt(t.slice(11,13),10);return h>=7&&h<=15}
+  var WIN_HOURS=9;              // 上の対象時間帯の時間数 (日照率の分母・被覆判定に使う)
 
   // ---- Open-Meteo 気象庁モデル (daily は積雪のみ、hourly で7:00〜15:59集計) ----
-  // 降水確率は気象庁モデルに存在しない(投げても 400 にならず全 null で返る)ため、
-  // 本体(index.html)と同じく別モデルから補完する。ただし find では
-  // 「表に出す参考値」だけの扱いで、スコアの減点には一切使わない(降水量-30に一本化したまま)。
   var JMA_URL="https://api.open-meteo.com/v1/jma";
   var FC_URL="https://api.open-meteo.com/v1/forecast";
   var DAILY="snowfall_sum";
   var HOURLY="weather_code,temperature_2m,precipitation,"+
     "sunshine_duration,wind_speed_925hPa,wind_speed_900hPa,wind_speed_850hPa,"+
     "wind_speed_800hPa,wind_speed_700hPa,wind_speed_600hPa";
-  var SUPP_HOURLY="precipitation_probability";
+  // /v1/forecast(ベストマッチ合成)から補う変数。
+  //   precipitation_probability : 気象庁モデルに存在しない(投げても400にならず全nullで返る)。
+  //                               find では「表に出す参考値」だけの扱いで、減点には一切使わない
+  //                               (降水量-30に一本化したまま)。
+  //   sunshine_duration         : 気象庁モデルは MSM 期間(おおむね1〜3日目)しか配信しない。
+  //                               4日目以降を埋めるために取る。こちらは採点に使う(主要素のため)。
+  // ※ このリクエストに models= を付けないこと。付けるとレスポンスのキーが
+  //   sunshine_duration_best_match のように接尾辞つきになり、mergeSeries はエラーを出さないまま
+  //   全 null を貼る。「例外が出ないから取れている」が成り立たない壊れ方をする。
+  var SUPP_HOURLY="precipitation_probability,sunshine_duration";
+  // base(気象庁モデル)側に貼り付けるときのキー名。日照は別名にする ─ 同名で貼ると
+  // 1〜3日目の MSM の日照をベストマッチの値で上書きしてしまう(基本はMSM、の方針に反する)。
+  var SUPP_KEYS=["precipitation_probability","sunshine_supp"];
   // extra の系列を base の time 軸に「時刻をキーにして」貼り直す(index.html の mergeSeries と同じ)。
   // 2本のAPIで時系列が食い違いうるので添字が揃っている前提を置かない。
   // 足りない時刻は null で埋めるため、下流は必ず base.time と同じ長さの列を得る。
@@ -597,11 +651,20 @@ footer a{color:var(--link)}
     }
     throw new Error("API呼び出しに失敗しました: "+(lastErr&&lastErr.message||lastErr));
   }
+  // 補完APIの hourly を「base に貼るときのキー名」に組み替える。
+  // sunshine_duration は気象庁モデル側にも同名で存在するため、ここで sunshine_supp に改名して
+  // 別列として持つ。score() は気象庁モデルの日照を優先し、無い日だけこちらを使う。
+  function suppRenamed(h){
+    h=h||{};
+    return {time:h.time||[],
+            precipitation_probability:h.precipitation_probability||[],
+            sunshine_supp:h.sunshine_duration||[]};
+  }
   async function fetchChunk(ms,date){
     var lat=ms.map(function(m){return m.lat}).join(","),
         lon=ms.map(function(m){return m.lon}).join(","),
         el =ms.map(function(m){return m.el }).join(",");
-    // 基本は気象庁モデル。降水確率だけ別モデルから補完する(1変数だけの軽いリクエスト)。
+    // 基本は気象庁モデル。降水確率と(MSM期間外の)日照だけ別モデルから補完する。
     // 2本を並行に投げ、地点ごとに時刻キーで貼り合わせる。
     var res=await Promise.all([
       apiJson(JMA_URL,{latitude:lat,longitude:lon,elevation:el,
@@ -615,7 +678,7 @@ footer a{color:var(--link)}
     var sup =Array.isArray(res[1])?res[1]:[res[1]];
     // 同じ座標列を送っているので地点の並びは一致する
     for(var i=0;i<base.length;i++)
-      mergeSeries(base[i].hourly,(sup[i]&&sup[i].hourly)||{},[SUPP_HOURLY]);
+      mergeSeries(base[i].hourly,suppRenamed(sup[i]&&sup[i].hourly),SUPP_KEYS);
     return base;
   }
 
@@ -636,26 +699,42 @@ footer a{color:var(--link)}
       if(mode==="sum")return sum;
       if(mode==="max")return Math.max.apply(null,vs);
       if(mode==="min")return Math.min.apply(null,vs);
+      if(mode==="count")return vs.length;
       return null;
     }
-    // 稜線風速: 山頂標高を挟む2気圧面を bracket() で選び、各時刻を線形補間して max
-    var bra=bracket(mt.el), ridgeWmax=null;
-    var loArr=hr&&hr["wind_speed_"+bra.lo[0]+"hPa"];
-    var hiArr=hr&&hr["wind_speed_"+bra.hi[0]+"hPa"];
-    if(loArr&&hiArr){
-      var mv=0, has=false;
-      for(var i=0;i<N;i++){
-        if(!inRange(times[i]))continue;
-        var lo=loArr[i], hi=hiArr[i];
-        if(lo==null||hi==null)continue;
-        var v=lo*(1-bra.t)+hi*bra.t;
-        if(v>mv)mv=v; has=true;
-      }
-      if(has)ridgeWmax=mv;
+    // 日照は「窓の9時間ぶんが全部そろっている時だけ」採用する。部分欠測のまま合計すると、
+    // 例えば3時間ぶんしか来ていない日が「日照率33%」に見え、実際より悪く採点してしまう
+    // (MSM→GSM の切れ目に当たる日で起こりうる。切れ目の位置はモデルラン時刻で動く)。
+    // そろっていなければ null を返し、呼び出し側で次の系列にフォールバックさせる。
+    function sunOf(key){
+      var n=agg(key,"count");
+      return (n!=null&&n>=WIN_HOURS)?agg(key,"sum"):null;
     }
+    // 稜線風速: 各時刻ごとに「値のある気圧面」から山頂標高の風速を補間し、その max をとる。
+    // 面の取捨を時刻ごとにやるのは、MSM→GSM の切替で配信される面が変わるため(interpWind 参照)。
+    var ridgeWmax=null;
+    var lvArrs=LEVELS.map(function(L){return hr&&hr["wind_speed_"+L[0]+"hPa"]});
+    var mv=0, hasW=false;
+    for(var i=0;i<N;i++){
+      if(!inRange(times[i]))continue;
+      var pts=[];
+      for(var li=0;li<LEVELS.length;li++){
+        var a=lvArrs[li], v=a?a[i]:null;
+        if(v!=null)pts.push([LEVELS[li][1],v]);
+      }
+      var w=interpWind(pts,mt.el);
+      if(w==null)continue;
+      if(w>mv)mv=w; hasW=true;
+    }
+    if(hasW)ridgeWmax=mv;
     // 日照率: 7:00〜15:59 の sunshine_duration 合計 / (9h × 3600s)
-    var sunSum=agg("sunshine_duration","sum");
-    var sunFrac=sunSum==null?null:Math.max(0,Math.min(1,sunSum/(9*3600)));
+    // 基本は気象庁モデル(MSM)の日照。MSM 期間を外れた日(おおむね4日目以降)は気象庁モデルが
+    // 日照を配信しないので、/v1/forecast(ベストマッチ)から補完した sunshine_supp を使い、
+    // sunAlt=true を立てて「別モデル由来」であることを表示側に伝える。
+    var sunJma=sunOf("sunshine_duration");
+    var sunSum=sunJma, sunAlt=false;
+    if(sunSum==null){sunSum=sunOf("sunshine_supp");if(sunSum!=null)sunAlt=true}
+    var sunFrac=sunSum==null?null:Math.max(0,Math.min(1,sunSum/(WIN_HOURS*3600)));
     // 天気コードの worst(max)。スコアの悪天上乗せ減点(安全側)にのみ使う。
     // 表示用の代表天気は下の repWeather() が別に決める(max だと短時間の霧雨に乗っ取られるため)。
     var code=agg("weather_code","max");
@@ -677,7 +756,11 @@ footer a{color:var(--link)}
     // 主要素が1つも取れていない山はスコアを出さない(呼び出し側が一覧から外す)。
     // 減点方式なので、引く材料が無いと 100点=ランクA になり最上位に出てしまう。
     // 「データが無い」が「最高のコンディション」に化けるのは安全と逆方向。
-    if(sunFrac==null&&code==null&&psum==null&&ridgeWmax==null)return null;
+    // 判定材料は必ず「気象庁モデルから取れたもの」で数える(sunFrac ではなく sunJma)。
+    // sunFrac で数えると、気象庁モデルが全滅した地点でも補完日照だけで非nullになってこの
+    // ガードをすり抜け、天気・気温・稜線風・降水がすべて「-」の行が①だけの減点=80点前後の
+    // ランクAとして最上位付近に出てしまう。
+    if(sunJma==null&&code==null&&psum==null&&ridgeWmax==null)return null;
     var s=100;
     // ① 晴天度 (最大 -28)
     if(sunFrac!=null)s-=(1-sunFrac)*28;
@@ -693,7 +776,8 @@ footer a{color:var(--link)}
     // ④ 雪・寒気 (最大 -10)
     if(snow!=null&&snow>0)s-=Math.min(snow,5)/5*5;
     if(tmin!=null&&tmin<-5)s-=Math.min((-5-tmin),15)/15*5;
-    return {v:Math.round(Math.max(0,Math.min(100,s))),sunFrac:sunFrac,code:code,wxRep:wxRep,
+    return {v:Math.round(Math.max(0,Math.min(100,s))),sunFrac:sunFrac,sunAlt:sunAlt,
+      code:code,wxRep:wxRep,
       psum:psum,pprob:pprob,ridgeWmax:ridgeWmax,tmax:tmax,tmin:tmin};
   }
   // 安全性の足切り: 稜線風速 >=18m/s または 降水量 >=10mm のいずれかで別表送り
@@ -721,12 +805,16 @@ footer a{color:var(--link)}
   // (find2: 代表天気 wxRep を追加 / find3: wxRep.notes を [{h,t}] 形式にし fair を追加
   //  / find4: 降水の配点を 確率-10・量-20 に変更しスコア値の意味が変わった
   //  / find5: 取得元を気象庁モデルに変更・対象を3日に短縮・降水を量-30に一本化
-  //  / find6: 降水確率を別モデルから取り直し、表示専用フィールド pprob として復活)。
+  //  / find6: 降水確率を別モデルから取り直し、表示専用フィールド pprob として復活
+  //  / find7: 対象を3日→7日に拡張。気象庁モデルの日照が届かない日は別モデルで補完し、
+  //           その旨を sunAlt で持つ。日照は窓9時間そろっている時だけ採用に変更。
+  //           稜線風を「値のある気圧面から時刻ごとに補間」に変更(GSM は 900/800hPa を
+  //           配信せず、従来の決め打ちだと4日目以降の稜線風が丸ごと欠測になっていた))。
   // 上げ忘れると旧キャッシュがそのまま復元され、天気列だけ古い表示になる。
-  function cacheKey(r,p,date){return "find6:"+r+":"+p+":"+date}
+  function cacheKey(r,p,date){return "find7:"+r+":"+p+":"+date}
   // 直近の検索条件を保存するキー。ページを再訪した時にセレクタと結果を復元する用途
   // (bfcache が効かない iOS 直リンク等のフォールバック。詳細は末尾の restoreLastSearch)。
-  var LAST_KEY="find6:last";
+  var LAST_KEY="find7:last";
   async function search(fromRestore){
     if(needsPrefSelection()){elStatus.textContent="都道府県を選択してから検索してください";return}
     var ms=targets(),date=elDate.value,r=elRegion.value,p=elPref.value;
@@ -786,7 +874,8 @@ footer a{color:var(--link)}
       '<td>'+(wx.ic?'<svg class="wxico" aria-hidden="true"><use href="#'+wx.ic+'"/></svg>':"-")+
             '<span class="wxlbl">'+esc(wx.lb)+'</span>'+
             (wx.nt&&wx.nt.length?'<span class="wxnote">'+esc(wx.nt.join(" / "))+'</span>':"")+'</td>'+
-      '<td class="num">'+pct(s.sunFrac)+'</td>'+
+      '<td class="num">'+pct(s.sunFrac)+
+        (s.sunAlt?'<span class="altm" title="別の予報モデルで補完した日照">*</span>':"")+'</td>'+
       '<td class="num">'+fnum(s.tmax,"")+' / '+fnum(s.tmin,"℃")+'</td>'+
       '<td class="num">'+fnum(s.ridgeWmax,"m/s")+'</td>'+
       '<td class="num">'+(s.pprob==null?"-":Math.round(s.pprob)+"%")+'</td>'+
@@ -819,7 +908,10 @@ footer a{color:var(--link)}
       '「よく晴れ・晴れ・時々晴れ・曇りがち」を判定。代表とならなかった天気は下段へ小さく併記する'+
       '(晴れが代表なら「昼過ぎに霧雨」、雨・雪・雷が代表なら「朝〜昼過ぎは晴れ」など。'+
       '<a href="find-score.html">判定の手順</a>)</dd>'+
-    '<dt>日照</dt><dd>7:00〜15:59 のうち日照が見込まれる時間の割合 (0〜100%)</dd>'+
+    '<dt>日照</dt><dd>7:00〜15:59 のうち日照が見込まれる時間の割合 (0〜100%)。'+
+      '<b>*</b> 印は気象庁モデルの日照が届かない日で、'+
+      '<b>別の予報モデル(ベストマッチ合成)から補完した値</b>です'+
+      '(他の列は気象庁モデルのまま)</dd>'+
     '<dt>気温</dt><dd>7:00〜15:59 の <b>最高 / 最低</b> 気温 (℃)。'+
       '山頂標高で標高補正済み (Open-Meteo の elevation パラメータ経由。乾燥断熱減率 約0.65℃/100m)</dd>'+
     '<dt>稜線風</dt><dd>山頂標高で推定した稜線風速の 7:00〜15:59 最大値 (m/s)。'+
@@ -852,6 +944,23 @@ footer a{color:var(--link)}
     }
     h+='<p class="rnote">※ スコアは <b>登山コアタイム 7:00〜15:59</b> の気象値で算定しています。'+
        '<a href="find-score.html">計算方法の詳細</a></p>';
+    // 日照の出どころが気象庁モデルでない日は、表の下に1回だけ明記する。
+    // 行ごとの * だけだと「何の印か」が分からないため。
+    var altN=rows.filter(function(x){return x.sc.sunAlt}).length;
+    if(altN){
+      h+='<p class="rnote">※ 日照の <b>*</b> 印'+(altN<rows.length?"が付いた山":"")+
+         'は、この日が<b>気象庁モデルの日照の配信範囲外</b>のため、日照だけ'+
+         '<b>別の予報モデル(ベストマッチ合成)</b>の値で補完しています。'+
+         '天気・降水量・稜線風・積雪は気象庁モデルのままです'+
+         '(<a href="find-score.html">計算方法</a>)。</p>';
+    }
+    // 日照そのものが取れなかった山は、天気コードによる粗い代替評価になっている。
+    // 黙って精度が落ちると気づけないので、これも表に出す。
+    var noSunN=rows.filter(function(x){return x.sc.sunFrac==null}).length;
+    if(noSunN){
+      h+='<p class="rnote caution">※ '+noSunN+'座は日照データが取得できず、'+
+         '天気コードによる簡易評価になっています(スコアの根拠が薄くなります)。</p>';
+    }
     // 表下部に「各列の意味」凡例。気温が2つある/天気の判定基準など、初見でも列の意味が
     // 分かるようにする。1回だけ表示(メイン表と足切り表のどちらか(または両方)が出た時)。
     h+=LEGEND_HTML;
@@ -889,7 +998,7 @@ footer a{color:var(--link)}
     if(Array.prototype.some.call(elDate.options,function(o){return o.value===last.date})){
       elDate.value=last.date;
     }else{
-      // 日付が期限切れ (3日ウインドウを外れた) 場合は復元スキップ (キャッシュヒットしない)
+      // 日付が期限切れ (選択できる期間を外れた) 場合は復元スキップ (キャッシュヒットしない)
       return;
     }
     updateHint();
