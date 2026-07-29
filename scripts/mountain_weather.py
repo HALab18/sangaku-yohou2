@@ -41,7 +41,7 @@ GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 JMA_DAYS = 11
 MOUNTAINS_CSV = Path(__file__).resolve().parent.parent / "references" / "mountains.csv"
 
-# 気圧面と標準高度 (m)。山頂標高を挟む2面から線形補間して稜線風を出す
+# 気圧面と標準高度 (m)。その時刻に値がある面から山頂標高に線形補間して稜線風を出す (interp_wind)
 PRESSURE_LEVELS = [(925, 760), (900, 990), (850, 1460), (800, 1950), (700, 3010), (600, 4200)]
 
 WMO_CODES = {
@@ -289,35 +289,52 @@ def resolve_mountain(name, select=None):
 
 
 # ---------------------------------------------------------------- 稜線風
-def bracket_levels(elev):
-    """山頂標高を挟む気圧面のペア(下,上)と補間係数を返す"""
-    lv = PRESSURE_LEVELS
-    if elev <= lv[0][1]:
-        return lv[0], lv[0], 0.0
-    for i in range(len(lv) - 1):
-        lo, hi = lv[i], lv[i + 1]
-        if lo[1] <= elev <= hi[1]:
-            t = (elev - lo[1]) / (hi[1] - lo[1])
-            return lo, hi, t
-    return lv[-1], lv[-1], 0.0
+def interp_wind(pts, elev):
+    """「その時刻に実際に値がある気圧面」だけで山頂標高の風速を補間する
+    (docs/find.html の interpWind・index.html の interpWind と同一ロジック)。
+    pts=[(標準高度m, 風速), ...] を高度の昇順で渡す。範囲外は最寄りの面の値をそのまま使う。
+
+    標高から気圧面ペアを1回だけ決め打ちにしてはいけない。気圧面のラインナップはモデルで違い、
+    MSM(おおむね1〜3日目)は6面すべて配信するが GSM(4日目以降)は 900hPa と 800hPa を
+    配信しない(実測)。決め打ちだと GSM 期間の標高 760〜3010m の山 ── DBの大半 ── で
+    「片面の生値をそのまま使う」動作に落ち、補間されない粗い値になる。
+
+    ★ 欠けた 900/800hPa を「日照と同じように別モデルから借りて埋める」のはやってはいけない。
+      実測で検証済み: MSM が6面そろう日に 900/800 を意図的に伏せて復元精度を比べたところ、
+        この実装(4面で内挿)     平均誤差 0.76 m/s
+        icon_seamless で穴埋め  平均誤差 1.24 m/s
+        gfs_seamless  で穴埋め  平均誤差 1.32 m/s
+      借りた値は別モデルなので JMA の 925/850/700 との間に段差ができる。モデル間の風速差は
+      4〜7日目で平均 1.74 m/s あり、埋めたい内挿誤差 0.76 m/s より大きい。穴より段差が痛い。
+      日照を借りているのは「気象庁モデルに代わりが無い」から。風は自分の隣の面から内挿できるので
+      前提が違う。残る副作用の「4日目以降は風をやや弱めに見積もる」は補正せず開示で倒す。"""
+    if not pts:
+        return None
+    if elev <= pts[0][0]:
+        return pts[0][1]
+    for lo, hi in zip(pts, pts[1:]):
+        if lo[0] <= elev <= hi[0]:
+            return lo[1] + (hi[1] - lo[1]) * ((elev - lo[0]) / (hi[0] - lo[0]))
+    return pts[-1][1]
 
 
-def ridge_wind(h, i, lo, hi, t):
-    """i時刻の稜線風速(m/s)・風向を気圧面2面から補間。欠測・キー欠落は None 扱い"""
+def ridge_wind(h, i, elev):
+    """i時刻の稜線風速(m/s)・風向を6気圧面から求める。材料が1つも無ければ (None, None)。
+    風速は値のある面だけで線形補間。風向は角度なので同じ式では補間できず、
+    「値のある面のうち標高的に一番近い面の値をそのまま採用」する(固定2面時代の t<0.5 の一般化)。"""
     def val(key):
         a = h.get(key)
         return a[i] if a and i < len(a) else None
-    s_lo = val(f"wind_speed_{lo[0]}hPa")
-    s_hi = val(f"wind_speed_{hi[0]}hPa")
-    d_lo = val(f"wind_direction_{lo[0]}hPa")
-    d_hi = val(f"wind_direction_{hi[0]}hPa")
-    if s_lo is None or s_hi is None:
-        s = s_lo if s_lo is not None else s_hi
-        d = d_lo if d_lo is not None else d_hi
-        return s, d
-    speed = s_lo + (s_hi - s_lo) * t
-    d = d_lo if t < 0.5 else d_hi
-    return speed, d
+    pts, dirs = [], []
+    for p, z in PRESSURE_LEVELS:
+        s = val(f"wind_speed_{p}hPa")
+        if s is not None:
+            pts.append((z, s))
+        d = val(f"wind_direction_{p}hPa")
+        if d is not None:
+            dirs.append((z, d))
+    direction = min(dirs, key=lambda zd: abs(zd[0] - elev))[1] if dirs else None
+    return interp_wind(pts, elev), direction
 
 
 # ---------------------------------------------------------------- 登山指数
@@ -551,7 +568,7 @@ def snow_cell(depth_m, sf_cm):
 
 
 # ---------------------------------------------------------------- 直近実況
-def past_summary_rows(data, dates, lo, hi, t):
+def past_summary_rows(data, dates, elev):
     """直近数日の実況(モデル解析値)の日別行"""
     h, d = data["hourly"], data["daily"]
     times = h["time"]
@@ -566,7 +583,7 @@ def past_summary_rows(data, dates, lo, hi, t):
             continue
         idxs = day_indices(times, date)
         act = [i for i in idxs if 5 <= int(times[i][11:13]) <= 17]
-        rws = [ridge_wind(h, i, lo, hi, t) for i in act]
+        rws = [ridge_wind(h, i, elev) for i in act]
         ws = max((s for s, _ in rws if s is not None), default=None)
         wd = next((dd for s, dd in rws if s == ws), None)
         depth = max((depth_all[i] for i in idxs if i < len(depth_all) and depth_all[i] is not None),
@@ -599,7 +616,7 @@ def print_past_summary(rows, has_snow):
 
 
 # ---------------------------------------------------------------- 出力
-def print_detail_day(data, date, lo, hi, t, elev, has_snow=False, step=3):
+def print_detail_day(data, date, elev, has_snow=False, step=3):
     h = data["hourly"]
     times = h["time"]
     idxs = day_indices(times, date)
@@ -624,7 +641,7 @@ def print_detail_day(data, date, lo, hi, t, elev, has_snow=False, step=3):
         blk3 = [i for i in idxs if int(times[i][11:13]) // 3 * 3 == start_h3]
         if not blk3:
             return "-"
-        rws3 = [ridge_wind(h, i, lo, hi, t) for i in blk3]
+        rws3 = [ridge_wind(h, i, elev) for i in blk3]
         ws3 = max((s for s, _ in rws3 if s is not None), default=None)
         pr3 = sum_or_none(h["precipitation"][i] for i in blk3)
         return block_index(ws3, pr3, th)
@@ -639,7 +656,7 @@ def print_detail_day(data, date, lo, hi, t, elev, has_snow=False, step=3):
             continue
         i0 = block[0]
         temp = h["temperature_2m"][i0]
-        rws = [ridge_wind(h, i, lo, hi, t) for i in block]
+        rws = [ridge_wind(h, i, elev) for i in block]
         ws = max((s for s, _ in rws if s is not None), default=None)
         wd = next((d for s, d in rws if s == ws), None)
         gust = max((h["wind_gusts_10m"][i] for i in block if h["wind_gusts_10m"][i] is not None), default=None)
@@ -694,7 +711,7 @@ def morning_view(h, times, idxs, elev):
     return view_cell(best, best_note, best_vis)
 
 
-def daily_summary_rows(data, dates, lo, hi, t, elev):
+def daily_summary_rows(data, dates, elev):
     h = data["hourly"]
     d = data["daily"]
     times = h["time"]
@@ -719,7 +736,7 @@ def daily_summary_rows(data, dates, lo, hi, t, elev):
             block = [i for i in act if int(times[i][11:13]) // 3 * 3 == start_h]
             if not block:
                 continue
-            rws = [ridge_wind(h, i, lo, hi, t) for i in block]
+            rws = [ridge_wind(h, i, elev) for i in block]
             ws = max((s for s, _ in rws if s is not None), default=None)
             if ws is not None and (ws_max is None or ws > ws_max):
                 ws_max = ws
@@ -734,7 +751,7 @@ def daily_summary_rows(data, dates, lo, hi, t, elev):
         eve = [i for i in idxs if 17 <= int(times[i][11:13]) <= 20]
         evening = False
         if eve and day_idx is not None and day_idx != "C":
-            rws = [ridge_wind(h, i, lo, hi, t) for i in eve]
+            rws = [ridge_wind(h, i, elev) for i in eve]
             ws_e = max((s for s, _ in rws if s is not None), default=None)
             pr_e = sum_or_none(h["precipitation"][i] for i in eve)
             evening = block_index(ws_e, pr_e, th) == "C"
@@ -1003,14 +1020,15 @@ def main():
     fetch_start = today - dt.timedelta(days=PAST_DAYS)  # 直近実況ぶんを遡って取得
     fetch_end = horizon  # 常に11日見通しを表示
 
-    lo, hi, t = bracket_levels(elev)
-    data = fetch_forecast(lat, lon, elev, fetch_start, fetch_end, {lo, hi})
+    # 気圧面は常に6面すべて取得する。どの面が配信されるかはリクエスト前には分からず
+    # (無い面は 400 ではなく全 null で返る)、標高から2面に絞ると GSM 期間に補間できなくなる
+    data = fetch_forecast(lat, lon, elev, fetch_start, fetch_end, PRESSURE_LEVELS)
 
     def emit():
-        lv = f"{lo[0]}hPa" if lo == hi else f"{lo[0]}/{hi[0]}hPa補間"
         print(f"## {label} の山岳気象予報")
         print(f"- 地点: 北緯{lat:.4f} 東経{lon:.4f} / 標高 {elev:.0f}m ({src})")
-        print(f"- 稜線風: {lv} の風を山頂標高に合わせて算出 / 気温は標高{elev:.0f}m面の値")
+        print(f"- 稜線風: 気象庁モデルの気圧面風(925〜600hPa)のうち、その時刻に値がある面から"
+              f"山頂標高に線形補間して算出 / 気温は標高{elev:.0f}m面の値")
         th0 = season_thresholds(start.month)
         print(f"- 登山指数: A=登山適 / B=要注意(経験者向き・行程短縮検討) / C=登山不適。"
               f"判定は稜線風速と降水量の2項目のみ。"
@@ -1028,16 +1046,16 @@ def main():
 
         has_snow = has_snow_period(data["hourly"])
         past_dates = [today - dt.timedelta(days=i) for i in range(PAST_DAYS, 0, -1)]
-        print_past_summary(past_summary_rows(data, past_dates, lo, hi, t), has_snow)
+        print_past_summary(past_summary_rows(data, past_dates, elev), has_snow)
 
         n_days = (fetch_end - today).days + 1
         dates = [today + dt.timedelta(days=i) for i in range(n_days)]
-        rows = daily_summary_rows(data, dates, lo, hi, t, elev)
+        rows = daily_summary_rows(data, dates, elev)
         print_daily_summary(rows, f"{JMA_DAYS}日間の見通し", has_snow)
 
         d = start
         while d <= detail_end:
-            print_detail_day(data, d, lo, hi, t, elev, has_snow, step=args.interval)
+            print_detail_day(data, d, elev, has_snow, step=args.interval)
             d += dt.timedelta(days=1)
 
         compare_models(lat, lon, elev, start, detail_end)

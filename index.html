@@ -509,6 +509,7 @@ let ENTRY="link"; // 既定: 共有URL・ブックマーク・直接アクセス
 let fromHashSubmit=false;
 
 // ---- 定数 (scripts/mountain_weather.py と同一ロジック) ----
+// LEVELS[i]=[気圧面hPa, 標準高度m]。500m台の里山から3800m級までを6面でカバー。
 const LEVELS=[[925,760],[900,990],[850,1460],[800,1950],[700,3010],[600,4200]];
 const WMO={0:"快晴",1:"晴れ",2:"晴れ時々曇り",3:"曇り",45:"霧",48:"着氷性の霧",
  51:"霧雨(弱)",53:"霧雨",55:"霧雨(強)",56:"着氷性霧雨",57:"着氷性霧雨(強)",
@@ -709,19 +710,46 @@ const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
 const md=d=>`${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")}`;
 const wj=d=>{const w=WJA[d.getDay()];const cls=w==="土"?"sat":w==="日"?"sun":"";return cls?`<span class="${cls}">(${w})</span>`:`(${w})`};
 
-function bracket(elev){
-  if(elev<=LEVELS[0][1])return[LEVELS[0],LEVELS[0],0];
-  for(let i=0;i<LEVELS.length-1;i++){
-    const lo=LEVELS[i],hi=LEVELS[i+1];
-    if(elev>=lo[1]&&elev<=hi[1])return[lo,hi,(elev-lo[1])/(hi[1]-lo[1])];
+// ---- 稜線風速の補間 (docs/find.html の interpWind・mountain_weather.py の interp_wind と同一) ----
+// 「その時刻に実際に値がある気圧面」だけで山頂標高の風速を補間する。
+// pts=[[標準高度m, 風速], ...] を高度の昇順で渡す。範囲外は最寄りの面の値をそのまま使う。
+//
+// 標高から気圧面ペアを1回だけ決め打ちにしてはいけない。気圧面のラインナップはモデルで違い、
+// MSM(おおむね1〜3日目)は6面すべて配信するが GSM(4日目以降)は 900hPa と 800hPa を
+// 配信しない(実測)。決め打ちだと GSM 期間の標高 760〜3010m の山 ── DBの大半 ── で
+// 「片面の生値をそのまま使う」動作に落ち、補間されない粗い値になる。
+//
+// ★ 欠けた 900/800hPa を「日照と同じように別モデルから借りて埋める」のは**やってはいけない**。
+//   実測で検証済み: MSM が6面そろう日に 900/800 を意図的に伏せて復元精度を比べたところ、
+//     この実装(4面で内挿)      平均誤差 0.76 m/s
+//     icon_seamless で穴埋め   平均誤差 1.24 m/s
+//     gfs_seamless  で穴埋め   平均誤差 1.32 m/s
+//   借りた値は別モデルなので JMA の 925/850/700 との間に段差ができる。モデル間の風速差は
+//   4〜7日目で平均 1.74 m/s あり、埋めたい内挿誤差 0.76 m/s より大きい。穴より段差の方が痛い。
+//   日照を借りているのは「気象庁モデルに代わりが無い」から。風は自分の隣の面から内挿できるので
+//   前提が違う。残る副作用の「4日目以降は風をやや弱めに見積もる」は補正せず開示で倒す。詳細は DEVLOG。
+function interpWind(pts,elev){
+  if(!pts.length)return null;
+  if(elev<=pts[0][0])return pts[0][1];
+  for(let i=0;i<pts.length-1;i++){
+    const lo=pts[i],hi=pts[i+1];
+    if(elev>=lo[0]&&elev<=hi[0])return lo[1]+(hi[1]-lo[1])*((elev-lo[0])/(hi[0]-lo[0]));
   }
-  return[LEVELS.at(-1),LEVELS.at(-1),0];
+  return pts.at(-1)[1];
 }
-function ridgeWind(h,i,lo,hi,t){
-  const sLo=h[`wind_speed_${lo[0]}hPa`]?.[i],sHi=h[`wind_speed_${hi[0]}hPa`]?.[i];
-  const dLo=h[`wind_direction_${lo[0]}hPa`]?.[i],dHi=h[`wind_direction_${hi[0]}hPa`]?.[i];
-  if(sLo==null||sHi==null)return[sLo??sHi??null,dLo??dHi??null];
-  return[sLo+(sHi-sLo)*t,t<0.5?dLo:dHi];
+// i時刻の [稜線風速(m/s), 風向] を6気圧面から求める。材料が1つも無ければ [null,null]。
+// 風速は値のある面だけで線形補間。風向は角度なので同じ式では補間できず、
+// 「値のある面のうち標高的に一番近い面の値をそのまま採用」する(固定2面時代の t<0.5 の一般化)。
+function ridgeWind(h,i,elev){
+  const pts=[],dirs=[];
+  for(const[p,z]of LEVELS){
+    const s=h[`wind_speed_${p}hPa`]?.[i];if(s!=null)pts.push([z,s]);
+    const dd=h[`wind_direction_${p}hPa`]?.[i];if(dd!=null)dirs.push([z,dd]);
+  }
+  const dir=dirs.length
+    ?dirs.reduce((a,b)=>Math.abs(b[0]-elev)<Math.abs(a[0]-elev)?b:a)[1]
+    :null;
+  return[interpWind(pts,elev),dir];
 }
 function seasonTh(month){
   // 夏山(6-10月)/冬山・残雪期(11-5月)で風速・降水の閾値を切替
@@ -872,11 +900,12 @@ async function run(mt){
   const detailEnd=new Date(Math.min(addDays(start,days-1),horizon));
   const fetchEnd=horizon;
 
-  const[lo,hi,t]=bracket(mt.elev);
-  const levels=lo[0]===hi[0]?[lo]:[lo,hi];
+  // 気圧面は常に6面すべて取得する。どの面が配信されるかはリクエスト前には分からず
+  // (無い面は 400 ではなく全 null で返る)、標高から2面に絞ると GSM 期間に補間できなくなる。
+  // 1山1リクエストなのでペイロード増は軽微。
   const hourly=["temperature_2m","precipitation","weather_code",
     "cloud_cover_low","cloud_cover_mid","cloud_cover_high","wind_speed_10m","snowfall",
-    ...levels.flatMap(p=>[`wind_speed_${p[0]}hPa`,`wind_direction_${p[0]}hPa`])];
+    ...LEVELS.flatMap(p=>[`wind_speed_${p[0]}hPa`,`wind_direction_${p[0]}hPa`])];
   status.className="";status.textContent="予報を取得中…";
   const common={
     latitude:mt.lat,longitude:mt.lon,elevation:mt.elev,
@@ -912,7 +941,7 @@ async function run(mt){
     const ds=iso(dt2),di=d.time.indexOf(ds);if(di<0)continue;
     const idxs=dayIdx(times,ds);
     const act=idxs.filter(i=>{const hr=+times[i].slice(11,13);return hr>=5&&hr<=17});
-    const rw=act.map(i=>ridgeWind(h,i,lo,hi,t));
+    const rw=act.map(i=>ridgeWind(h,i,mt.elev));
     const wsArr=rw.map(x=>x[0]).filter(v=>v!=null);
     const ws=wsArr.length?Math.max(...wsArr):null;
     const wd2=rw.find(x=>x[0]===ws)?.[1];
@@ -943,7 +972,7 @@ async function run(mt){
     for(let sh=3;sh<18;sh+=3){
       const blk=act.filter(i=>Math.floor(+times[i].slice(11,13)/3)*3===sh);
       if(!blk.length)continue;
-      const rw=blk.map(i=>ridgeWind(h,i,lo,hi,t));
+      const rw=blk.map(i=>ridgeWind(h,i,mt.elev));
       const ws=Math.max(...rw.map(x=>x[0]??-1));
       if(ws>=0&&(wsMax==null||ws>wsMax)){wsMax=ws;wdMax=rw.find(x=>x[0]===ws)?.[1]}
       const pr=sumOrNull(blk.map(i=>h.precipitation[i]));
@@ -957,7 +986,7 @@ async function run(mt){
     if(dayIdxV!=null&&dayIdxV!=="C"){
       const eve=idxs.filter(i=>{const hr=+times[i].slice(11,13);return hr>=17&&hr<=20});
       if(eve.length){
-        const rw=eve.map(i=>ridgeWind(h,i,lo,hi,t));
+        const rw=eve.map(i=>ridgeWind(h,i,mt.elev));
         const wsE=Math.max(...rw.map(x=>x[0]??-1));
         const prE=sumOrNull(eve.map(i=>h.precipitation[i]));
         evening=blockIndex(wsE<0?null:wsE,prE,th)==="C";
@@ -1028,7 +1057,7 @@ async function run(mt){
       const blk=idxs.filter(i=>Math.floor(+times[i].slice(11,13)/step)*step===sh);
       if(!blk.length)continue;
       const i0=blk[0],temp=h.temperature_2m[i0];
-      const rw=blk.map(i=>ridgeWind(h,i,lo,hi,t));
+      const rw=blk.map(i=>ridgeWind(h,i,mt.elev));
       const wsArr=rw.map(x=>x[0]).filter(v=>v!=null);
       const ws=wsArr.length?Math.max(...wsArr):null;
       const wd2=rw.find(x=>x[0]===ws)?.[1];
@@ -1052,7 +1081,7 @@ async function run(mt){
       // 指数は表示間隔によらず3時間ブロック単位で判定する (A/B/Cの降水閾値がmm/3h定義のため)
       const sh3=Math.floor(sh/3)*3;
       const blk3=idxs.filter(i=>Math.floor(+times[i].slice(11,13)/3)*3===sh3);
-      const rw3=blk3.map(i=>ridgeWind(h,i,lo,hi,t));
+      const rw3=blk3.map(i=>ridgeWind(h,i,mt.elev));
       const ws3Arr=rw3.map(x=>x[0]).filter(v=>v!=null);
       const ws3=ws3Arr.length?Math.max(...ws3Arr):null;
       const pr3=sumOrNull(blk3.map(i=>h.precipitation[i]));
