@@ -197,16 +197,19 @@ footer a{color:var(--link)}
 
 <main>
 
+<!-- autocomplete="off" は必須。付けないとブラウザがリロード/復帰のたびに前回の選択を
+     こちらの初期化より後に復元してきて、「新しく開いたら初期状態」という方針が崩れる
+     (実測: Chrome。都道府県だけ前回の県が残り、検索ボタンは無効のままで表示が食い違う)。 -->
 <div class="searchcard">
   <div class="row">
     <label>エリア
-      <select id="region"></select>
+      <select id="region" autocomplete="off"></select>
     </label>
     <label>都道府県
-      <select id="pref"><option value="">すべて</option></select>
+      <select id="pref" autocomplete="off"><option value="">すべて</option></select>
     </label>
     <label>日付
-      <select id="date"></select>
+      <select id="date" autocomplete="off"></select>
     </label>
   </div>
   <button class="go" id="go">この条件でさがす</button>
@@ -920,16 +923,47 @@ footer a{color:var(--link)}
     if(a)try{sessionStorage.setItem("pw_entry","find")}catch(err){}
   });
 
+  // ---- 復元してよいのは「一覧から開いた詳細予報」から戻ってきた時だけ ----
+  // 前回の検索条件・結果を復元するのは、この一覧から個別予報(index.html)へ進んで帰ってきた
+  // 時に限る。「← 天気で山さがしの一覧に戻る」ボタンでもブラウザの戻るでも同じように戻す。
+  // 一方、トップの「天気の良い山をさがす」から開いた時・直リンク・リロードでは、毎回
+  // 初期状態(最上部・東北・都道府県未選択・結果なし)から始める。「新しく探しに来たのに
+  // 前回の一覧が途中から出ている」状態を避けるため。
+  //
+  // 判別は index.html が立てる sessionStorage マーカーで行う(referrer では bfcache 復帰と
+  // 区別できない)。マーカーは詳細予報を一覧から開いた時に立ち、トップの「天気の良い山を
+  // さがす」を押した時に消える。ここでは1回で消費する。
+  function takeBackFlag(){
+    try{
+      if(sessionStorage.getItem("pw_find_back")){
+        sessionStorage.removeItem("pw_find_back");
+        return true;
+      }
+    }catch(e){}
+    return false;
+  }
+
+  // bfcache から復帰したページを初期状態に戻す (通常ロードは元から初期状態なので不要)。
+  //
+  // DOM を書き換えて戻すのではなく、素直に再ロードする。復帰したページではブラウザが
+  // <select> の選択状態をこちらの初期化より後に復元しにきて、都道府県だけ前回の県が
+  // 残る(=検索ボタンは無効のままで表示が食い違う)のを実測したため。setTimeout で
+  // 上書きし返すのはタイミング勝負になり当てにできない。
+  // 再ロードしても復元マーカーは無いので restoreLastSearch() は走らず、Open-Meteo も
+  // 叩かない(検索は「この条件でさがす」を押した時だけ)。日付の選択肢も組み直される。
+  function resetToInitial(){
+    location.reload();
+  }
+
   // ---- 直近の検索条件を自動復元 ----
-  // find.html を再訪した時 (bfcache が効かず新規ロードされたケース)、前回の検索条件を
-  // sessionStorage から読んでセレクタを復元し、対応する cacheKey にヒットすれば
-  // 自動で render() まで進める。Open-Meteo は叩かない(キャッシュヒット時)。
-  // 個別予報 (index.html) から「一覧に戻る」した時、条件と結果が復元される導線として機能。
+  // 詳細予報から戻ってきたが bfcache が効かず新規ロードされたケース (iOS 直リンク等)。
+  // 前回の検索条件を sessionStorage から読んでセレクタを復元し、対応する cacheKey に
+  // ヒットすれば自動で render() まで進める。Open-Meteo は叩かない(キャッシュヒット時)。
   function restoreLastSearch(){
     var last;
     try{last=JSON.parse(sessionStorage.getItem(LAST_KEY)||"null")}catch(e){}
     if(!last||!last.r||!last.date)return;
-    // 東北など初期値を東北から書き換えた場合のみ発動 (無条件だと初回訪問でも動いてしまう)
+    // 保存されたエリアが今の選択肢に無ければ復元しない(初期状態のまま手動検索を待つ)
     if(!Array.prototype.some.call(elRegion.options,function(o){return o.value===last.r}))return;
     elRegion.value=last.r;
     fillPrefs();
@@ -952,7 +986,35 @@ footer a{color:var(--link)}
   }
 
   fillPrefs();
-  restoreLastSearch();
+  if(takeBackFlag()){
+    restoreLastSearch();
+  }else{
+    // 新規に開いた / ブラウザ戻りで再ロードされた → 初期状態のまま、ページ最上部を見せる。
+    // リロード時はブラウザがスクロール位置をこちらの初期化より後に復元しにくるので、
+    // load 後にもう一度最上部へ戻す。ついでにセレクタも初期値へ倒し直す(こちらは
+    // <select autocomplete="off"> で止まっているはずの選択状態復元に対する保険)
+    // (history.scrollRestoration は触らない。manual にすると「一覧に戻る」で bfcache 復帰
+    //  した時のスクロール位置まで戻らなくなる実装があり、維持したい挙動を壊すため)。
+    window.scrollTo(0,0);
+    addEventListener("load",function(){requestAnimationFrame(function(){
+      window.scrollTo(0,0);
+      if(elPref.selectedIndex!==0||elDate.selectedIndex!==0||
+         (elRegion.value!=="東北"&&Array.prototype.some.call(elRegion.options,function(o){return o.value==="東北"}))){
+        elRegion.value="東北";
+        elDate.selectedIndex=0;
+        fillPrefs();            // 都道府県を placeholder に戻す(updateHint も走る)
+        elPref.selectedIndex=0;
+      }
+    })});
+  }
+
+  // bfcache から復帰したケース (ブラウザの戻る/進む、および「一覧に戻る」の history.back())。
+  // このときスクリプトは再実行されないので、ここで同じ振り分けをする。
+  addEventListener("pageshow",function(e){
+    if(!e.persisted)return;   // 通常ロードは上の初期化で処理済み
+    if(takeBackFlag())return; // 詳細予報から戻ってきた → 条件・結果・スクロール位置をそのまま維持
+    resetToInitial();
+  });
 })();
 
 // ---- 上に戻るボタン (ヒーロー相当の高さを過ぎたら表示。戻り先はページ上部) ----

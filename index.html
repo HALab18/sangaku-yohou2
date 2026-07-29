@@ -254,7 +254,9 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
   border-radius:0 6px 6px 0;margin:18px 0;font-size:.9em}
 footer{color:#888;font-size:.82em;margin-top:8px;text-align:center}
 footer p{margin:0;line-height:1.8}
-footer a{color:var(--link)}
+/* 改訂履歴リンクはタップ目標が文字高さぶんしか無く押しづらかったので、
+   中央寄せ(footer の text-align)を保ったまま上下左右に余白を持たせて広げる */
+footer a{color:var(--link);display:inline-block;padding:6px 10px}
 #totop .mk{width:20px;height:14px;display:block;margin:0 auto}
 #totop{position:fixed;right:16px;bottom:max(16px,env(safe-area-inset-bottom));z-index:30;
   width:46px;height:46px;border-radius:50%;padding:0;font-size:16px;line-height:1;
@@ -412,7 +414,10 @@ footer a{color:var(--link)}
     <a class="hero-cta" href="#start">
       <span class="btnface"><svg class="mk" aria-hidden="true"><use href="#mkico"/></svg>予報をチェックする</span>
     </a>
-    <a class="hero-find gate-off" href="docs/find.html" data-gatelink aria-disabled="true">
+    <!-- onclick: ここから開くのは「新しい検索」なので、詳細予報が残した復元マーカーを捨てて
+         find.html を初期状態で開かせる (詳細から戻る導線とは意味が違う) -->
+    <a class="hero-find gate-off" href="docs/find.html" data-gatelink aria-disabled="true"
+       onclick="try{sessionStorage.removeItem('pw_find_back')}catch(e){}">
       <span class="btnface">天気の良い山をさがす</span>
     </a>
     <span class="chev" aria-hidden="true">⌄</span>
@@ -489,8 +494,8 @@ footer a{color:var(--link)}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.12β / © 2026 HALab18</p>
-<p><a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.12β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>© 2026 HALab18</p>
 </footer>
 
 <button id="totop" type="button" aria-label="山名の検索フォームへ戻る"><svg class="mk" aria-hidden="true"><use href="#mkico"/></svg></button>
@@ -510,6 +515,47 @@ let ENTRY="link"; // 既定: 共有URL・ブックマーク・直接アクセス
   const e=sessionStorage.getItem("pw_entry");
   if(e){ENTRY=e;sessionStorage.removeItem("pw_entry")}
 }
+
+// ---- この履歴エントリは「天気で山さがし」の一覧から開いたものか ----
+// 一覧に戻る導線の出し分けと、find.html へ渡す復元マーカーに使う。ENTRY と別に持つ理由:
+// ENTRY はリロードで "link" に戻さないとアクセス解析で同じ流入を二重に数えてしまうが、
+// 「一覧から開いた詳細予報である」という事実の方は、リロードや戻る/進むでこのエントリに
+// 戻ってきた時にも保っていてほしい(戻り先の一覧を復元できなくなるため)。
+// history.state に焼けば履歴エントリ単位で残り、別の入口で開いた予報には波及しない。
+let FROM_FIND=ENTRY==="find";
+function pwStampFindEntry(){
+  if(!FROM_FIND||(history.state&&history.state.pwFromFind))return;
+  try{history.replaceState(Object.assign({},history.state,{pwFromFind:1}),"")}catch(e){}
+}
+if(FROM_FIND)pwStampFindEntry();
+else if(history.state&&history.state.pwFromFind)FROM_FIND=true;
+
+// ---- 山さがしの一覧へ戻る導線 ----
+// find.html は「前回の検索条件・結果を復元してよいのは、山さがしの一覧から開いた詳細予報
+// から戻ってきた時だけ」という方針で動く(トップの「天気の良い山をさがす」から開いた時や
+// 直リンクでは毎回初期状態)。その判別材料が find.html 側に無いので、この詳細予報が
+// 一覧由来であることを sessionStorage のマーカーで伝える。
+//
+// 「← 天気で山さがしの一覧に戻る」ボタンでもブラウザの戻るでも同じように復元してほしいので、
+// ボタン押下時ではなくこのページを開いた時点で立てる。マーカーは find.html 側が1回で消費する。
+// bfcache 復帰(戻る→進むで再訪した時など)はスクリプトが再実行されないので pageshow でも打つ。
+function pwMarkFindEntry(){
+  if(!FROM_FIND)return;
+  try{sessionStorage.setItem("pw_find_back","1")}catch(e){}
+}
+pwMarkFindEntry();
+addEventListener("pageshow",pwMarkFindEntry);
+
+// 戻るボタンの遷移。履歴があれば history.back() を優先する(bfcache が効くので find.html を
+// 完全再ロードせず、Open-Meteo への再コールも起きない)。履歴が無い直リンク等だけ
+// href(docs/find.html) へ通常遷移でフォールバックする。
+// ページ内で再検索して ENTRY が上書きされた後でも復元できるよう、ここでもマーカーを立てる。
+function pwBackToFind(){
+  try{sessionStorage.setItem("pw_find_back","1")}catch(e){}
+  if(history.length>1){history.back();return false}
+  return true;
+}
+
 // applyHash() が起こす自動送信を、利用者自身のフォーム送信と区別するための一時フラグ
 let fromHashSubmit=false;
 
@@ -931,12 +977,10 @@ async function run(mt){
   // 期間内に積雪・降雪が一度でもあれば各表に積雪列を出す(夏山では省略して表を簡潔に保つ)
   const hasSnow=(h.snow_depth||[]).some(v=>v!=null&&v>=0.01)||(h.snowfall||[]).some(v=>v!=null&&v>=0.1);
 
-  // 「天気で山さがし」経由のときだけ一覧に戻る導線を出す(ENTRY は入口を1回だけ保持する変数)。
-  // クリック時は履歴があれば history.back() を優先する: ブラウザの back/bfcache が効くため
-  // find.html を完全再ロードせず、Open-Meteo への再コールも avoided される。
-  // history.length<=1 (直リンクなど) の場合のみ通常遷移でフォールバックする。
-  const backToFind=ENTRY==="find"
-    ?'<p class="backfind"><a href="docs/find.html" onclick="if(history.length>1){history.back();return false}">← 天気で山さがしの一覧に戻る</a></p>':"";
+  // 「天気で山さがし」の一覧から開いた予報のときだけ一覧に戻る導線を出す。
+  // クリック時の挙動(履歴優先 + find.html への復元マーカー)は pwBackToFind() 側にある。
+  const backToFind=FROM_FIND
+    ?'<p class="backfind"><a href="docs/find.html" onclick="return pwBackToFind()">← 天気で山さがしの一覧に戻る</a></p>':"";
   let htmlOut=`${backToFind}<h2>${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""} の山岳気象予報</h2><ul class="meta">
     <li>地点: 北緯${mt.lat.toFixed(4)} 東経${mt.lon.toFixed(4)} / 標高 ${Math.round(mt.elev)}m
       (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li></ul>`;
@@ -1140,11 +1184,15 @@ async function run(mt){
   htmlOut+=`<div class="notice">⚠️ 数値予報は山岳地形では誤差が大きく、局地的な突風・雷雨・視界不良は表現しきれません。
     登山指数は目安です。最終判断は最新の予報と現地の状況で行ってください。</div>`;
   // 「天気で山さがし」経由なら、長い予報表を読み終えた末尾にも一覧へ戻る導線を出す(先頭と同じ挙動)。
-  if(backToFind)htmlOut+=`<p class="backfind bottom"><a href="docs/find.html" onclick="if(history.length>1){history.back();return false}">← 天気で山さがしの一覧に戻る</a></p>`;
+  if(backToFind)htmlOut+=`<p class="backfind bottom"><a href="docs/find.html" onclick="return pwBackToFind()">← 天気で山さがしの一覧に戻る</a></p>`;
   out.innerHTML=htmlOut;
   status.textContent="";
   const hashKey=mt.here?"gps":mt.coord?`${mt.lat},${mt.lon}${mt.elevManual?","+mt.elev:""}`:encodeURIComponent(mt.name);
   location.hash=hashKey+"/"+iso(start)+(step===1?"/1h":"");
+  // ハッシュを書き換えると新しい履歴エントリになる(state は空)。一覧由来の印を新しい方にも
+  // 焼き直しておかないと、日付や1時間ごとを切り替えた後にリロード/戻るしたときだけ
+  // 「一覧から来た」ことが失われ、戻り先の一覧が復元できなくなる。
+  pwStampFindEntry();
   out.scrollIntoView({behavior:"smooth"}); // 結果の先頭へ移動して予報をすぐ見られるように
 }
 
@@ -1180,7 +1228,7 @@ document.getElementById("f").onsubmit=async e=>{
   if(!pwGateOk())return; // inert 非対応ブラウザ対策の多重防御
   // このページで検索し直した = find/一覧からの流入ではなくなる。
   // ただし applyHash() 由来の自動送信は「URLで指定された山を開いた」だけなので入口を保つ。
-  if(fromHashSubmit)fromHashSubmit=false;else ENTRY="form";
+  if(fromHashSubmit)fromHashSubmit=false;else{ENTRY="form";FROM_FIND=false}
   const status=document.getElementById("status");
   document.getElementById("cands").innerHTML="";document.getElementById("out").innerHTML="";
   status.className="";status.textContent="";
@@ -1230,7 +1278,7 @@ async function muniName(lat,lon){
 
 async function locateAndGo(){
   if(!pwGateOk())return; // inert 非対応ブラウザ対策の多重防御
-  ENTRY="gps";
+  ENTRY="gps";FROM_FIND=false;
   const status=document.getElementById("status");
   document.getElementById("cands").innerHTML="";document.getElementById("out").innerHTML="";
   if(!navigator.geolocation||!window.isSecureContext){
