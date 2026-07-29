@@ -7,11 +7,10 @@
 
 ## ▶ 次の再開ポイント: 稜線風を3系統すべて interpWind 方式に統一（2026-07-29）
 
-**現状**: 実装・回帰確認まで完了。**未コミット・未 push**。作業ブランチは
-`claude/ridge-wind-interp`（master から分岐）。
+**現状**: **公開済み**。`a0fc497` を master へ fast-forward で反映
+（`3e6262a..a0fc497`、2026-07-29）。作業ブランチは `claude/ridge-wind-interp`。
 
-**次にやること**: 内容を確認のうえコミットし、`git push origin claude/ridge-wind-interp:master`
-で公開する。push したらこの節を必ず更新すること。
+**次にやること**: 特になし（この項目は次の作業を始めるときに書き換える）。
 
 ### やったこと
 
