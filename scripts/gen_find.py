@@ -579,6 +579,12 @@ footer a{color:var(--link)}
   // 山頂標高を挟む上下2気圧面の風速を線形補間して「稜線風速」を推定する。
   // LEVELS[i]=[気圧面hPa, 標準高度m]。 500m台の里山から3800m級までを 6面でカバー。
   var LEVELS=[[925,760],[900,990],[850,1460],[800,1950],[700,3010],[600,4200]];
+  // 気圧面の最下端は 925hPa = 標準高度760m。それより低い標高は最下面の生値にクランプされ、
+  // 平地では上空760mの風が稜線風として出てしまう。標高 LOW_ELEV 未満は地形の影響が支配的なので
+  // 補間をやめて地上10m風をそのまま使う (index.html の LOW_ELEV / mountain_weather.py の
+  // LOW_ELEV_M と同一)。内蔵DBの最低標高は 122m なので現時点では発火しないが、
+  // 3系統でロジックを揃えるために入れてある。
+  var LOW_ELEV=100;
   // 「その時刻に実際に値がある気圧面」だけで山頂標高の風速を補間する。
   // pts=[[標準高度m, 風速], ...] を高度の昇順で渡す。範囲外は最寄りの面の値をそのまま使う。
   //
@@ -620,7 +626,7 @@ footer a{color:var(--link)}
   var DAILY="snowfall_sum";
   var HOURLY="weather_code,temperature_2m,precipitation,"+
     "sunshine_duration,wind_speed_925hPa,wind_speed_900hPa,wind_speed_850hPa,"+
-    "wind_speed_800hPa,wind_speed_700hPa,wind_speed_600hPa";
+    "wind_speed_800hPa,wind_speed_700hPa,wind_speed_600hPa,wind_speed_10m";
   // /v1/forecast(ベストマッチ合成)から補う変数。
   //   precipitation_probability : 気象庁モデルに存在しない(投げても400にならず全nullで返る)。
   //                               find では「表に出す参考値」だけの扱いで、減点には一切使わない
@@ -721,6 +727,7 @@ footer a{color:var(--link)}
     // 面の取捨を時刻ごとにやるのは、MSM→GSM の切替で配信される面が変わるため(interpWind 参照)。
     var ridgeWmax=null;
     var lvArrs=LEVELS.map(function(L){return hr&&hr["wind_speed_"+L[0]+"hPa"]});
+    var w10=hr&&hr["wind_speed_10m"];
     var mv=0, hasW=false;
     for(var i=0;i<N;i++){
       if(!inRange(times[i]))continue;
@@ -729,7 +736,8 @@ footer a{color:var(--link)}
         var a=lvArrs[li], v=a?a[i]:null;
         if(v!=null)pts.push([LEVELS[li][1],v]);
       }
-      var w=interpWind(pts,mt.el);
+      // 標高 LOW_ELEV 未満は気圧面補間をせず地上10m風をそのまま使う(LOW_ELEV のコメント参照)
+      var w=mt.el<LOW_ELEV?(w10?w10[i]:null):interpWind(pts,mt.el);
       if(w==null)continue;
       if(w>mv)mv=w; hasW=true;
     }

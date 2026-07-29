@@ -44,6 +44,12 @@ MOUNTAINS_CSV = Path(__file__).resolve().parent.parent / "references" / "mountai
 # 気圧面と標準高度 (m)。その時刻に値がある面から山頂標高に線形補間して稜線風を出す (interp_wind)
 PRESSURE_LEVELS = [(925, 760), (900, 990), (850, 1460), (800, 1950), (700, 3010), (600, 4200)]
 
+# 気圧面の最下端は 925hPa = 標準高度760m。それより低い標高は「最下面の生値」にクランプされる
+# ため、平地(現在地予報の市街地など)では上空760mの風がそのまま稜線風として出てしまう
+# (実測: 仙台市街で 925hPa 7.5m/s に対し地上10m風 0.6m/s)。標高 LOW_ELEV_M 未満は地形の影響が
+# 支配的で気圧面からの推定が成り立たないので、補間をやめて地上10m風をそのまま使う。
+LOW_ELEV_M = 100
+
 WMO_CODES = {
     0: "快晴", 1: "晴れ", 2: "晴れ時々曇り", 3: "曇り",
     45: "霧", 48: "着氷性の霧",
@@ -325,6 +331,10 @@ def ridge_wind(h, i, elev):
     def val(key):
         a = h.get(key)
         return a[i] if a and i < len(a) else None
+    # 標高 LOW_ELEV_M 未満は気圧面補間をせず地上10m風をそのまま返す(平地で上空760mの風が出るのを
+    # 避ける)。突風 wind_gusts_10m と同じ高度なので表の中でも整合する。欠測は現行同様 None に倒す。
+    if elev < LOW_ELEV_M:
+        return val("wind_speed_10m"), val("wind_direction_10m")
     pts, dirs = [], []
     for p, z in PRESSURE_LEVELS:
         s = val(f"wind_speed_{p}hPa")
@@ -338,6 +348,12 @@ def ridge_wind(h, i, elev):
 
 
 # ---------------------------------------------------------------- 登山指数
+def wind_label(elev):
+    """表の風の列見出し。標高 LOW_ELEV_M 未満は稜線風ではなく地上10m風を出しているため
+    (ridge_wind 参照)、見出しもそれに合わせる。index.html の windLbl と同一。"""
+    return "地上風(10m)" if elev < LOW_ELEV_M else "稜線風"
+
+
 def season_thresholds(month):
     """予報対象日の月で夏山/冬山・残雪期の判定閾値を切り替える
     夏山(6〜10月): 風10/15m/s・降水1/5mm / 冬山・残雪期(11〜5月): 風8/12m/s・降水1/3mm"""
@@ -518,7 +534,7 @@ def _merge_series(base, extra, keys):
 def fetch_forecast(lat, lon, elev, start, end, levels):
     hourly = ["temperature_2m", "precipitation",
               "weather_code", "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high",
-              "wind_speed_10m", "snowfall"]
+              "wind_speed_10m", "wind_direction_10m", "snowfall"]
     for p, _ in levels:
         hourly += [f"wind_speed_{p}hPa", f"wind_direction_{p}hPa"]
     common = {
@@ -597,13 +613,13 @@ def past_summary_rows(data, dates, elev):
     return rows
 
 
-def print_past_summary(rows, has_snow):
+def print_past_summary(rows, has_snow, elev):
     if not rows:
         return
     print(f"\n### 直近の実況(モデル解析値・過去{len(rows)}日)")
     snow_h = " 積雪max(新雪) |" if has_snow else ""
     snow_sep = "---|" if has_snow else ""
-    print(f"| 日付 | 天気 | 山頂気温 | 稜線風max(5-17時) | 降水量 |{snow_h}")
+    print(f"| 日付 | 天気 | 山頂気温 | {wind_label(elev)}max(5-17時) | 降水量 |{snow_h}")
     print(f"|---|---|---|---|---|{snow_sep}")
     for r in rows:
         wj = "月火水木金土日"[r["date"].weekday()]
@@ -648,7 +664,7 @@ def print_detail_day(data, date, elev, has_snow=False, step=3):
 
     print(f"\n### {date.isoformat()} ({'月火水木金土日'[date.weekday()]}) "
           f"{'1時間ごと' if step == 1 else '3時間ごと'}詳細{suntxt}")
-    print(f"| 時刻 | 指数 | 天気 | 🏔 景色(眺望) | 気温 | 体感 | 稜線風 | 突風 | 降水 | 降水%(参考) | ⚡発雷リスク | 雲(下/中/上) |{snow_h}")
+    print(f"| 時刻 | 指数 | 天気 | 🏔 景色(眺望) | 気温 | 体感 | {wind_label(elev)} | 突風 | 降水 | 降水%(参考) | ⚡発雷リスク | 雲(下/中/上) |{snow_h}")
     print(f"|---|---|---|---|---|---|---|---|---|---|---|---|{snow_sep}")
     for start_h in range(0, 24, step):
         block = [i for i in idxs if int(times[i][11:13]) // step * step == start_h]
@@ -799,11 +815,11 @@ def daily_summary_rows(data, dates, elev):
     return rows
 
 
-def print_daily_summary(rows, title, has_snow=False):
+def print_daily_summary(rows, title, has_snow=False, elev=None):
     print(f"\n### {title}")
     snow_h = " 積雪max(新雪) |" if has_snow else ""
     snow_sep = "---|" if has_snow else ""
-    print(f"| 日付 | 指数 | 天気 | 🏔 景色(朝) | 山頂気温 | 稜線風max(5-17時) | 降水量 | 降水%(参考) |{snow_h}")
+    print(f"| 日付 | 指数 | 天気 | 🏔 景色(朝) | 山頂気温 | {wind_label(elev)}max(5-17時) | 降水量 | 降水%(参考) |{snow_h}")
     print(f"|---|---|---|---|---|---|---|---|{snow_sep}")
     for r in rows:
         wj = "月火水木金土日"[r["date"].weekday()]
@@ -1027,11 +1043,16 @@ def main():
     def emit():
         print(f"## {label} の山岳気象予報")
         print(f"- 地点: 北緯{lat:.4f} 東経{lon:.4f} / 標高 {elev:.0f}m ({src})")
-        print(f"- 稜線風: 気象庁モデルの気圧面風(925〜600hPa)のうち、その時刻に値がある面から"
-              f"山頂標高に線形補間して算出 / 気温は標高{elev:.0f}m面の値")
+        if elev < LOW_ELEV_M:
+            print(f"- 地上風(10m): 標高{LOW_ELEV_M}m未満のため、気圧面から推定した稜線風ではなく"
+                  f"地上10mの風をそのまま表示(登山指数・体感温度もこの値で判定) / "
+                  f"気温は標高{elev:.0f}m面の値")
+        else:
+            print(f"- 稜線風: 気象庁モデルの気圧面風(925〜600hPa)のうち、その時刻に値がある面から"
+                  f"山頂標高に線形補間して算出 / 気温は標高{elev:.0f}m面の値")
         th0 = season_thresholds(start.month)
         print(f"- 登山指数: A=登山適 / B=要注意(経験者向き・行程短縮検討) / C=登山不適。"
-              f"判定は稜線風速と降水量の2項目のみ。"
+              f"判定は{'地上風(10m)の風速' if elev < LOW_ELEV_M else '稜線風速'}と降水量の2項目のみ。"
               f"{th0['mode']}モード基準 (風 {th0['wind'][0]}/{th0['wind'][1]}m/s・"
               f"降水 {th0['precip'][0]}/{th0['precip'][1]}mm/3h)。"
               f"夏山=6〜10月/冬山・残雪期=11〜5月を対象日の月で自動切替。降水確率は参考表示")
@@ -1046,12 +1067,12 @@ def main():
 
         has_snow = has_snow_period(data["hourly"])
         past_dates = [today - dt.timedelta(days=i) for i in range(PAST_DAYS, 0, -1)]
-        print_past_summary(past_summary_rows(data, past_dates, elev), has_snow)
+        print_past_summary(past_summary_rows(data, past_dates, elev), has_snow, elev)
 
         n_days = (fetch_end - today).days + 1
         dates = [today + dt.timedelta(days=i) for i in range(n_days)]
         rows = daily_summary_rows(data, dates, elev)
-        print_daily_summary(rows, f"{JMA_DAYS}日間の見通し", has_snow)
+        print_daily_summary(rows, f"{JMA_DAYS}日間の見通し", has_snow, elev)
 
         d = start
         while d <= detail_end:

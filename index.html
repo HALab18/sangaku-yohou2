@@ -562,6 +562,11 @@ let fromHashSubmit=false;
 // ---- 定数 (scripts/mountain_weather.py と同一ロジック) ----
 // LEVELS[i]=[気圧面hPa, 標準高度m]。500m台の里山から3800m級までを6面でカバー。
 const LEVELS=[[925,760],[900,990],[850,1460],[800,1950],[700,3010],[600,4200]];
+// 気圧面の最下端は 925hPa = 標準高度760m。それより低い標高は「最下面の生値」にクランプされる
+// ため、平地(現在地予報の市街地など)では上空760mの風がそのまま稜線風として出てしまう
+// (実測: 仙台市街で 925hPa 7.5m/s に対し地上10m風 0.6m/s)。標高 LOW_ELEV 未満は地形の影響が
+// 支配的で気圧面からの推定が成り立たないので、補間をやめて地上10m風をそのまま使う。
+const LOW_ELEV=100;
 const WMO={0:"快晴",1:"晴れ",2:"晴れ時々曇り",3:"曇り",45:"霧",48:"着氷性の霧",
  51:"霧雨(弱)",53:"霧雨",55:"霧雨(強)",56:"着氷性霧雨",57:"着氷性霧雨(強)",
  61:"雨(弱)",63:"雨",65:"雨(強)",66:"着氷性の雨",67:"着氷性の雨(強)",
@@ -791,7 +796,10 @@ function interpWind(pts,elev){
 // i時刻の [稜線風速(m/s), 風向] を6気圧面から求める。材料が1つも無ければ [null,null]。
 // 風速は値のある面だけで線形補間。風向は角度なので同じ式では補間できず、
 // 「値のある面のうち標高的に一番近い面の値をそのまま採用」する(固定2面時代の t<0.5 の一般化)。
+// 標高 LOW_ELEV 未満は気圧面補間をせず地上10m風をそのまま返す(平地で上空760mの風が出るのを
+// 避ける)。突風 wind_gusts_10m と同じ高度なので表の中でも整合する。欠測は現行同様 null に倒す。
 function ridgeWind(h,i,elev){
+  if(elev<LOW_ELEV)return[h.wind_speed_10m?.[i]??null,h.wind_direction_10m?.[i]??null];
   const pts=[],dirs=[];
   for(const[p,z]of LEVELS){
     const s=h[`wind_speed_${p}hPa`]?.[i];if(s!=null)pts.push([z,s]);
@@ -955,7 +963,8 @@ async function run(mt){
   // (無い面は 400 ではなく全 null で返る)、標高から2面に絞ると GSM 期間に補間できなくなる。
   // 1山1リクエストなのでペイロード増は軽微。
   const hourly=["temperature_2m","precipitation","weather_code",
-    "cloud_cover_low","cloud_cover_mid","cloud_cover_high","wind_speed_10m","snowfall",
+    "cloud_cover_low","cloud_cover_mid","cloud_cover_high",
+    "wind_speed_10m","wind_direction_10m","snowfall",
     ...LEVELS.flatMap(p=>[`wind_speed_${p[0]}hPa`,`wind_direction_${p[0]}hPa`])];
   status.className="";status.textContent="予報を取得中…";
   const common={
@@ -981,9 +990,15 @@ async function run(mt){
   // クリック時の挙動(履歴優先 + find.html への復元マーカー)は pwBackToFind() 側にある。
   const backToFind=FROM_FIND
     ?'<p class="backfind"><a href="docs/find.html" onclick="return pwBackToFind()">← 天気で山さがしの一覧に戻る</a></p>':"";
+  // 標高 LOW_ELEV 未満は風の出どころが気圧面ではなく地上10mなので、列見出しと注記で明示する
+  const lowElev=mt.elev<LOW_ELEV;
+  const windLbl=lowElev?"地上風(10m)":"稜線風";
+  const lowNote=lowElev
+    ?`<li>標高${LOW_ELEV}m未満のため、風は気圧面から推定した稜線風ではなく<b>地上10mの風</b>を`
+     +`そのまま表示しています(登山指数・体感温度もこの値で判定)。</li>`:"";
   let htmlOut=`${backToFind}<h2>${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""} の山岳気象予報</h2><ul class="meta">
     <li>地点: 北緯${mt.lat.toFixed(4)} 東経${mt.lon.toFixed(4)} / 標高 ${Math.round(mt.elev)}m
-      (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li></ul>`;
+      (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li>${lowNote}</ul>`;
 
   // 表だけをスクショしても山名と取得日時が分かるよう、各表の見出し直下に小さく添える
   const pad2=n=>String(n).padStart(2,"0");
@@ -1008,7 +1023,7 @@ async function run(mt){
   }
   if(pastRows.length){
     htmlOut+=`<h2>直近の実況(モデル解析値・過去${pastRows.length}日)</h2>${cap}<div class="tbl"><table>
-      <tr><th>日付</th><th>天気</th><th>山頂気温</th><th>稜線風max(5-17時)</th><th>降水量</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
+      <tr><th>日付</th><th>天気</th><th>山頂気温</th><th>${windLbl}max(5-17時)</th><th>降水量</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
     for(const r of pastRows)htmlOut+=`<tr><td>${md(r.d)}${wj(r.d)}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
       <td>${f0(r.tmin)}〜${f0(r.tmax)}℃</td><td>${wdir(r.wd)} ${f1(r.ws)}m/s</td>
       <td>${r.pr==null?"-":r.pr.toFixed(1)}mm</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
@@ -1087,7 +1102,7 @@ async function run(mt){
   const WK_HEAD=7;
   const wkOpen=rows.length<=WK_HEAD||start>addDays(today,WK_HEAD-1);
   htmlOut+=`<h2>${JMA_DAYS}日間の見通し</h2>${cap}<div class="tbl" id="wk-tbl"><table>
-    <tr><th>日付</th><th>指数</th><th>天気</th><th>🏔 景色(朝)</th><th>山頂気温</th><th>稜線風max(5-17時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
+    <tr><th>日付</th><th>指数</th><th>天気</th><th>🏔 景色(朝)</th><th>山頂気温</th><th>${windLbl}max(5-17時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
   rows.forEach((r,i)=>{
     const more=i>=WK_HEAD;
     htmlOut+=`<tr${more?` class="wk-more"${wkOpen?"":" hidden"}`:""}><td>${md(r.d)}${wj(r.d)}</td><td>${IDX[r.idx]??"-"}${r.eve?'<span class="ew"> ⚠夕方</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
@@ -1108,7 +1123,7 @@ async function run(mt){
     const sun=di>=0&&d.sunrise?.[di]?` (日の出${d.sunrise[di].slice(11,16)} / 日の入${d.sunset[di].slice(11,16)})`:"";
     const thD=seasonTh(dt2.getMonth()+1);
     htmlOut+=`<h2>${ds} ${wj(dt2)} ${step===1?"1時間ごと":"3時間ごと"}詳細${sun}</h2>${cap}<div class="tbl"><table>
-      <tr><th>時刻</th><th>指数</th><th>天気</th><th>🏔 景色(眺望)</th><th>気温</th><th>体感</th><th>稜線風</th><th>突風</th><th>降水</th><th>降水%(参考)</th><th>⚡ 発雷リスク</th><th>雲(下/中/上)</th>${hasSnow?"<th>積雪(新雪)</th>":""}</tr>`;
+      <tr><th>時刻</th><th>指数</th><th>天気</th><th>🏔 景色(眺望)</th><th>気温</th><th>体感</th><th>${windLbl}</th><th>突風</th><th>降水</th><th>降水%(参考)</th><th>⚡ 発雷リスク</th><th>雲(下/中/上)</th>${hasSnow?"<th>積雪(新雪)</th>":""}</tr>`;
     for(let sh=0;sh<24;sh+=step){
       const blk=idxs.filter(i=>Math.floor(+times[i].slice(11,13)/step)*step===sh);
       if(!blk.length)continue;
