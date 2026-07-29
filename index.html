@@ -941,6 +941,12 @@ async function run(mt){
     <li>地点: 北緯${mt.lat.toFixed(4)} 東経${mt.lon.toFixed(4)} / 標高 ${Math.round(mt.elev)}m
       (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li></ul>`;
 
+  // 表だけをスクショしても山名と取得日時が分かるよう、各表の見出し直下に小さく添える
+  const pad2=n=>String(n).padStart(2,"0");
+  const capMeta=`${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""}`
+    +` / 取得 ${iso(fetchedAt)} ${pad2(fetchedAt.getHours())}:${pad2(fetchedAt.getMinutes())}`;
+  const cap=`<p class="tblcap">${capMeta}</p>`;
+
   // 直近実況(モデル解析値・過去3日)
   const pastRows=[];
   for(let dt2=addDays(today,-PAST_DAYS);dt2<today;dt2=addDays(dt2,1)){
@@ -957,7 +963,7 @@ async function run(mt){
       depth:dep.length?Math.max(...dep):null});
   }
   if(pastRows.length){
-    htmlOut+=`<h2>直近の実況(モデル解析値・過去${pastRows.length}日)</h2><div class="tbl"><table>
+    htmlOut+=`<h2>直近の実況(モデル解析値・過去${pastRows.length}日)</h2>${cap}<div class="tbl"><table>
       <tr><th>日付</th><th>天気</th><th>山頂気温</th><th>稜線風max(5-17時)</th><th>降水量</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
     for(const r of pastRows)htmlOut+=`<tr><td>${md(r.d)}${wj(r.d)}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
       <td>${f0(r.tmin)}〜${f0(r.tmax)}℃</td><td>${wdir(r.wd)} ${f1(r.ws)}m/s</td>
@@ -1036,7 +1042,7 @@ async function run(mt){
   // ただし検索した日が8日目以降なら畳む意味がない(目的の日が隠れる)ので最初から開いて描く。
   const WK_HEAD=7;
   const wkOpen=rows.length<=WK_HEAD||start>addDays(today,WK_HEAD-1);
-  htmlOut+=`<h2>${JMA_DAYS}日間の見通し</h2><div class="tbl" id="wk-tbl"><table>
+  htmlOut+=`<h2>${JMA_DAYS}日間の見通し</h2>${cap}<div class="tbl" id="wk-tbl"><table>
     <tr><th>日付</th><th>指数</th><th>天気</th><th>🏔 景色(朝)</th><th>山頂気温</th><th>稜線風max(5-17時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
   rows.forEach((r,i)=>{
     const more=i>=WK_HEAD;
@@ -1052,16 +1058,12 @@ async function run(mt){
   if(rows.some(r=>r.eve))htmlOut+=`<p class="ewnote">⚠夕方: 17〜20時に天候の急変(C相当)、または発雷リスク「注意」以上が予想されます。日中の指数には含めていませんが、下山遅れ・テント泊・ご来光待ちの際は特に注意してください。</p>`;
 
   // 詳細 (表示間隔 step=3 or 1)
-  // 表だけをスクショしても山名と取得日時が分かるよう、各表の見出し直下に小さく添える
-  const pad2=n=>String(n).padStart(2,"0");
-  const capMeta=`${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""}`
-    +` / 取得 ${iso(fetchedAt)} ${pad2(fetchedAt.getHours())}:${pad2(fetchedAt.getMinutes())}`;
   for(let dt2=new Date(start);dt2<=detailEnd;dt2=addDays(dt2,1)){
     const ds=iso(dt2),idxs=dayIdx(times,ds);if(!idxs.length)continue;
     const di=d.time.indexOf(ds);
     const sun=di>=0&&d.sunrise?.[di]?` (日の出${d.sunrise[di].slice(11,16)} / 日の入${d.sunset[di].slice(11,16)})`:"";
     const thD=seasonTh(dt2.getMonth()+1);
-    htmlOut+=`<h2>${ds} ${wj(dt2)} ${step===1?"1時間ごと":"3時間ごと"}詳細${sun}</h2><p class="tblcap">${capMeta}</p><div class="tbl"><table>
+    htmlOut+=`<h2>${ds} ${wj(dt2)} ${step===1?"1時間ごと":"3時間ごと"}詳細${sun}</h2>${cap}<div class="tbl"><table>
       <tr><th>時刻</th><th>指数</th><th>天気</th><th>🏔 景色(眺望)</th><th>気温</th><th>体感</th><th>稜線風</th><th>突風</th><th>降水</th><th>降水%(参考)</th><th>⚡ 発雷リスク</th><th>雲(下/中/上)</th>${hasSnow?"<th>積雪(新雪)</th>":""}</tr>`;
     for(let sh=0;sh<24;sh+=step){
       const blk=idxs.filter(i=>Math.floor(+times[i].slice(11,13)/step)*step===sh);
@@ -1118,7 +1120,7 @@ async function run(mt){
       timezone:"Asia/Tokyo",wind_speed_unit:"ms",models:models.join(","),
       start_date:iso(start),end_date:iso(cmpEnd)});
     const ch=cd.hourly;
-    htmlOut+=`<h2>モデル間比較（各モデルが一致するほど信頼度が高い）</h2><div class="tbl"><table>
+    htmlOut+=`<h2>モデル間比較（各モデルが一致するほど信頼度が高い）</h2>${cap}<div class="tbl"><table>
       <tr><th>日付</th><th>モデル</th><th>気温min〜max</th><th>降水量</th><th>10m風max</th><th>平均雲量</th></tr>`;
     for(let dt2=new Date(start);dt2<=cmpEnd;dt2=addDays(dt2,1)){
       const idxs=dayIdx(ch.time,iso(dt2));
