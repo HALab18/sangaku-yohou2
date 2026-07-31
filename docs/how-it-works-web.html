@@ -45,6 +45,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:center;backgr
 th.lbl,td.lbl{text-align:left}
 th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 th.desc,td.desc{text-align:left;white-space:normal;padding-left:16px}
+table.left th,table.left td{text-align:left;padding-left:16px}
 tr:nth-child(even) td{background:#eef1f6}
 .b{display:inline-block;min-width:2.6em;padding:2px 8px;border-radius:10px;font-weight:700;font-size:.85em}
 .b-a{background:#d8efe1;color:#1c5b3f}.b-b{background:#fdeec9;color:#7b5e00}
@@ -192,14 +193,14 @@ footer a{color:var(--link)}
 基準は<b>予報対象日の月</b>で夏山と冬山・残雪期を自動で切り替えます。</p>
 
 <p><b>夏山モード（6月〜10月）</b></p>
-<div class="tbl"><table>
+<div class="tbl"><table class="left">
 <tr><th class="lbl">項目</th><th><span class="b b-a">A</span> 登山適</th><th><span class="b b-b">B</span> 要注意</th><th><span class="b b-c">C</span> 登山不適</th></tr>
 <tr><td class="lbl">稜線風速</td><td>10m/s未満</td><td>10〜15m/s</td><td>15m/s以上</td></tr>
 <tr><td class="lbl">降水量(3時間)</td><td>1mm未満</td><td>1〜5mm</td><td>5mm以上</td></tr>
 </table></div>
 
 <p><b>冬山・残雪期モード（11月〜5月）</b></p>
-<div class="tbl"><table>
+<div class="tbl"><table class="left">
 <tr><th class="lbl">項目</th><th><span class="b b-a">A</span> 登山適</th><th><span class="b b-b">B</span> 要注意</th><th><span class="b b-c">C</span> 登山不適</th></tr>
 <tr><td class="lbl">稜線風速</td><td>8m/s未満</td><td>8〜12m/s</td><td>12m/s以上</td></tr>
 <tr><td class="lbl">降水量(3時間)</td><td>1mm未満</td><td>1〜3mm</td><td>3mm以上（降雪リスク）</td></tr>
@@ -250,7 +251,7 @@ CAPE が中くらいでも、日中に山の斜面を這い上がる風（谷風
 <p>まず CAPE で大枠の段階を決めます。区切りの 500・1000・2500 は、一般的に使われている
 雷雨の目安に合わせたものです。</p>
 
-<div class="tbl"><table>
+<div class="tbl"><table class="left">
 <tr><th style="width:9em">表示</th><th style="width:9em" class="num">CAPE の目安</th><th>読み方</th></tr>
 <tr><td><span class="lt lt-0">⚡ 低</span></td><td class="num">500 未満</td>
     <td class="desc">積乱雲を育てる燃料が乏しい状態</td></tr>
@@ -374,7 +375,7 @@ CAPE が中くらいでも、日中に山の斜面を這い上がる風（谷風
   </symbol>
 </svg>
 
-<div class="tbl"><table>
+<div class="tbl"><table class="left">
 <tr><th style="width:11em">表示</th><th class="desc">条件（山頂の高さにかかる雲＋視程＋雨で判定）</th></tr>
 <tr><td><span class="vw v-ex"><svg aria-hidden="true"><use href="#view-ex"/></svg>◎ 展望良好</span></td>
     <td class="desc">山頂レベルの雲20%以下 かつ 視程20km以上（快晴・展望良好）</td></tr>
