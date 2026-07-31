@@ -2,14 +2,14 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>天気の良い山をさがす — PeakWeather</title>
 <meta name="description" content="エリアと日付を指定すると、その日にコンディションの良さそうな山を晴天度でランキング表示。気になる山をタップするとその山頂・稜線の詳しい気象予報へ。">
 <link rel="icon" type="image/png" href="../icons/favicon-32.png">
 <meta name="theme-color" content="#1e2d4a">
 <!-- このファイルは scripts/gen_find.py により index.html から自動生成されます。直接編集しないでください
      (直接編集すると次回の再生成で消えます。修正は必ず scripts/gen_find.py 側に入れること) -->
-<script src="../gate.js"></script>
+<script src="../gate.js?v=2026"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -449,8 +449,17 @@ footer a{color:var(--link)}
   var WJA="日月火水木金土";
   function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
   function md(d){return String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0")}
+  // 「今日」は必ず日本時間で決める。端末ローカルの日付で作ると TZ が JST でない端末で
+  // 1日ずれ、選んだ日と API に投げる date、および山名リンク先(../index.html#山名/日付)の
+  // 日付がまとめてずれる (index.html の jstToday と同一。3系統を同時に直すこと)
+  var JST_YMD=new Intl.DateTimeFormat("en-CA",
+    {timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"});
+  function jstToday(){
+    var p=JST_YMD.format(new Date()).split("-");
+    return new Date(+p[0],+p[1]-1,+p[2]);
+  }
   (function(){
-    var today=new Date();today.setHours(0,0,0,0);
+    var today=jstToday();
     for(var i=0;i<FIND_DAYS;i++){
       var d=new Date(today);d.setDate(d.getDate()+i);
       var o=document.createElement("option");
@@ -602,16 +611,43 @@ footer a{color:var(--link)}
       });
     });
   }
+  // fetch は既定でタイムアウトしない。レスポンスが来ないまま Promise が pending だと
+  // 「予報を取得中… (1/2)」のままボタンが無効で固まる。必ず時間で切る
+  // (index.html の apiJson と同じ方針。CLI は urlopen(timeout=30) で同じ保護をしている)。
+  var API_TIMEOUT_MS=20000;
+  // 例外を利用者向けの日本語メッセージに変換する。生の "HTTP 429" は次の行動に繋がらない。
+  function apiError(e){
+    if(e&&e.name==="AbortError")
+      return new Error("気象データの取得がタイムアウトしました。電波の良い場所で再度お試しください");
+    if(e&&e.status===429)
+      return new Error("アクセスが集中しています。数分おいてから再度お試しください");
+    if(e&&e.status>=500)
+      return new Error("気象データの提供元が一時的に応答していません。時間をおいて再度お試しください");
+    return new Error("気象データを取得できませんでした。通信状況をご確認のうえ再度お試しください");
+  }
   async function apiJson(url,params,retries){
     retries=retries||3;var lastErr;
     for(var a=1;a<=retries;a++){
+      var ac=new AbortController();
+      var timer=setTimeout(function(){ac.abort()},API_TIMEOUT_MS);
       try{
-        var r=await fetch(url+"?"+new URLSearchParams(params));
-        if(!r.ok){if(r.status<500)throw Object.assign(new Error("HTTP "+r.status),{fatal:true});throw new Error("HTTP "+r.status)}
+        var r=await fetch(url+"?"+new URLSearchParams(params),{signal:ac.signal});
+        if(!r.ok){
+          // 429(混雑)と 5xx(提供元の一時障害)は待てば直るので再試行する。
+          // それ以外の 4xx はリクエスト側の問題で、投げ直しても直らないので即中断。
+          if(r.status!==429&&r.status<500)
+            throw Object.assign(new Error("HTTP "+r.status),{fatal:true,status:r.status});
+          throw Object.assign(new Error("HTTP "+r.status),{status:r.status});
+        }
         return await r.json();
-      }catch(e){lastErr=e;if(e.fatal||a===retries)break;await new Promise(function(res){setTimeout(res,1200*a)})}
+      }catch(e){
+        lastErr=e;
+        if(e.fatal||a===retries)break;
+        // 429 は無料利用枠を守るのが目的なので、他のエラーより長く待ってから再試行する
+        await new Promise(function(res){setTimeout(res,(e.status===429?6000:1200)*a)});
+      }finally{clearTimeout(timer)}
     }
-    throw new Error("API呼び出しに失敗しました: "+(lastErr&&lastErr.message||lastErr));
+    throw apiError(lastErr);
   }
   // 補完APIの hourly を「base に貼るときのキー名」に組み替える。
   // sunshine_duration は気象庁モデル側にも同名で存在するため、ここで sunshine_supp に改名して
@@ -628,7 +664,12 @@ footer a{color:var(--link)}
         el =ms.map(function(m){return m.el }).join(",");
     // 基本は気象庁モデル。降水確率と(MSM期間外の)日照だけ別モデルから補完する。
     // 2本を並行に投げ、地点ごとに時刻キーで貼り合わせる。
-    var res=await Promise.all([
+    //
+    // Promise.all だと補完側が落ちただけで 50座ぶんの検索が丸ごと失敗する。天気・降水・
+    // 稜線風・気温という主要素は気象庁モデル側に揃っているので、補完だけ諦めて先へ進む。
+    // 日照が無い日は score() が weather_code による粗い代替評価に落ち、render() が
+    // 「◯座は日照データが取得できず…」の注記を自動で出すので、精度低下は開示される。
+    var res=await Promise.allSettled([
       apiJson(JMA_URL,{latitude:lat,longitude:lon,elevation:el,
         daily:DAILY,hourly:HOURLY,timezone:"Asia/Tokyo",wind_speed_unit:"ms",
         start_date:date,end_date:date}),
@@ -636,11 +677,16 @@ footer a{color:var(--link)}
         hourly:SUPP_HOURLY,timezone:"Asia/Tokyo",
         start_date:date,end_date:date})
     ]);
-    var base=Array.isArray(res[0])?res[0]:[res[0]]; // 単一地点はオブジェクトで返る
-    var sup =Array.isArray(res[1])?res[1]:[res[1]];
+    if(res[0].status==="rejected")throw res[0].reason;   // 主要データの失敗だけが致命
+    var b0=res[0].value, s0=res[1].status==="fulfilled"?res[1].value:[];
+    var base=Array.isArray(b0)?b0:[b0]; // 単一地点はオブジェクトで返る
+    var sup =Array.isArray(s0)?s0:[s0];
     // 同じ座標列を送っているので地点の並びは一致する
-    for(var i=0;i<base.length;i++)
+    for(var i=0;i<base.length;i++){
+      // hourly ごと欠けた地点は score() 側で主要素が全欠測となり null が返る = 一覧から外れる
+      if(!base[i]||!base[i].hourly||!base[i].hourly.time)continue;
       mergeSeries(base[i].hourly,suppRenamed(sup[i]&&sup[i].hourly),SUPP_KEYS);
+    }
     return base;
   }
 
@@ -688,7 +734,9 @@ footer a{color:var(--link)}
       // 標高 LOW_ELEV 未満は気圧面補間をせず地上10m風をそのまま使う(LOW_ELEV のコメント参照)
       var w=mt.el<LOW_ELEV?(w10?w10[i]:null):interpWind(pts,mt.el);
       if(w==null)continue;
-      if(w>mv)mv=w; hasW=true;
+      // hasW は「値が1つでもあったか」なので if の外。1行に並べると条件付きに見えるので分ける
+      if(w>mv)mv=w;
+      hasW=true;
     }
     if(hasW)ridgeWmax=mv;
     // 日照率: 7:00〜15:59 の sunshine_duration 合計 / (9h × 3600s)
@@ -756,7 +804,9 @@ footer a{color:var(--link)}
     return parts.join(" / ");
   }
 
-  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+  // ' も落とす(index.html の esc と同一。属性を ' で囲む行を将来書いた時の保険)
+  function esc(s){return String(s).replace(/[&<>"']/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
   function pct(f){return f==null?"-":Math.round(f*100)+"%"}
   function fnum(v,u){return v==null?"-":Math.round(v)+u}
   // 降水量は「小雨(0.1〜0.9mm)」を丸めて 0mm と表示してしまうと誤解を招くため、小数1桁で表示する
@@ -773,12 +823,19 @@ footer a{color:var(--link)}
   //  / find7: 対象を3日→7日に拡張。気象庁モデルの日照が届かない日は別モデルで補完し、
   //           その旨を sunAlt で持つ。日照は窓9時間そろっている時だけ採用に変更。
   //           稜線風を「値のある気圧面から時刻ごとに補間」に変更(GSM は 900/800hPa を
-  //           配信せず、従来の決め打ちだと4日目以降の稜線風が丸ごと欠測になっていた))。
+  //           配信せず、従来の決め打ちだと4日目以降の稜線風が丸ごと欠測になっていた)
+  //  / find8: キャッシュを {t:取得時刻, rows:…} 形式にし TTL を導入)
   // 上げ忘れると旧キャッシュがそのまま復元され、天気列だけ古い表示になる。
-  function cacheKey(r,p,date){return "find7:"+r+":"+p+":"+date}
+  function cacheKey(r,p,date){return "find8:"+r+":"+p+":"+date}
   // 直近の検索条件を保存するキー。ページを再訪した時にセレクタと結果を復元する用途
   // (bfcache が効かない iOS 直リンク等のフォールバック。詳細は末尾の restoreLastSearch)。
-  var LAST_KEY="find7:last";
+  var LAST_KEY="find8:last";
+  // キャッシュの有効期限。キーは「エリア:県:対象日」だけで時刻成分を持たないので、
+  // TTL が無いと同一セッション中は永久に最初の取得結果が返る。気象庁モデルは1日に複数回
+  // 更新されるため、タブを開きっぱなしにした利用者へ朝6時の予報を夜18時に「最新」として
+  // 出すことになり、ランキング・スコア・足切り判定がまるごと古いまま提示される。
+  // 予報が更新されないことに気づく手がかりが利用者側に無いので、必ず時間で切る。
+  var CACHE_TTL_MS=30*60*1000;   // 30分
   async function search(fromRestore){
     if(needsPrefSelection()){elStatus.textContent="都道府県を選択してから検索してください";return}
     var ms=targets(),date=elDate.value,r=elRegion.value,p=elPref.value;
@@ -786,9 +843,14 @@ footer a{color:var(--link)}
     elStatus.className="";elResults.innerHTML="";elGo.disabled=true;
     try{
       var key=cacheKey(r,p,date),cached=null;
-      try{cached=JSON.parse(sessionStorage.getItem(key)||"null")}catch(e){}
+      try{cached=JSON.parse(pwSLoad(key)||"null")}catch(e){}
+      // 期限切れ・旧形式(rows が直接入った配列)は使わない。取り直す方が安全側。
+      if(cached&&(!cached.t||!cached.rows||(Date.now()-cached.t)>CACHE_TTL_MS))cached=null;
       var rows;
-      if(cached){elStatus.textContent=fromRestore?"前回の検索結果を復元しました":"キャッシュから表示中…";rows=cached}
+      if(cached){
+        elStatus.textContent=fromRestore?"前回の検索結果を復元しました":"キャッシュから表示中…";
+        rows=cached.rows;
+      }
       else{
         var chunks=[];for(var i=0;i<ms.length;i+=CHUNK)chunks.push(ms.slice(i,i+CHUNK));
         rows=[];
@@ -801,10 +863,10 @@ footer a{color:var(--link)}
           }
         }
         rows.sort(function(a,b){return b.sc.v-a.sc.v});
-        try{sessionStorage.setItem(key,JSON.stringify(rows))}catch(e){}
+        pwSSave(key,JSON.stringify({t:Date.now(),rows:rows}));
       }
       // 復元用に「最後の検索条件」を保存 (実際の rows は cacheKey 側に既に入っている)
-      try{sessionStorage.setItem(LAST_KEY,JSON.stringify({r:r,p:p,date:date}))}catch(e){}
+      pwSSave(LAST_KEY,JSON.stringify({r:r,p:p,date:date}));
       render(rows,date);
       // 結果表示位置までスクロール(表示データが見やすい位置に移動)
       elResults.scrollIntoView({behavior:"smooth",block:"start"});
@@ -872,7 +934,13 @@ footer a{color:var(--link)}
     '<dt>天気</dt><dd>朝7時～夜3時の天気。最も続く天気を表示。危険な天気は1時間でも優先します</dd>'+
     '<dt>日照</dt><dd>朝7時～夜3時の晴れ時間の割合 (%)。<b>*</b>印は別モデルからの補完</dd>'+
     '<dt>気温</dt><dd>朝7時～夜3時の最高気温／最低気温（℃）。山頂の標高で計算済み</dd>'+
-    '<dt>稜線風</dt><dd>山頂付近の稜線風速の朝7時～夜3時最大値（m/s）</dd>'+
+    // find の足切りは 18m/s (③の減点が最大に達する境界) だが、個別の山の詳細ページに出る
+    // 正式な A/B/C 判定は 夏山15 / 冬山12 m/s で C になる。つまり「登れそう」の表に載った山を
+    // 開いたら C だった、が起こりうる。根拠は find-score.html にあるが一覧からは辿れないので、
+    // 列の意味を説明するここで基準の違いに触れておく(スコア式そのものは変更しない)。
+    '<dt>稜線風</dt><dd>山頂付近の稜線風速の朝7時～夜3時最大値（m/s）。'+
+      'この一覧の足切りは18m/sですが、個別の山の<b>正式な登山指数A/B/Cはより厳しい基準</b>'+
+      '(夏山15m/s・冬山12m/s以上でC)です。15m/s前後の山は必ず個別ページもご確認ください</dd>'+
     '<dt>降水確率</dt><dd>朝7時～夜3時の降水確率の最大値 (%)。参考表示のみです</dd>'+
     '<dt>降水量</dt><dd>朝7時～夜3時の合計降水量（mm）。スコアに直接影響します</dd>'+
     '</dl></div>');
@@ -928,7 +996,7 @@ footer a{color:var(--link)}
   // 行ごとの onclick 属性ではなく委譲リスナー1本にして、生成HTMLを軽く保つ。
   elResults.addEventListener("click",function(e){
     var a=e.target.closest?e.target.closest("td.nm a"):null;
-    if(a)try{sessionStorage.setItem("pw_entry","find")}catch(err){}
+    if(a)pwSSave("pw_entry","find");
   });
 
   // ---- 復元してよいのは「一覧から開いた詳細予報」から戻ってきた時だけ ----
@@ -942,12 +1010,10 @@ footer a{color:var(--link)}
   // 区別できない)。マーカーは詳細予報を一覧から開いた時に立ち、トップの「天気の良い山を
   // さがす」を押した時に消える。ここでは1回で消費する。
   function takeBackFlag(){
-    try{
-      if(sessionStorage.getItem("pw_find_back")){
-        sessionStorage.removeItem("pw_find_back");
-        return true;
-      }
-    }catch(e){}
+    if(pwSLoad("pw_find_back")){
+      pwSDrop("pw_find_back");
+      return true;
+    }
     return false;
   }
 
@@ -969,7 +1035,7 @@ footer a{color:var(--link)}
   // ヒットすれば自動で render() まで進める。Open-Meteo は叩かない(キャッシュヒット時)。
   function restoreLastSearch(){
     var last;
-    try{last=JSON.parse(sessionStorage.getItem(LAST_KEY)||"null")}catch(e){}
+    try{last=JSON.parse(pwSLoad(LAST_KEY)||"null")}catch(e){}
     if(!last||!last.r||!last.date)return;
     // 保存されたエリアが今の選択肢に無ければ復元しない(初期状態のまま手動検索を待つ)
     if(!Array.prototype.some.call(elRegion.options,function(o){return o.value===last.r}))return;
@@ -988,9 +1054,10 @@ footer a{color:var(--link)}
     }
     updateHint();
     // cacheKey にヒットする場合だけ自動描画。ヒットしない場合はセレクタだけ復元して手動検索を待つ。
+    // キャッシュが TTL 切れなら search() 側が取り直す(一覧は同じ条件で復元されるが中身は最新)。
+    // 「戻ったら古い予報が出ていた」より「戻ったら少し待って最新が出た」の方が安全側。
     var key=cacheKey(last.r,last.p||"",last.date);
-    var hit=null;try{hit=sessionStorage.getItem(key)}catch(e){}
-    if(hit)search(true);
+    if(pwSLoad(key))search(true);
   }
 
   fillPrefs();

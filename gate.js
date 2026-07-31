@@ -24,8 +24,25 @@ var PW_AUTH_KEY  = "peakweather2-auth",
     PW_AUTH_HASH = "be1caef9b1a4012a4297740a3d0118f5d5d371a6a221526e28de12c9c5bbc2a4",
     PW_AUTH_ITER = 300000;
 
-/* localStorage はプライベートモード等で例外を投げることがあるため必ず包む */
-function pwLoad(k){ try{ return localStorage.getItem(k) }catch(e){ return null } }
+/* ---- ストレージアクセスの唯一の入口 ----
+ * localStorage / sessionStorage は「値が保存できない」だけでなく、Safari の
+ * 「すべてのCookieをブロック」・一部のプライベート閲覧・iframe 埋め込み等では
+ * **アクセス自体が SecurityError を投げる**。素で呼ぶと、呼び出し元のスクリプトが
+ * その行で丸ごと死ぬ(index.html は冒頭で sessionStorage を読むため画面が無反応になる)。
+ *
+ * 保存できない端末でもそのタブの間は使えるよう、メモリへフォールバックする
+ * (次回訪問時に同意・認証の再入力が要るだけで済む)。
+ * 読み書きは index.html / docs/find.html / docs/point.html すべてこの関数群を通すこと。 */
+var pwMem = {}, pwSMem = {};
+function pwLoad(k){ try{ var v=localStorage.getItem(k); if(v!=null)return v }catch(e){}
+                    return k in pwMem ? pwMem[k] : null }
+function pwSave(k,v){ pwMem[k]=v; try{ localStorage.setItem(k,v) }catch(e){} }
+function pwDrop(k){ delete pwMem[k]; try{ localStorage.removeItem(k) }catch(e){} }
+/* sessionStorage 版 (入口マーカー・山さがしの結果キャッシュ・座標ラベル用) */
+function pwSLoad(k){ try{ var v=sessionStorage.getItem(k); if(v!=null)return v }catch(e){}
+                     return k in pwSMem ? pwSMem[k] : null }
+function pwSSave(k,v){ pwSMem[k]=v; try{ sessionStorage.setItem(k,v) }catch(e){} }
+function pwSDrop(k){ delete pwSMem[k]; try{ sessionStorage.removeItem(k) }catch(e){} }
 
 function pwIsAgreed(){ return pwLoad(PW_AGREE_KEY) === "1" }
 function pwIsAuthed(){ return pwLoad(PW_AUTH_KEY) === PW_AUTH_VER }

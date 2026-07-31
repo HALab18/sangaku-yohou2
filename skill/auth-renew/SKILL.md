@@ -44,7 +44,19 @@ gate.js を差し替えれば全ページに反映される。他のファイル
 3. **gate.js を更新**: 同ファイル内の既存の3定数宣言（`PW_AUTH_KEY` 定数の直後にある
    `PW_AUTH_VER="…", PW_AUTH_SALT="…", PW_AUTH_HASH="…"`）を、生成した新しい値に差し替える。
    `PW_AUTH_KEY` と `PW_AUTH_ITER` は変更しない。
-   **index.html や docs/ 配下には定数は無い**ので他のファイルは触らない。
+   **index.html や docs/ 配下には定数は無い**ので、定数の差し替えで他のファイルは触らない。
+3b. **キャッシュバスターを同じ年版に上げる**（定数とは別に、これは3ファイルとも必要）:
+   `gate.js` を読み込む `<script src="…gate.js?v=YYYY">` の `?v=` を新しい `PW_AUTH_VER` と
+   同じ値にする。対象は **3ファイル**:
+   - `{{REPO_PATH}}\index.html`（`src="gate.js?v=…"`）
+   - `{{REPO_PATH}}\docs\point.html`（`src="../gate.js?v=…"`）
+   - `{{REPO_PATH}}\scripts\gen_find.py` のテンプレート（`src="../gate.js?v=…"`）
+     → 変更後に `python {{REPO_PATH}}\scripts\gen_find.py` で `docs/find.html` を再生成する
+       （`docs/find.html` は自動生成物なので直接編集しない）
+
+   **これを忘れると**、ブラウザやプロキシに古い `gate.js` が残った端末で `PW_AUTH_HASH` が
+   旧値のまま照合され、「新しいコードを入れたのに弾かれる」という再現しにくい事故になる。
+   キャッシュが切れるまで待つしかなく、原因の特定も難しい。必ず定数と同時に上げること。
 4. **DBチェック**（規約5の一環。認証まわりは対象外だが習慣として通す）:
    ```
    python {{REPO_PATH}}\scripts\check_mountains.py

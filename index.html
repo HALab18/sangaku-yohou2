@@ -2,15 +2,20 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- viewport-fit=cover を付けないと env(safe-area-inset-*) が常に0を返し、
+     #totop のホームバー回避(iPhone)が効かない -->
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>PeakWeather — 山頂コンディションをもっと手軽に。</title>
 <meta name="description" content="PeakWeather: 山名を入れるだけで山頂・稜線の気象予報（稜線風・山頂気温・体感温度・発雷リスク・景色（眺望）・登山指数）を表示。データ: Open-Meteo">
 <link rel="icon" type="image/png" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1e2d4a">
-<!-- 規約同意・認証コードの判定を集約した共通ゲート (認証コードの定数もここにのみ置く) -->
-<script src="gate.js"></script>
+<!-- 規約同意・認証コードの判定を集約した共通ゲート (認証コードの定数もここにのみ置く)。
+     ?v= は gate.js の PW_AUTH_VER と同じ値にする。付けないと、認証コードを年次更新した際に
+     古い gate.js がキャッシュに残った端末で「新コードを入れたのに弾かれる」事故になる。
+     更新時は index.html / docs/find.html(gen_find.py) / docs/point.html の3ファイルを同時に。 -->
+<script src="gate.js?v=2026"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -77,7 +82,7 @@ h1{margin:0;font-size:2.15em;font-weight:800;letter-spacing:.05em;color:#fff;
 @media(prefers-reduced-motion:reduce){.chev{animation:none}}
 
 /* ---- 本体 ---- */
-main{max-width:1080px;margin:0 auto;padding:26px 14px 8px 22px}
+main{max-width:1080px;margin:0 auto;padding:26px 14px 8px}
 .entry{max-width:560px;margin-left:auto;margin-right:auto}
 
 /* 利用規約 (折りたたみ・控えめ) */
@@ -417,7 +422,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
     <!-- onclick: ここから開くのは「新しい検索」なので、詳細予報が残した復元マーカーを捨てて
          find.html を初期状態で開かせる (詳細から戻る導線とは意味が違う) -->
     <a class="hero-find gate-off" href="docs/find.html" data-gatelink aria-disabled="true"
-       onclick="try{sessionStorage.removeItem('pw_find_back')}catch(e){}">
+       onclick="pwSDrop('pw_find_back')">
       <span class="btnface">天気の良い山をさがす</span>
     </a>
     <span class="chev" aria-hidden="true">⌄</span>
@@ -494,7 +499,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.13β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.14β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -512,8 +517,10 @@ const MOUNTAINS=[["利尻岳","りしりだけ","北海道",45.18042,141.24138,1
 // ページ内で再検索したら form / gps に上書きされ、戻る導線も消える。
 let ENTRY="link"; // 既定: 共有URL・ブックマーク・直接アクセス
 {
-  const e=sessionStorage.getItem("pw_entry");
-  if(e){ENTRY=e;sessionStorage.removeItem("pw_entry")}
+  // 生の sessionStorage を呼ぶと、Cookie を全ブロックした端末では例外でこの先の
+  // スクリプト全体が停止する。読み書きは必ず gate.js のラッパを通す。
+  const e=pwSLoad("pw_entry");
+  if(e){ENTRY=e;pwSDrop("pw_entry")}
 }
 
 // ---- この履歴エントリは「天気で山さがし」の一覧から開いたものか ----
@@ -541,7 +548,7 @@ else if(history.state&&history.state.pwFromFind)FROM_FIND=true;
 // bfcache 復帰(戻る→進むで再訪した時など)はスクリプトが再実行されないので pageshow でも打つ。
 function pwMarkFindEntry(){
   if(!FROM_FIND)return;
-  try{sessionStorage.setItem("pw_find_back","1")}catch(e){}
+  pwSSave("pw_find_back","1");
 }
 pwMarkFindEntry();
 addEventListener("pageshow",pwMarkFindEntry);
@@ -551,7 +558,7 @@ addEventListener("pageshow",pwMarkFindEntry);
 // href(docs/find.html) へ通常遷移でフォールバックする。
 // ページ内で再検索して ENTRY が上書きされた後でも復元できるよう、ここでもマーカーを立てる。
 function pwBackToFind(){
-  try{sessionStorage.setItem("pw_find_back","1")}catch(e){}
+  pwSSave("pw_find_back","1");
   if(history.length>1){history.back();return false}
   return true;
 }
@@ -760,8 +767,36 @@ const wxCodeIcon=c=>{if(c==null)return"-";
 const wxnote=n=>n&&n.length?`<span class="wxnote">${n.map(esc).join(" / ")}</span>`:"";
 const f0=(v,none="-")=>v==null?none:Math.round(v).toString();
 const f1=v=>v==null?"-":v.toFixed(1);
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+// ---- 単位つきセル ----
+// 欠測時に単位を残すと "-m/s" "-%" "- -m/s" のように「値のような何か」に見えるので、
+// 欠測はハイフン1つだけにする。数値がある時だけ単位を付ける。
+const u0=(v,unit)=>v==null?"-":Math.round(v)+unit;
+const u1=(v,unit)=>v==null?"-":v.toFixed(1)+unit;
+// 風は「風向 風速」の組。風速が欠測ならまとめて "-"(風向だけ出しても読めないため)
+const windCell=(wd,ws)=>ws==null?"-":`${wdir(wd)} ${ws.toFixed(1)}m/s`;
+// 気温レンジ。両端とも欠測なら "-"
+const tempRange=(lo,hi)=>lo==null&&hi==null?"-":`${f0(lo)}〜${f0(hi)}℃`;
+// ' も落とす。今の生成HTMLは属性を全て " で囲んでいるので実害は無いが、
+// 将来 '…' で囲む行を1行書いた瞬間に穴になるため、入口側で潰しておく
+const esc=s=>String(s).replace(/[&<>"']/g,
+  c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+// ---- 「今日」は必ず日本時間で決める ----
+// APIへは timezone=Asia/Tokyo を投げているのに start_date/end_date や表の日付を端末ローカルの
+// 日付で作ると、TZ が JST でない端末(海外遠征・UTC固定・時計ずれ)で丸ごと1日ずれる。
+// ずれると「直近の実況(過去3日)」に JST の今日=予報値が実況として混ざり、11日間の見通しも
+// 末日が d.time に無くなって10日ぶんしか出ない。数値は正しいまま日付ラベルだけがずれるので、
+// 利用者からは気づけないタイプの誤表示になる。
+const JST_YMD=new Intl.DateTimeFormat("en-CA",
+  {timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"});
+const JST_HM=new Intl.DateTimeFormat("en-GB",
+  {timeZone:"Asia/Tokyo",hour:"2-digit",minute:"2-digit",hour12:false});
+// JST の今日を「ローカル深夜の Date」として返す。時刻成分を持たないので、
+// 以降の addDays / iso / md / wj は従来どおりそのまま使える。
+function jstToday(){
+  const[y,m,dd]=JST_YMD.format(new Date()).split("-").map(Number);
+  return new Date(y,m-1,dd);
+}
 const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
 const md=d=>`${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")}`;
 const wj=d=>{const w=WJA[d.getDay()];const cls=w==="土"?"sat":w==="日"?"sun":"";return cls?`<span class="${cls}">(${w})</span>`:`(${w})`};
@@ -901,14 +936,34 @@ function snowCell(depthM,sfCm){
   return s;
 }
 
-// ---- APIアクセス (リトライつき) ----
+// ---- APIアクセス (タイムアウト・リトライつき) ----
+// fetch は既定でタイムアウトしない。TCPは張れたがレスポンスが来ない状況
+// (モバイル回線の切り替わり・キャリアのプロキシ・Wi-Fiのキャプティブポータル)では
+// Promise が永久に pending のままになり、UI が「取得中…」+ ボタン無効で固まる。
+// 山中で最も起きやすい環境なので必ず時間で切る
+// (CLI版 mountain_weather.py は urlopen(timeout=30) で同じ保護をしている)。
+const API_TIMEOUT_MS=20000;
+
+// 例外を利用者向けの日本語メッセージに変換する。生の "HTTP 429" は次の行動に繋がらない。
+function apiError(e){
+  if(e&&e.name==="AbortError")
+    return new Error("気象データの取得がタイムアウトしました。電波の良い場所で再度お試しください");
+  if(e&&e.status===429)
+    return new Error("アクセスが集中しています。数分おいてから再度お試しください");
+  if(e&&e.status>=500)
+    return new Error("気象データの提供元が一時的に応答していません。時間をおいて再度お試しください");
+  return new Error("気象データを取得できませんでした。通信状況をご確認のうえ再度お試しください");
+}
+
 // 予報モデルの更新時刻によっては end_date が予報長ぶん受け付けられず HTTP 400 になるため、
 // その場合は応答の reason から許容最終日をパースして end_date を縮め、1回だけ再試行する
 async function apiJson(url,params,retries=3){
   let lastErr,clamped=false;
   for(let a=1;a<=retries;a++){
+    const ac=new AbortController();
+    const timer=setTimeout(()=>ac.abort(),API_TIMEOUT_MS);
     try{
-      const r=await fetch(`${url}?${new URLSearchParams(params)}`);
+      const r=await fetch(`${url}?${new URLSearchParams(params)}`,{signal:ac.signal});
       if(!r.ok){
         if(r.status===400&&!clamped){
           const reason=(await r.json().catch(()=>({}))).reason||"";
@@ -917,17 +972,21 @@ async function apiJson(url,params,retries=3){
             params={...params,end_date:m[1]};clamped=true;a--;continue; // 再試行回数は消費しない
           }
         }
-        if(r.status<500)throw Object.assign(new Error(`HTTP ${r.status}`),{fatal:true});
-        throw new Error(`HTTP ${r.status}`);
+        // 429(混雑)と 5xx(提供元の一時障害)は待てば直るので再試行する。
+        // それ以外の 4xx はリクエスト側の問題で、投げ直しても直らないので即中断。
+        if(r.status!==429&&r.status<500)
+          throw Object.assign(new Error(`HTTP ${r.status}`),{fatal:true,status:r.status});
+        throw Object.assign(new Error(`HTTP ${r.status}`),{status:r.status});
       }
       return await r.json();
     }catch(e){
       lastErr=e;
       if(e.fatal||a===retries)break;
-      await new Promise(res=>setTimeout(res,1500*a));
-    }
+      // 429 は無料利用枠を守るのが目的なので、他のエラーより長く待ってから再試行する
+      await new Promise(res=>setTimeout(res,(e.status===429?6000:1500)*a));
+    }finally{clearTimeout(timer)}
   }
-  throw new Error(`API呼び出しに失敗しました: ${lastErr.message||lastErr}`);
+  throw apiError(lastErr);
 }
 
 // ---- 山名解決 ----
@@ -947,11 +1006,32 @@ async function resolveGeo(name){
 // ---- 予報取得・描画 ----
 function dayIdx(times,dstr){const out=[];for(let i=0;i<times.length;i++)if(times[i].startsWith(dstr))out.push(i);return out}
 
+// ---- APIレスポンスの形状を正規化する ----
+// Open-Meteo は「非対応項目・予報期間外」を **エラーではなく null** で返す仕様だが、
+// 変数名の変更・項目の廃止・部分応答では **キーごと欠ける**。その場合
+// h.temperature_2m[i] は生の TypeError になり、利用者には意味不明の英語エラーが出る。
+// ここで「キーごと欠けた = 全時刻欠測」に正規化しておけば、下流の sumOrNull /
+// blockIndex / viewScore の欠測ハンドリング(判定不能 → "-")がそのまま効く。
+const DAILY_KEYS=["weather_code","temperature_2m_max","temperature_2m_min",
+  "precipitation_sum","snowfall_sum","sunrise","sunset"];
+function normalizeSeries(data,hourlyKeys,dailyKeys){
+  if(!data||!data.hourly||!Array.isArray(data.hourly.time)||!data.hourly.time.length)
+    throw new Error("気象データの形式が想定と異なります。時間をおいて再度お試しください");
+  const n=data.hourly.time.length;
+  for(const k of hourlyKeys)
+    if(!Array.isArray(data.hourly[k]))data.hourly[k]=new Array(n).fill(null);
+  if(!data.daily||!Array.isArray(data.daily.time))data.daily={time:[]};
+  const dn=data.daily.time.length;
+  for(const k of dailyKeys)
+    if(!Array.isArray(data.daily[k]))data.daily[k]=new Array(dn).fill(null);
+  return data;
+}
+
 async function run(mt){
   const status=document.getElementById("status"),out=document.getElementById("out");
   const step=+(document.querySelector('input[name="mstep"]:checked')?.value)===1?1:3;
   const days=4;
-  const today=new Date();today.setHours(0,0,0,0);
+  const today=jstToday();
   const horizon=addDays(today,JMA_DAYS-1);
   let start=document.getElementById("mdate").value?new Date(document.getElementById("mdate").value+"T00:00"):today;
   if(start<today)start=today;
@@ -971,13 +1051,25 @@ async function run(mt){
     latitude:mt.lat,longitude:mt.lon,elevation:mt.elev,
     timezone:"Asia/Tokyo",wind_speed_unit:"ms",
     start_date:iso(addDays(today,-PAST_DAYS)),end_date:iso(fetchEnd)};
-  // 基本は気象庁モデル、そこに無い項目だけ別モデルから補完する(CLI版 fetch_forecast と同じ)
-  const[data,sup]=await Promise.all([
+  // 基本は気象庁モデル、そこに無い項目だけ別モデルから補完する(CLI版 fetch_forecast と同じ)。
+  //
+  // 補完API(/v1/forecast)が返すのは降水確率・突風・CAPE・視程・積雪深で、どれも欠測時は
+  // 「-」表示で成立する補助項目。ここが落ちても稜線風・気温・降水という**安全判断の主要材料**は
+  // 気象庁モデル側に揃っているので、補完だけ諦めて予報は出す。
+  // Promise.all のままだと補完の失敗で主要データごと捨てることになり、判断に必要な情報まで
+  // 見せられなくなる = 安全と逆方向。
+  const[dataR,supR]=await Promise.allSettled([
     apiJson(JMA_URL,{...common,hourly:hourly.join(","),
       daily:"weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,sunrise,sunset"}),
     apiJson(FORECAST_URL,{...common,hourly:SUPPLEMENT_HOURLY.join(","),daily:SUPPLEMENT_DAILY.join(",")})
   ]);
+  if(dataR.status==="rejected")throw dataR.reason;   // 主要データの失敗だけが致命
+  const data=dataR.value;
+  const sup=supR.status==="fulfilled"?supR.value:{};
+  const supFailed=supR.status==="rejected";
   const fetchedAt=new Date();   // APIレスポンス受信時刻(詳細表のキャプションに出す)
+  // 補完を貼る前に形状を整える(mergeSeries は base.time があることを前提にするため)
+  normalizeSeries(data,hourly,DAILY_KEYS);
   mergeSeries(data.hourly,sup.hourly||{},SUPPLEMENT_HOURLY);
   mergeSeries(data.daily,sup.daily||{},SUPPLEMENT_DAILY);
   const h=data.hourly,times=h.time,d=data.daily;
@@ -996,14 +1088,30 @@ async function run(mt){
   const lowNote=lowElev
     ?`<li>標高${LOW_ELEV}m未満のため、風は気圧面から推定した稜線風ではなく<b>地上10mの風</b>を`
      +`そのまま表示しています(登山指数・体感温度もこの値で判定)。</li>`:"";
+  // 補完APIが落ちた回は、降水確率・突風・発雷リスク・視程・積雪が全て「-」になる。
+  // 黙って空欄にすると「データ上そうだった(降水確率0%・雷の心配なし)」と誤解されるので、
+  // 欠けているのは取得失敗が原因だと明示する。
+  const supNote=supFailed
+    ?`<li>降水確率・突風・発雷リスク・視程・積雪の取得に失敗したため、これらの列は`
+     +`「-」になっています(稜線風・気温・降水量・天気は正常に取得できています)。</li>`:"";
+  // Open-Meteo は elevation= を受けると応答の elevation にその値を返す(実測で確認)。
+  // 将来この指定が無視される仕様変更があると、グリッド標高の気温がそのまま「山頂気温」として
+  // 出る(富士山なら夏で20℃近い誤差)のに、画面上は完全に正常に見える = 気づけない誤表示になる。
+  // 指定と応答の一致を毎回確認し、食い違ったら黙って出さずに警告を添える。
+  const elevOk=Number.isFinite(data.elevation)&&Math.abs(data.elevation-mt.elev)<=1;
+  const elevNote=elevOk?"":
+    `<li><b>⚠ 気温の標高補正が確認できませんでした</b>(要求 ${Math.round(mt.elev)}m / `
+    +`応答 ${Number.isFinite(data.elevation)?Math.round(data.elevation)+"m":"不明"})。`
+    +`気温・体感温度は山頂の値になっていない可能性があります。</li>`;
   let htmlOut=`${backToFind}<h2>${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""} の山岳気象予報</h2><ul class="meta">
     <li>地点: 北緯${mt.lat.toFixed(4)} 東経${mt.lon.toFixed(4)} / 標高 ${Math.round(mt.elev)}m
-      (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li>${lowNote}</ul>`;
+      (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li>${lowNote}${supNote}${elevNote}</ul>`;
 
-  // 表だけをスクショしても山名と取得日時が分かるよう、各表の見出し直下に小さく添える
-  const pad2=n=>String(n).padStart(2,"0");
+  // 表だけをスクショしても山名と取得日時が分かるよう、各表の見出し直下に小さく添える。
+  // 予報の日付が JST 基準なので、取得時刻も JST で揃えて明示する(端末ローカル時刻で出すと
+  // 海外から見たとき「表の日付」と「取得時刻」が別基準になって読み解けない)
   const capMeta=`${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""}`
-    +` / 取得 ${iso(fetchedAt)} ${pad2(fetchedAt.getHours())}:${pad2(fetchedAt.getMinutes())}`;
+    +` / 取得 ${JST_YMD.format(fetchedAt)} ${JST_HM.format(fetchedAt)} JST`;
   const cap=`<p class="tblcap">${capMeta}</p>`;
 
   // 直近実況(モデル解析値・過去3日)
@@ -1015,7 +1123,10 @@ async function run(mt){
     const rw=act.map(i=>ridgeWind(h,i,mt.elev));
     const wsArr=rw.map(x=>x[0]).filter(v=>v!=null);
     const ws=wsArr.length?Math.max(...wsArr):null;
-    const wd2=rw.find(x=>x[0]===ws)?.[1];
+    // ws が null のとき find(x=>x[0]===ws) は「風速が欠測の時刻」に一致してしまい、
+    // 風速は「-」なのに風向だけ出る(欠測は判定不能に倒す方針からの逸脱)。
+    // 風速が取れた時だけ風向を出す。
+    const wd2=ws==null?null:(rw.find(x=>x[0]===ws)?.[1]??null);
     const dep=idxs.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
     pastRows.push({d:new Date(dt2),code:wxByDate.get(ds)?.code??d.weather_code[di],notes:wxByDate.get(ds)?.notes||[],phrase:wxByDate.get(ds)?.phrase,tmin:d.temperature_2m_min[di],tmax:d.temperature_2m_max[di],
       ws,wd:wd2,pr:d.precipitation_sum[di],sf:d.snowfall_sum?.[di],
@@ -1025,8 +1136,8 @@ async function run(mt){
     htmlOut+=`<h2>直近の実況(モデル解析値・過去${pastRows.length}日)</h2>${cap}<div class="tbl"><table>
       <tr><th>日付</th><th>天気</th><th>山頂気温</th><th>${windLbl}max(5-17時)</th><th>降水量</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
     for(const r of pastRows)htmlOut+=`<tr><td>${md(r.d)}${wj(r.d)}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
-      <td>${f0(r.tmin)}〜${f0(r.tmax)}℃</td><td>${wdir(r.wd)} ${f1(r.ws)}m/s</td>
-      <td>${r.pr==null?"-":r.pr.toFixed(1)}mm</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
+      <td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws)}</td>
+      <td>${u1(r.pr,"mm")}</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
     htmlOut+=`</table></div><ul class="meta"><li>※モデル解析値であり観測所の実測ではありません。現地の最新情報を優先してください</li></ul>`;
   }
 
@@ -1106,8 +1217,8 @@ async function run(mt){
   rows.forEach((r,i)=>{
     const more=i>=WK_HEAD;
     htmlOut+=`<tr${more?` class="wk-more"${wkOpen?"":" hidden"}`:""}><td>${md(r.d)}${wj(r.d)}</td><td>${IDX[r.idx]??"-"}${r.eve?'<span class="ew"> ⚠夕方</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
-    <td>${r.view}</td><td>${f0(r.tmin)}〜${f0(r.tmax)}℃</td><td>${wdir(r.wd)} ${f1(r.ws)}m/s</td>
-    <td>${r.pr==null?"-":r.pr.toFixed(1)}mm</td><td>${f0(r.prob)}%</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
+    <td>${r.view}</td><td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws)}</td>
+    <td>${u1(r.pr,"mm")}</td><td>${u0(r.prob,"%")}</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
   });
   htmlOut+=`</table></div>`;
   // 残り日数は rows.length から作る(end_date クランプ等で11日に満たないことがあるため決め打ちしない)
@@ -1131,7 +1242,8 @@ async function run(mt){
       const rw=blk.map(i=>ridgeWind(h,i,mt.elev));
       const wsArr=rw.map(x=>x[0]).filter(v=>v!=null);
       const ws=wsArr.length?Math.max(...wsArr):null;
-      const wd2=rw.find(x=>x[0]===ws)?.[1];
+      // 風速が取れた時だけ風向を出す(null と一致させると欠測時刻の風向を拾ってしまう)
+      const wd2=ws==null?null:(rw.find(x=>x[0]===ws)?.[1]??null);
       const gustArr=blk.map(i=>h.wind_gusts_10m?.[i]).filter(v=>v!=null);
       const gust=gustArr.length?Math.max(...gustArr):null;
       const pr=sumOrNull(blk.map(i=>h.precipitation[i]));
@@ -1160,40 +1272,54 @@ async function run(mt){
       const depArr=blk.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
       const sfBlk=blk.reduce((s,i)=>s+(h.snowfall?.[i]||0),0);
       htmlOut+=`<tr><td>${String(sh).padStart(2,"0")}時</td><td>${IDX[bi]??"-"}</td><td>${wxCodeIcon(h.weather_code[i0])}</td><td>${view}</td>
-        <td>${temp==null?"-":temp.toFixed(1)}℃</td><td>${f0(feel)}℃</td><td>${wdir(wd2)} ${f1(ws)}m/s</td>
-        <td>${f0(gust)}m/s</td><td>${pr==null?"-":pr.toFixed(1)}mm</td><td>${f0(prob)}%</td><td>${ltCell(lt,cape,cin)}</td>
+        <td>${u1(temp,"℃")}</td><td>${u0(feel,"℃")}</td><td>${windCell(wd2,ws)}</td>
+        <td>${u0(gust,"m/s")}</td><td>${u1(pr,"mm")}</td><td>${u0(prob,"%")}</td><td>${ltCell(lt,cape,cin)}</td>
         <td>${cl}</td>${hasSnow?`<td>${snowCell(depArr.length?Math.max(...depArr):null,sfBlk)}</td>`:""}</tr>`;
     }
     htmlOut+=`</table></div>`;
   }
 
-  // モデル比較 (常時表示)
+  // モデル比較 (常時表示。ただし補助情報なので、失敗しても主要な予報表は必ず描画する)
   {
     status.textContent="モデル比較を取得中…";
     const cmpEnd=detailEnd;
     const models=["jma_seamless","ecmwf_ifs025","gfs_seamless"];
     const labels={jma_seamless:"気象庁JMA",ecmwf_ifs025:"欧州ECMWF",gfs_seamless:"米国GFS"};
-    const cd=await apiJson(FORECAST_URL,{
-      latitude:mt.lat,longitude:mt.lon,elevation:mt.elev,
-      hourly:"temperature_2m,precipitation,wind_speed_10m,cloud_cover",
-      timezone:"Asia/Tokyo",wind_speed_unit:"ms",models:models.join(","),
-      start_date:iso(start),end_date:iso(cmpEnd)});
-    const ch=cd.hourly;
-    htmlOut+=`<h2>モデル間比較（各モデルが一致するほど信頼度が高い）</h2>${cap}<div class="tbl"><table>
-      <tr><th>日付</th><th>モデル</th><th>気温min〜max</th><th>降水量</th><th>10m風max</th><th>平均雲量</th></tr>`;
-    for(let dt2=new Date(start);dt2<=cmpEnd;dt2=addDays(dt2,1)){
-      const idxs=dayIdx(ch.time,iso(dt2));
-      for(const m of models){
-        const col=v=>{const k=ch[`${v}_${m}`]?`${v}_${m}`:v;return idxs.map(i=>ch[k]?.[i]).filter(x=>x!=null)};
-        const temps=col("temperature_2m"),precs=col("precipitation"),winds=col("wind_speed_10m"),clouds=col("cloud_cover");
-        htmlOut+=temps.length?
-          `<tr><td>${md(dt2)}</td><td>${labels[m]}</td><td>${Math.round(Math.min(...temps))}〜${Math.round(Math.max(...temps))}℃</td>
-           <td>${precs.length?precs.reduce((a,b)=>a+b,0).toFixed(1)+"mm":"-"}</td><td>${winds.length?Math.max(...winds).toFixed(1)+"m/s":"-"}</td>
-           <td>${clouds.length?Math.round(clouds.reduce((a,b)=>a+b,0)/clouds.length)+"%":"-"}</td></tr>`:
-          `<tr><td>${md(dt2)}</td><td>${labels[m]}</td><td colspan="4">(データなし)</td></tr>`;
+    // 3モデル同時取得はこのページで最も重いリクエストで、混雑時に最初に落ちる。
+    // これは「モデルが一致するか」を見るための補助情報であって登山可否の判断材料ではない。
+    // 一方この時点で主要な予報表(直近実況・11日見通し・時間別詳細)は既に組み上がっており、
+    // 描画は最後の out.innerHTML まで行われない。ここで throw させると、完成済みの
+    // 稜線風・気温・降水・登山指数を丸ごと捨てることになるので、失敗はここで閉じ込める。
+    let cd=null;
+    try{
+      cd=await apiJson(FORECAST_URL,{
+        latitude:mt.lat,longitude:mt.lon,elevation:mt.elev,
+        hourly:"temperature_2m,precipitation,wind_speed_10m,cloud_cover",
+        timezone:"Asia/Tokyo",wind_speed_unit:"ms",models:models.join(","),
+        start_date:iso(start),end_date:iso(cmpEnd)});
+    }catch(e){cd=null}
+    htmlOut+=`<h2>モデル間比較（各モデルが一致するほど信頼度が高い）</h2>`;
+    if(!cd||!cd.hourly||!Array.isArray(cd.hourly.time)){
+      htmlOut+=`<p class="notice">モデル比較データを取得できませんでした`
+        +`（上の予報表には影響しません。時間をおいて再読み込みすると表示されます）。</p>`;
+    }else{
+      const ch=cd.hourly;
+      htmlOut+=`${cap}<div class="tbl"><table>
+        <tr><th>日付</th><th>モデル</th><th>気温min〜max</th><th>降水量</th><th>10m風max</th><th>平均雲量</th></tr>`;
+      for(let dt2=new Date(start);dt2<=cmpEnd;dt2=addDays(dt2,1)){
+        const idxs=dayIdx(ch.time,iso(dt2));
+        for(const m of models){
+          const col=v=>{const k=ch[`${v}_${m}`]?`${v}_${m}`:v;return idxs.map(i=>ch[k]?.[i]).filter(x=>x!=null)};
+          const temps=col("temperature_2m"),precs=col("precipitation"),winds=col("wind_speed_10m"),clouds=col("cloud_cover");
+          htmlOut+=temps.length?
+            `<tr><td>${md(dt2)}</td><td>${labels[m]}</td><td>${Math.round(Math.min(...temps))}〜${Math.round(Math.max(...temps))}℃</td>
+             <td>${precs.length?precs.reduce((a,b)=>a+b,0).toFixed(1)+"mm":"-"}</td><td>${winds.length?Math.max(...winds).toFixed(1)+"m/s":"-"}</td>
+             <td>${clouds.length?Math.round(clouds.reduce((a,b)=>a+b,0)/clouds.length)+"%":"-"}</td></tr>`:
+            `<tr><td>${md(dt2)}</td><td>${labels[m]}</td><td colspan="4">(データなし)</td></tr>`;
+        }
       }
+      htmlOut+=`</table></div>`;
     }
-    htmlOut+=`</table></div>`;
   }
 
   htmlOut+=`<div class="notice">⚠️ 数値予報は山岳地形では誤差が大きく、局地的な突風・雷雨・視界不良は表現しきれません。
@@ -1203,20 +1329,35 @@ async function run(mt){
   out.innerHTML=htmlOut;
   status.textContent="";
   const hashKey=mt.here?"gps":mt.coord?`${mt.lat},${mt.lon}${mt.elevManual?","+mt.elev:""}`:encodeURIComponent(mt.name);
-  location.hash=hashKey+"/"+iso(start)+(step===1?"/1h":"");
-  // ハッシュを書き換えると新しい履歴エントリになる(state は空)。一覧由来の印を新しい方にも
-  // 焼き直しておかないと、日付や1時間ごとを切り替えた後にリロード/戻るしたときだけ
-  // 「一覧から来た」ことが失われ、戻り先の一覧が復元できなくなる。
+  const newHash="#"+hashKey+"/"+iso(start)+(step===1?"/1h":"");
+  // location.hash= だと検索のたびに履歴エントリが1つ積まれる。hashchange を購読していないので
+  // 戻っても再描画されず、「URLは前の山・表は今の山」というズレが残る(その状態で共有・
+  // スクショされると実害になる)。トップへ戻るのに検索回数ぶん戻る操作が要る点も不便。
+  // 共有用にURLは更新しつつ履歴は積まない replaceState に統一する。
+  // 履歴エントリを差し替えないので、一覧由来の印(history.state.pwFromFind)もそのまま残るが、
+  // 念のため下で焼き直す(state を持たない経路から来た場合の保険)。
+  try{history.replaceState(history.state,"",newHash)}catch(e){location.hash=newHash}
   pwStampFindEntry();
-  out.scrollIntoView({behavior:"smooth"}); // 結果の先頭へ移動して予報をすぐ見られるように
+  // 結果の先頭へ移動して予報をすぐ見られるように。
+  // CSS 側では @media(prefers-reduced-motion) を見ているので、JS のスクロールも合わせる
+  out.scrollIntoView({behavior:matchMedia("(prefers-reduced-motion:reduce)").matches?"auto":"smooth"});
 }
 
 // ---- フォーム制御 ----
+// resolveLocal は完全一致が無いと部分一致に落ちるので、「岳」「山」のような一般語では
+// 数百件になりうる(内蔵DBには 月山 ⊂ 月山(栃木) のような包含関係が26組ある)。
+// 全部ボタンにすると縦に伸びて選べないので、上位だけ出して絞り込みを促す。
+const CAND_MAX=30;
 function showCandidates(list){
   const c=document.getElementById("cands");
-  c.innerHTML="<b>複数の候補があります。選んでください:</b>"+list.map((m,i)=>
-    `<button data-i="${i}">${esc(m.name)}（${esc(m.pref)}） 標高${m.elev==null?"?":Math.round(m.elev)}m</button>`).join("");
-  c.querySelectorAll("button").forEach(b=>b.onclick=()=>{c.innerHTML="";go(list[+b.dataset.i])});
+  const shown=list.slice(0,CAND_MAX);
+  c.innerHTML="<b>複数の候補があります。選んでください:</b>"+shown.map((m,i)=>
+    `<button data-i="${i}">${esc(m.name)}（${esc(m.pref)}） 標高${m.elev==null?"?":Math.round(m.elev)}m</button>`).join("")
+    +(list.length>CAND_MAX
+      ?`<p class="hint">ほか${list.length-CAND_MAX}件。山名をもう少し詳しく入力するか、`
+       +`<a href="docs/mountains.html">対応山リスト</a>からお探しください。</p>`:"");
+  // 添字は shown 側で振っているので、参照も必ず shown から引くこと(list だとズレる)
+  c.querySelectorAll("button").forEach(b=>b.onclick=()=>{c.innerHTML="";go(shown[+b.dataset.i])});
 }
 // 実行中は検索・GPSの両ボタンを無効化する (同時実行で途中経過の表示が混ざるのを防ぐ)
 const runBtns=()=>[document.getElementById("go"),document.getElementById("gps")];
@@ -1233,7 +1374,8 @@ async function go(mt){
   runBtns().forEach(b=>b.disabled=true);
   try{await run(mt);trackSearch(term,"success")}
   catch(e){
-    status.className="err";status.textContent=e.message+" — 時間をおいて再度お試しください";
+    // apiJson が既に利用者向けの文面(対処つき)に変換しているのでそのまま出す
+    status.className="err";status.textContent=e.message;
     trackSearch(term,"error");
   }
   finally{runBtns().forEach(b=>b.disabled=false)}
@@ -1264,6 +1406,21 @@ document.getElementById("f").onsubmit=async e=>{
   }catch(e){status.className="err";status.textContent=e.message;trackSearch(name,"error")}
 };
 
+// ---- 日本域の判定 ----
+// Open-Meteo の /v1/jma はドメイン外の座標でも 400 を返さず、全球モデルの値を 200 で返す
+// (実測: パリ 48.85/2.35 で weather_code も 925hPa 風も全時刻ぶん返ってくる。
+//  欠けるのは 800hPa など一部の面だけで、表としては普通に成立してしまう)。
+// つまり海外の座標でも「気象庁モデルの予報」として描けてしまい、画面の表示と
+// データの出どころが食い違う。CLAUDE.md の「存在しない項目を投げても400にならず
+// 全nullで返る」と同じ落とし穴の座標版で、エラーが出ないぶん気づきにくい。
+//
+// 山名DB(604座)は緯度 24.43〜45.18 / 経度 124.18〜145.12 に収まるので、座標を外から
+// 受け取る2経路(GPS現在地・座標指定)だけをここで止める。余裕をみた範囲にしてある。
+const JP_LAT=[20,46.5],JP_LON=[122,154];
+const inJapan=(lat,lon)=>Number.isFinite(lat)&&Number.isFinite(lon)&&
+  lat>=JP_LAT[0]&&lat<=JP_LAT[1]&&lon>=JP_LON[0]&&lon<=JP_LON[1];
+const OUT_OF_JP="本サービスは日本国内（気象庁モデルの対象領域）専用です。日本国内の地点でお試しください";
+
 // ---- GPS現在地の予報 ----
 // GPS高度は誤差が大きいため使わず、DB整備スクリプトと同じ Open-Meteo Elevation API の
 // 地形モデル(DEM)標高を採用する。あとは既存の go() に座標を渡すだけで山と同じ予報が出る。
@@ -1282,6 +1439,12 @@ function loadMuniTable(){
     document.head.appendChild(s);
   });
 }
+// 市町村名は表示上の飾り(失敗しても「現在地」と出るだけ)。国土地理院が遅い日に
+// 予報全体をそれで待たせないよう、短いタイムアウトで打ち切って null に倒す。
+const MUNI_TIMEOUT_MS=4000;
+const muniOrNull=(lat,lon)=>Promise.race([
+  muniName(lat,lon).catch(()=>null),
+  new Promise(res=>setTimeout(()=>res(null),MUNI_TIMEOUT_MS))]);
 async function muniName(lat,lon){
   const d=await apiJson("https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress",{lat,lon},1);
   const cd=d.results?.muniCd;
@@ -1304,10 +1467,11 @@ async function locateAndGo(){
     const pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,
       {enableHighAccuracy:true,timeout:15000,maximumAge:60000}));
     const lat=pos.coords.latitude,lon=pos.coords.longitude;
+    if(!inJapan(lat,lon))throw new Error(OUT_OF_JP);
     status.textContent="現在地の標高を取得中…";
     const[elevData,muni]=await Promise.all([
       apiJson("https://api.open-meteo.com/v1/elevation",{latitude:lat,longitude:lon}),
-      muniName(lat,lon).catch(()=>null)]);
+      muniOrNull(lat,lon)]);
     const elev=elevData.elevation?.[0];
     if(!Number.isFinite(elev))throw new Error("現在地の標高を取得できませんでした");
     await go({name:muni?`現在地（${muni}）`:"現在地",pref:"",lat,lon,elev,here:true});
@@ -1330,23 +1494,26 @@ async function locateCoordAndGo(lat,lon,elevManual){
   if(!pwGateOk())return; // inert 非対応ブラウザ対策の多重防御
   const status=document.getElementById("status");
   document.getElementById("cands").innerHTML="";document.getElementById("out").innerHTML="";
+  // 共有URLのハッシュから直接呼ばれる経路なので、point.html 側の検証を通っていない
+  // 座標も届きうる。API を叩く前にここで止める。
+  if(!inJapan(lat,lon)){status.className="err";status.textContent=OUT_OF_JP;return}
   runBtns().forEach(b=>b.disabled=true);
   status.className="";status.textContent="標高を取得中…";
   try{
     let elev=elevManual;
-    const muniP=muniName(lat,lon).catch(()=>null);
+    const muniP=muniOrNull(lat,lon);
     if(elev==null){
       const elevData=await apiJson("https://api.open-meteo.com/v1/elevation",{latitude:lat,longitude:lon});
       elev=elevData.elevation?.[0];
       if(!Number.isFinite(elev))throw new Error("指定地点の標高を取得できませんでした");
     }
     const muni=await muniP;
-    const customLabel=sessionStorage.getItem("pw-coord-label");
-    sessionStorage.removeItem("pw-coord-label");
+    const customLabel=pwSLoad("pw-coord-label");
+    pwSDrop("pw-coord-label");
     const name=customLabel||(muni?`指定地点（${muni}）`:"指定地点");
     await go({name,pref:"",lat,lon,elev,coord:true,elevManual:elevManual!=null});
   }catch(e){
-    status.className="err";status.textContent=e.message+" — 時間をおいて再度お試しください";
+    status.className="err";status.textContent=e.message;
     trackSearch("(座標指定)","error"); // 座標そのものは送らない
   }finally{runBtns().forEach(b=>b.disabled=false)}
 }
@@ -1359,7 +1526,12 @@ async function locateCoordAndGo(lat,lon,elevManual){
 function applyHash(){
   // inert 非対応ブラウザや直接呼び出しに備え、実行入口すべてでゲートを再確認する(多重防御)
   if(!pwGateOk())return;
-  const hash=decodeURIComponent(location.hash.slice(1));
+  // 共有URLが途中で切れると "#%E7%87%95%E5%B2" のような不正エスケープになり、
+  // decodeURIComponent が URIError を投げる(LINE・メールでのURL共有で現実に起きる)。
+  // ここは初期化ブロックと同意チェックから try 無しで呼ばれるので、落とさず生文字列に倒す。
+  let hash;
+  try{hash=decodeURIComponent(location.hash.slice(1))}
+  catch(e){hash=location.hash.slice(1)}
   if(!hash)return;
   // 形式: 山名/日付[/1h] (旧形式 山名/日付/日数/フラグ の余分なセグメントは無視)
   const[nm,dt2,seg3]=hash.split("/");
@@ -1412,8 +1584,8 @@ function applyHash(){
   if(pwIsAgreed())agreeBox.checked=true;
   sync();
   agreeBox.addEventListener("change",()=>{
-    if(agreeBox.checked)localStorage.setItem(PW_AGREE_KEY,"1");
-    else localStorage.removeItem(PW_AGREE_KEY);
+    if(agreeBox.checked)pwSave(PW_AGREE_KEY,"1");
+    else pwDrop(PW_AGREE_KEY);
     sync();
     applyHash();
   });
@@ -1424,7 +1596,7 @@ function applyHash(){
     authBtn.disabled=true;authMsg.hidden=true;
     try{
       if(await pwHashAuthCode(authIn.value)===PW_AUTH_HASH){
-        localStorage.setItem(PW_AUTH_KEY,PW_AUTH_VER);
+        pwSave(PW_AUTH_KEY,PW_AUTH_VER);
         authIn.value="";
         sync();
         applyHash();
@@ -1496,7 +1668,8 @@ document.querySelector(".hero-cta").addEventListener("click",e=>{
 
 // 初期化: 開始日の選択肢(今日〜10日先・曜日つき)を生成、URLハッシュ復元
 {
-  const today=new Date(),di=document.getElementById("mdate");
+  // 選択肢も JST の今日から並べる(run() の today と必ず同じ基準にすること)
+  const today=jstToday(),di=document.getElementById("mdate");
   for(let i=0;i<JMA_DAYS;i++){
     const d=addDays(today,i),o=document.createElement("option");
     o.value=iso(d);

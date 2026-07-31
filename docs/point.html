@@ -2,12 +2,12 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>座標を指定して予報を取得 — PeakWeather</title>
 <meta name="description" content="国土地理院の地理院地図などで調べた緯度経度を貼り付けると、その地点の山岳気象予報を表示します。">
 <link rel="icon" type="image/png" href="../icons/favicon-32.png">
 <meta name="theme-color" content="#1e2d4a">
-<script src="../gate.js"></script>
+<script src="../gate.js?v=2026"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -167,12 +167,23 @@ const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${Str
 const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
 const md=d=>`${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")}`;
 const WJA="日月火水木金土";
+// 気象庁モデルの予報長。index.html の JMA_DAYS と必ず同じ値にすること
+// (ここが大きいと、選べる日付が本体側で「予報範囲外」になる)
+const JMA_DAYS=11;
+// 「今日」は必ず日本時間で決める。端末ローカルの日付で作ると TZ が JST でない端末で
+// 1日ずれ、渡した日付が本体側の選択肢に無く「今日扱い」に落ちる
+// (index.html の jstToday と同一。片方だけ直さないこと)
+const JST_YMD=new Intl.DateTimeFormat("en-CA",
+  {timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"});
+function jstToday(){
+  const[y,m,dd]=JST_YMD.format(new Date()).split("-").map(Number);
+  return new Date(y,m-1,dd);
+}
 
-// 開始日の選択肢(今日〜10日先・曜日つき。index.html本体と同じ生成方法。
-// 日数は気象庁モデルの予報長11日に合わせている: index.html の JMA_DAYS と揃えること)
+// 開始日の選択肢(今日〜10日先・曜日つき。index.html本体と同じ生成方法)
 {
-  const today=new Date(),di=document.getElementById("mdate");
-  for(let i=0;i<11;i++){
+  const today=jstToday(),di=document.getElementById("mdate");
+  for(let i=0;i<JMA_DAYS;i++){
     const d=addDays(today,i),o=document.createElement("option");
     o.value=iso(d);
     o.textContent=`${md(d)}(${WJA[d.getDay()]})${i===0?" 今日":i===1?" 明日":""}`;
@@ -201,8 +212,12 @@ document.getElementById("f").addEventListener("submit",e=>{
   const parsed=extractLatLon(raw);
   if(!parsed){status.className="err";status.textContent="緯度・経度を読み取れませんでした。数値または地理院地図のURLを貼り付けてください";return}
   const[lat,lon]=parsed;
-  if(!(lat>=-90&&lat<=90)||!(lon>=-180&&lon<=180)){
-    status.className="err";status.textContent="緯度・経度の値が範囲外です。入力内容をご確認ください";return}
+  // Open-Meteo の /v1/jma は日本域外の座標でも 400 を返さず全球モデルの値を 200 で返すため、
+  // 全世界を許すと「気象庁モデル」と称して別モデルの予報を出すことになる(実測で確認)。
+  // 出せる範囲をここで限定する(index.html の inJapan と同一の範囲。片方だけ変えないこと)
+  if(!(lat>=20&&lat<=46.5)||!(lon>=122&&lon<=154)){
+    status.className="err";
+    status.textContent="日本国内の緯度・経度を入力してください（本サービスは気象庁モデルの対象領域専用です）";return}
 
   const elevRaw=document.getElementById("elev").value.trim();
   let elev=null;
@@ -212,13 +227,15 @@ document.getElementById("f").addEventListener("submit",e=>{
       status.className="err";status.textContent="標高の値が範囲外です。空欄にすると自動取得します";return}
   }
 
+  // sessionStorage は Cookie を全ブロックした端末では例外を投げるため、
+  // gate.js のラッパ(保存できなければメモリへ倒す)を必ず通す
   const label=document.getElementById("label").value.trim();
-  if(label)sessionStorage.setItem("pw-coord-label",label);
-  else sessionStorage.removeItem("pw-coord-label");
+  if(label)pwSSave("pw-coord-label",label);
+  else pwSDrop("pw-coord-label");
 
   // 遷移先(index.html)に「座標指定から来た」ことを1回だけ伝える。
   // 戻り導線の出し分けとアクセス解析の入口集計に使う(index.html側で読んだら即削除される)
-  sessionStorage.setItem("pw_entry","point");
+  pwSSave("pw_entry","point");
 
   const date=document.getElementById("mdate").value;
   const step=document.querySelector('input[name="mstep"]:checked').value;
