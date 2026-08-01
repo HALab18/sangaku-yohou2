@@ -5,16 +5,25 @@
 
 ---
 
-## ▶ 次の再開ポイント: ver 2.14β を公開する（2026-08-01）
+## ▶ 次の再開ポイント: ver 2.14β の実機確認と、判定ロジックの自動テスト（2026-08-01）
 
 **現状**: 品質監査（Staff SWE/QA 視点の全数レビュー）で見つかった異常系の欠落を
-`ver 2.14β` としてまとめて修正した。**ブランチ上で未公開**。
-検証はローカル（`http://localhost:8765`）で完了、`check_mountains.py` も通っている。
+`ver 2.14β` としてまとめて修正し、**公開済み**。
+`d3d1322..f43fed8` を master へ fast-forward、`pages build and deployment` は success。
+ローカル `origin/master` = `f43fed8`。
+
+公開後に本番URLへ実施した確認:
+- index / docs/find.html / docs/point.html / manifest.json / `gate.js?v=2026` すべて 200
+- フッターが `Ver.2.14β`、`jstToday` / `find8:` / `CACHE_TTL_MS=30*60*1000` / `viewport-fit=cover` が配信物に存在
+- 存在しないパスで **HTTP 404 + 新設した日本語 404.html** が返る
 
 **次にやること**:
-1. 公開: `git push origin <作業ブランチ>:master` → 数分後に GitHub Pages へ反映
-2. `gh run list --repo HALab18/sangaku-yohou2 --limit 3` で success を確認
-3. 実機（iPhone Safari / Android Chrome）で 山名検索・現在地・山さがし を一巡
+1. **実機確認（未実施・これが最優先）**: ローカルでは位置情報の許可が出せず、
+   **📍現在地の予報の通し確認ができていない**。今回この経路には日本域ガード（`inJapan`）と
+   市町村名の4秒打ち切り（`muniOrNull`）を入れたので、iPhone Safari / Android Chrome で
+   GPS取得 → 標高取得 → 市町村名表示 → 予報表示 を一度通すこと。
+   ホーム画面に追加した状態（PWA）でのアイコンとセーフエリアも合わせて見る。
+2. 判定ロジックの自動テスト（下記「未着手」の筆頭）に着手する。
 
 **未着手（監査で挙げたが今回入れていないもの）**:
 - **CSP（`<meta http-equiv="Content-Security-Policy">`）**: 外部読み込みは gtag.js と
@@ -36,7 +45,7 @@
 
 ## 品質監査と異常系の修正 / ver 2.14β（2026-08-01）
 
-**→ 未公開**（ブランチ上）。
+**→ 公開済み**（`f43fed8` を master へ fast-forward。Pages ビルド success）。
 
 ### やったこと
 
