@@ -1440,32 +1440,6 @@ async function run(mt){
       +modes.map(m=>`${m}(${thTxt[m]})`).join(" / ")
       +(modes.length>1?"（日ごとに山頂気温を見て切り替わります）":"")+`</p>`;
   }
-  // 上空の寒気。寒気の強さは冬型の荒れ方と夏の不安定度の両方を規定するが山頂気温では読めない
-  {
-    const UP=[["temperature_850hPa","850hPa(約1500m)"],["temperature_700hPa","700hPa(約3000m)"],
-      ["temperature_500hPa","500hPa(約5500m)"]];
-    const sc=v=>{const r=Math.round(v);return r===0?"0℃":(r>0?"+":"")+r+"℃"};
-    const urows=[];
-    for(let dt2=new Date(today);dt2<=fetchEnd;dt2=addDays(dt2,1)){
-      const ds=iso(dt2);
-      const ii=dayIdx(times,ds).filter(i=>{const hr=+times[i].slice(11,13);return hr>=9&&hr<=15});
-      if(!ii.length)continue;
-      const cells=UP.map(([k])=>{const vs=ii.map(i=>h[k]?.[i]).filter(v=>v!=null);
-        return vs.length?sc(vs.reduce((a,b)=>a+b,0)/vs.length):"-"});
-      if(cells.some(c=>c!=="-"))urows.push([dt2,cells]);
-    }
-    if(urows.length){
-      htmlOut+=`<h2>上空の寒気(日中9〜15時の平均)</h2>${cap}<div class="tbl"><table>
-        <tr><th>日付</th>${UP.map(u=>`<th>${u[1]}</th>`).join("")}</tr>`;
-      for(const[dt3,cells]of urows)
-        htmlOut+=`<tr><td>${md(dt3)}${wj(dt3)}</td>${cells.map(c=>`<td>${c}</td>`).join("")}</tr>`;
-      htmlOut+=`</table></div><ul class="meta">
-        <li>500hPa(上空約5500m)は大気の不安定度の目安。気象庁の雷注意報では夏-6℃以下・冬-36℃以下が発雷しやすい目安とされます</li>
-        <li>850hPa(上空約1500m)は冬型の強さの目安。-6℃以下で平地でも雪、-12℃以下で日本海側は大雪になりやすい</li>
-        <li>A/B/C判定には使いません(気圧配置を自分で読むための参考値です)</li></ul>`;
-    }
-  }
-
   // 詳細 (表示間隔 step=3 or 1)
   for(let dt2=new Date(start);dt2<=detailEnd;dt2=addDays(dt2,1)){
     const ds=iso(dt2),idxs=dayIdx(times,ds);if(!idxs.length)continue;
@@ -1571,6 +1545,34 @@ async function run(mt){
         }
       }
       htmlOut+=`</table></div>`;
+    }
+  }
+
+  // 上空の寒気。寒気の強さは冬型の荒れ方と夏の不安定度の両方を規定するが山頂気温では読めない。
+  // 行動判断に直結する表(見通し・詳細・モデル比較)を先に読ませ、気圧配置を自分で読むための
+  // 参考値はモデル間比較の下にまとめる。
+  {
+    const UP=[["temperature_850hPa","850hPa(約1500m)"],["temperature_700hPa","700hPa(約3000m)"],
+      ["temperature_500hPa","500hPa(約5500m)"]];
+    const sc=v=>{const r=Math.round(v);return r===0?"0℃":(r>0?"+":"")+r+"℃"};
+    const urows=[];
+    for(let dt2=new Date(today);dt2<=fetchEnd;dt2=addDays(dt2,1)){
+      const ds=iso(dt2);
+      const ii=dayIdx(times,ds).filter(i=>{const hr=+times[i].slice(11,13);return hr>=9&&hr<=15});
+      if(!ii.length)continue;
+      const cells=UP.map(([k])=>{const vs=ii.map(i=>h[k]?.[i]).filter(v=>v!=null);
+        return vs.length?sc(vs.reduce((a,b)=>a+b,0)/vs.length):"-"});
+      if(cells.some(c=>c!=="-"))urows.push([dt2,cells]);
+    }
+    if(urows.length){
+      htmlOut+=`<h2>上空の寒気(日中9〜15時の平均)</h2>${cap}<div class="tbl"><table>
+        <tr><th>日付</th>${UP.map(u=>`<th>${u[1]}</th>`).join("")}</tr>`;
+      for(const[dt3,cells]of urows)
+        htmlOut+=`<tr><td>${md(dt3)}${wj(dt3)}</td>${cells.map(c=>`<td>${c}</td>`).join("")}</tr>`;
+      htmlOut+=`</table></div><ul class="meta">
+        <li>500hPa(上空約5500m)は大気の不安定度の目安。気象庁の雷注意報では夏-6℃以下・冬-36℃以下が発雷しやすい目安とされます</li>
+        <li>850hPa(上空約1500m)は冬型の強さの目安。-6℃以下で平地でも雪、-12℃以下で日本海側は大雪になりやすい</li>
+        <li>A/B/C判定には使いません(気圧配置を自分で読むための参考値です)</li></ul>`;
     }
   }
 

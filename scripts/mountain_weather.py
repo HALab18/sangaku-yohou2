@@ -1460,7 +1460,6 @@ def main():
         dates = [today + dt.timedelta(days=i) for i in range(n_days)]
         rows = daily_summary_rows(data, dates, elev)
         print_daily_summary(rows, f"{JMA_DAYS}日間の見通し", has_snow, elev)
-        print_upper_cold(data, dates)
 
         d = start
         while d <= detail_end:
@@ -1468,6 +1467,9 @@ def main():
             d += dt.timedelta(days=1)
 
         compare_models(lat, lon, elev, start, detail_end)
+        # 上空の寒気はモデル間比較の下に置く。行動判断に直結する表(見通し・詳細)を先に読ませ、
+        # 気圧配置を自分で読むための参考値は後ろにまとめる。
+        print_upper_cold(data, dates)
 
         print("\n> ⚠️ 数値予報は山岳地形では誤差が大きく、局地的な突風・雷雨・視界不良は表現しきれません。"
               "登山指数は目安です。最終判断は最新の予報と現地の状況で行ってください。")
