@@ -228,6 +228,9 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
 .v-ex{color:#1c5b3f;font-weight:700}.v-ok{color:#2d6a4f}.v-so{color:#7b5e00}.v-ng{color:#a03415}
 .sat{color:#1857a4;font-weight:600}.sun{color:#c0392b;font-weight:600}
 .ew{color:#a03415;font-weight:700;font-size:.85em;white-space:nowrap}
+/* 指数の降格理由・濡れ注意・雨雪の別。数値の読み取りを邪魔しないよう小さく下段に置く。
+   色は .ew と同系にして「注意を促す情報」であることを揃える。 */
+.dr{display:block;font-size:.76em;color:#a03415;font-weight:700;margin-top:2px;line-height:1.3;white-space:nowrap}
 .wxnote{display:block;font-size:.78em;color:#6b7280;margin-top:2px;line-height:1.3}
 /* 詳細表の見出し直下に出す控えめなキャプション(山名とデータ取得日時)。スクショを切り取っても
    どの山のいつの取得か分かるようにするため。目立たせない */
@@ -499,7 +502,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.14β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.15β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -569,11 +572,36 @@ let fromHashSubmit=false;
 // ---- 定数 (scripts/mountain_weather.py と同一ロジック) ----
 // LEVELS[i]=[気圧面hPa, 標準高度m]。500m台の里山から3800m級までを6面でカバー。
 const LEVELS=[[925,760],[900,990],[850,1460],[800,1950],[700,3010],[600,4200]];
-// 気圧面の最下端は 925hPa = 標準高度760m。それより低い標高は「最下面の生値」にクランプされる
-// ため、平地(現在地予報の市街地など)では上空760mの風がそのまま稜線風として出てしまう
-// (実測: 仙台市街で 925hPa 7.5m/s に対し地上10m風 0.6m/s)。標高 LOW_ELEV 未満は地形の影響が
-// 支配的で気圧面からの推定が成り立たないので、補間をやめて地上10m風をそのまま使う。
-const LOW_ELEV=100;
+// 気圧面の最下端は 925hPa = 標準高度760m。ここに地上10m風を「高度10mの面」として足し、
+// 標高760m未満は地上風と925hPaの間で内挿する (ridgeWind)。こうしないと 760m 未満が
+// すべて 925hPa の生値にクランプされ、平地・低山で上空760mの風がそのまま稜線風として出る
+// (実測: 仙台市街で 925hPa 7.5m/s に対し地上10m風 0.6m/s)。内蔵DBでは標高100〜760mに76座あり、
+// 旧実装ではこの帯が丸ごと過大評価だった(実測: 衣張山122m で最大13.3→5.9m/s)。
+const SURFACE_WIND_M=10;   // 地上10m風を内挿の最下点として扱う高度
+const LOW_ELEV=100;        // 列見出しを「地上風(10m)」に変える境界
+const BLEND_ELEV=760;      // 内挿に地上風が混ざる上限(925hPaの標準高度)。未満の山には注記を出す
+// ---- 夏冬モードを冬側へ倒す気温しきい値 (references/criteria.md「夏冬モードの切替」) ----
+// 月ベース(6〜10月=夏)を残したまま、寒い日だけ冬モードへ倒す。安全側にのみ効かせるため、
+// 冬モードから夏モードへ戻す条件は設けない。純粋な気温ベースにすると 5月の北ア(日中+2〜5℃)が
+// 夏モードに落ちて現行より甘くなるため、月ベースは残す必要がある。
+const WINTER_TMAX=0, WINTER_TMIN=-3;
+const ACT_HOURS=[5,17];    // 行動時間帯。日別指数とモード判定の対象
+// ---- 降格条件のしきい値 (references/criteria.md「降格条件」) ----
+const WET_HYPO_TEMP=10, WET_HYPO_PRECIP=1.0, WET_HYPO_WIND_B=8, WET_HYPO_WIND_C=12;
+const FEELS_B=-20, FEELS_C=-30;
+const VIS_LOW=200, VIS_LOW_WIND=10;
+const WET_PRECIP=0.1;      // 「濡れ注意」を出す最小の降水量
+// 濡れ注意を出す気温の上限。D1 の 10℃ より高くしてあるのは意図的で、表示専用の値。
+// 風冷指数は10℃超で適用外になり「体感=気温」を返す。つまり気温10〜15℃の帯は
+// **体感の数字が冷えを一切表さなくなる**(実測: 飯豊山で気温13.8℃・稜線風17m/s・雨1.9mm でも
+// 体感13.8℃と表示される)。数字が穏やかに見える帯こそ濡れ+風の低体温が起きるので印で補う。
+// 判定(D1)のしきい値は 10℃ のまま(15℃に上げても4山×11日で判定の変化はゼロだった)。
+const WET_WARN_TEMP=15;
+// 視程が欠測のとき ◎(展望良好) を抑止する相対湿度。実測で山頂のRHは中央値89〜91%と高めに
+// 出るため、飽和に近い95%を境にする。視程が取れているときは使わない。
+const VIEW_RH_GATE=95;
+// 周辺CAPE を見る方位オフセット(度)。緯度0.25度 ≒ 28km / 経度0.25度 ≒ 22km(北緯36度)。
+const CAPE_NEIGHBOR_DEG=0.25;
 const WMO={0:"快晴",1:"晴れ",2:"晴れ時々曇り",3:"曇り",45:"霧",48:"着氷性の霧",
  51:"霧雨(弱)",53:"霧雨",55:"霧雨(強)",56:"着氷性霧雨",57:"着氷性霧雨(強)",
  61:"雨(弱)",63:"雨",65:"雨(強)",66:"着氷性の雨",67:"着氷性の雨(強)",
@@ -591,8 +619,9 @@ const FORECAST_URL="https://api.open-meteo.com/v1/forecast";
 const JMA_DAYS=11;
 // 気象庁モデルに存在しない項目。JMA_URL に投げても 400 にはならず全て null で返るため、
 // 「エラーが出ないから取れている」と誤解しやすい。必ず FORECAST_URL 側から補完する。
+// freezing_level_height は実測で気象庁モデルは全期間 null、FORECAST_URL は 264/264 取得できた。
 const SUPPLEMENT_HOURLY=["precipitation_probability","wind_gusts_10m",
-  "cape","convective_inhibition","visibility","snow_depth"];
+  "cape","convective_inhibition","visibility","snow_depth","freezing_level_height"];
 const SUPPLEMENT_DAILY=["precipitation_probability_max"];
 // extra の系列を base の time 軸に「時刻をキーにして」貼り直す(CLI版 _merge_series と同じ)。
 // 2本のAPIは end_date のクランプ結果が食い違いうるので、添字が揃っている前提を置かない。
@@ -834,8 +863,11 @@ function interpWind(pts,elev){
 // 標高 LOW_ELEV 未満は気圧面補間をせず地上10m風をそのまま返す(平地で上空760mの風が出るのを
 // 避ける)。突風 wind_gusts_10m と同じ高度なので表の中でも整合する。欠測は現行同様 null に倒す。
 function ridgeWind(h,i,elev){
-  if(elev<LOW_ELEV)return[h.wind_speed_10m?.[i]??null,h.wind_direction_10m?.[i]??null];
   const pts=[],dirs=[];
+  // 地上10m風を「高度10mの面」として内挿の最下点に置く。925hPa(760m)より低い標高が
+  // 最下面の生値にクランプされるのを防ぐため。標高100m の不連続な切り替えも同時に消える。
+  const s10=h.wind_speed_10m?.[i];if(s10!=null)pts.push([SURFACE_WIND_M,s10]);
+  const dd10=h.wind_direction_10m?.[i];if(dd10!=null)dirs.push([SURFACE_WIND_M,dd10]);
   for(const[p,z]of LEVELS){
     const s=h[`wind_speed_${p}hPa`]?.[i];if(s!=null)pts.push([z,s]);
     const dd=h[`wind_direction_${p}hPa`]?.[i];if(dd!=null)dirs.push([z,dd]);
@@ -845,11 +877,24 @@ function ridgeWind(h,i,elev){
     :null;
   return[interpWind(pts,elev),dir];
 }
-function seasonTh(month){
-  // 夏山(6-10月)/冬山・残雪期(11-5月)で風速・降水の閾値を切替
-  return month>=6&&month<=10
-    ?{mode:"夏山",wind:[10,15],precip:[1,5]}
-    :{mode:"冬山・残雪期",wind:[8,12],precip:[1,3]};
+// 夏冬モードの判定に使う気温 (行動時間帯 5〜17時の最高・最低)。
+// 1日全体の最低気温を使ってはいけない。3000m級では真夏でも明け方に -3℃ を下回ることがあり
+// (実測: 富士山の8月)、行動時間帯は5℃前後なのに日中の判定まで冬モードに倒れる。
+function modeTemps(h,times,idxs){
+  const act=idxs.filter(i=>{const hr=+times[i].slice(11,13);return hr>=ACT_HOURS[0]&&hr<=ACT_HOURS[1]});
+  const vs=act.map(i=>h.temperature_2m?.[i]).filter(v=>v!=null);
+  return vs.length?[Math.max(...vs),Math.min(...vs)]:[null,null];
+}
+function seasonTh(month,tmax,tmin){
+  // 夏山(6-10月)/冬山・残雪期(11-5月)で風速・降水の閾値を切替。
+  // 月ベースを基本にしつつ、夏の月でも「日最高<0℃」または「日最低<-3℃」なら冬モードへ倒す。
+  // 月だけで切り替えると、北海道の9月下旬や3000m級の9月下旬〜10月が夏モード(風15m/sでC)の
+  // ままになり、実質的な冬の稜線を甘く判定するため。冬→夏に戻す条件は設けない(安全側のみ)。
+  let winter=!(month>=6&&month<=10);
+  if(!winter&&((tmax!=null&&tmax<WINTER_TMAX)||(tmin!=null&&tmin<WINTER_TMIN)))winter=true;
+  return winter
+    ?{mode:"冬山・残雪期",wind:[8,12],precip:[1,3]}
+    :{mode:"夏山",wind:[10,15],precip:[1,5]};
 }
 // 合計。ただし有効値が1つも無ければ null を返す(mountain_weather.py の sum_or_none と同一)。
 // `(v||0)` の合計だと「0mm」と「データ無し」が区別できず、欠測が「降水量0mm＝好条件」に化ける。
@@ -857,17 +902,66 @@ function sumOrNull(vals){
   const vs=vals.filter(v=>v!=null);
   return vs.length?vs.reduce((a,b)=>a+b,0):null;
 }
-function blockIndex(ws,pr3,th){
-  // 判定は稜線風と降水量の2項目のみ。降水確率は参考表示。
-  // 雷(CAPE)は局地性が高く登山可否とは性質が異なるため指数に含めず、発雷リスクとして独立表示する
-  // 両方とも欠測なら「判定不能」= null。ここで A を返すと、データが無いだけの時間帯が
+const RANK={A:0,B:1,C:2};
+// 3時間ブロックの登山指数。[A/B/C, 降格理由] を返す。判定材料が無ければ [null,""]。
+// 主判定は稜線風と降水量の2項目のみ。降水確率は参考表示。
+// 雷(CAPE)は局地性が高く登山可否とは性質が異なるため指数に含めず、発雷リスクとして独立表示する。
+// 主判定のあとに降格条件(D1 湿潤低体温 / D2 体感温度 / D4 視界不良)を安全側にのみ重ねる。
+// 風と降水だけでは、冬の-20℃・風7m/s(体感-32℃)や 夏の雨中12m/s が A のまま出てしまい、
+// 実際に低体温症・凍傷が起きる条件を「登山適」と表示してしまうため。
+// 降格理由は「主判定より悪い評価を出した条件」の名前。理由を出さずに B が出ると、
+// 風も雨も基準内なのに B になった説明が利用者に付かない。
+function blockIndex(ws,pr3,th,tempMin,feels,visMin){
+  // 主判定の材料が両方とも欠測なら「判定不能」。ここで A を返すと、データが無いだけの時間帯が
   // 「登山適」として表示され、安全と逆方向に誤解させる(Open-Meteo は非対応項目や予報期間外を
   // 400 ではなく null で返すため、欠測は現実に起こりうる)
-  if(ws==null&&pr3==null)return null;
+  if(ws==null&&pr3==null)return[null,""];
   let idx="A";const worse=v=>{if(v==="C"||idx==="C")idx="C";else if(v==="B")idx="B"};
   if(ws!=null){if(ws>=th.wind[1])worse("C");else if(ws>=th.wind[0])worse("B")}
   if(pr3!=null){if(pr3>=th.precip[1])worse("C");else if(pr3>=th.precip[0])worse("B")}
-  return idx;
+  // ---- 降格条件。優先度は 低体温 > 体感 > 視界 (先に立ったものが理由になる) ----
+  const dem=[];
+  // D1 湿潤低体温: 濡れ+風+低温。2009年トムラウシ(7月・気温8〜10℃・風20m/s・雨)の型。
+  // 夏でも起きるので季節に依存させない。
+  if(tempMin!=null&&pr3!=null&&ws!=null&&tempMin<=WET_HYPO_TEMP&&pr3>=WET_HYPO_PRECIP){
+    if(ws>=WET_HYPO_WIND_C)dem.push(["C","低体温"]);
+    else if(ws>=WET_HYPO_WIND_B)dem.push(["B","低体温"]);
+  }
+  // D2 体感温度: 凍傷リスク。体感温度(Apparent Temperature)は気温・風・湿度から算出する
+  if(feels!=null){
+    if(feels<=FEELS_C)dem.push(["C","体感"]);
+    else if(feels<=FEELS_B)dem.push(["B","体感"]);
+  }
+  // D4 視界不良: 地吹雪・ホワイトアウト。視程が欠測なら発火させない(欠測を危険側にも倒さない)。
+  // 降格先が C なのは、風10m/s が夏(閾値10)でも冬(閾値8)でも主判定で既に B 以上になるため。
+  // 「最低B」にすると一度も効かない死んだ条件になる。視程200m未満+風10m/s以上は
+  // ホワイトアウト+強風=行動不能に近く、C が実態に合う。
+  if(visMin!=null&&ws!=null&&visMin<VIS_LOW&&ws>=VIS_LOW_WIND)dem.push(["C","視界"]);
+  let reason="";
+  for(const[g,r]of dem)if(RANK[g]>RANK[idx]){idx=g;reason=r}
+  return[idx,reason];
+}
+// 指数セル。降格条件で落ちたときはその理由を併記する
+function idxCell(bi,reason){
+  if(bi==null)return"-";
+  return(IDX[bi]??"-")+(reason?`<span class="dr">${reason}</span>`:"");
+}
+// 濡れ+風+低温がそろっているか。D1 の手前(3h降水0.1〜1.0mm)の弱い降水を拾う印。
+// 体感温度は乾いた状態の値なので、濡れているときは表示より大きく下がる。
+// ★ 相対湿度は条件に使わない。実測で山頂のRHは中央値89〜91%、95%以上が23〜40%の時間を占め、
+//   視程45kmの快晴でも95%を超える。RHを条件にすると印がほぼ常時点灯し区別できなくなる。
+function wetWarn(temp,ws,pr3){
+  if(temp==null||ws==null||pr3==null)return false;
+  return temp<=WET_WARN_TEMP&&ws>=WET_HYPO_WIND_B&&pr3>=WET_PRECIP;
+}
+// 雨雪判別。雪片は0℃高度から落下する間に融けるので、雨雪の境界は0℃高度より下に出る。
+// 表示のみでA/B/C判定には使わない。冬モードの「3h降水3mm以上=C」は水換算なので、
+// 雨か雪かは表示側で補う必要がある(1℃の雨は-5℃の雪より低体温リスクが高いのに数字は同じ)。
+function precipPhase(fl,elev){
+  if(fl==null||elev==null)return null;
+  if(fl<elev-100)return"雪";
+  if(fl>elev+200)return"雨";
+  return"みぞれ";
 }
 // 発雷リスク(表示専用。A/B/C 指数の判定には使わない。mountain_weather.py の lightning_risk と同一)。
 // CAPE = 対流の「燃料」、CIN = 上昇を抑える「蓋」。燃料が多くても蓋が厚ければ発雷しにくい。
@@ -888,14 +982,29 @@ function lightningRisk(cape,cin){
   lv=Math.max(0,Math.min(3,lv));
   return{lv,label:LT_LABEL[lv]};
 }
-function feelsLike(temp,ws){
-  // 風冷指数(JAG/TI式)。風速4.8km/h未満は気温をそのまま採用
-  if(temp==null||ws==null)return temp;
-  const v=ws*3.6;
-  if(v<4.8)return temp;
-  return 13.12+0.6215*temp-11.37*v**0.16+0.3965*temp*v**0.16;
+// 体感温度: 豪州気象局の Apparent Temperature (Steadman)。気温・風・湿度から算出する。
+//   e  = (RH/100) × 6.105 × exp(17.27×T / (237.7+T))   … 水蒸気圧(hPa)
+//   AT = T + 0.33×e − 0.70×風速(m/s) − 4.00
+//
+// なぜ風冷指数(JAG/TI式)をやめたか: JAG/TI は「気温10℃以下・風速4.8km/h以上」でのみ有効で、
+// 式の構造上 +0.3965×T×V^0.16 の項が気温に比例して増えるため **約22℃超で気温より高い値**を返す
+// (気温25℃・風14m/s で 25.9℃)。かといって10℃で打ち切って気温を返すと、今度は
+// **10〜22℃の帯で冷却がまったく表現されない**(実測: 飯豊山で気温13.8℃・稜線風17m/s・雨でも
+// 体感13.8℃)。しかも10℃境界で不連続になる(10.0℃→5.5℃ / 11.0℃→11.0℃)。
+// どちらも誤った印象を与えるので、全温度域で有効な AT に置き換えた。
+// 寒冷域では JAG/TI とよく一致する(-15℃・12m/s で -27.8 vs -27.0)。
+//
+// 高温多湿では体感が気温を上回る(30℃・RH90%・微風で 37.2℃)。湿度で熱が逃げないことを表す
+// 正しい挙動なので min(f,temp) のような抑えは入れない。日射は考慮しない(日なたでは涼しめに出る)。
+// 材料が1つでも欠測なら null(「-」表示)。気温をそのまま返すと欠測だと気づけない。
+function feelsLike(temp,ws,rh){
+  if(temp==null||ws==null||rh==null)return null;
+  const e=(rh/100)*6.105*Math.exp(17.27*temp/(237.7+temp));
+  return temp+0.33*e-0.70*ws-4.00;
 }
-function viewScore(elev,low,mid,pr3,vis){
+// rh(相対湿度)は視程が欠測のときだけ使う。視程欠測でも雲量が少なければ ◎ が出るため、
+// 「データが無い」が「展望良好」に化けるのを防ぐ代替材料として置いている。
+function viewScore(elev,low,mid,pr3,vis,rh){
   // 判定材料(雲量・視程・降水)が1つも無ければ null。全部欠測のまま進むと
   // 「雲量0扱い・視程不明」で ◎(展望良好) が出てしまい、データが無いだけの時間帯を好条件と誤解させる
   if(low==null&&mid==null&&vis==null&&pr3==null)return null;
@@ -906,7 +1015,11 @@ function viewScore(elev,low,mid,pr3,vis){
   if(summit!=null&&summit>=80)return["✕","ガス"];
   if((summit!=null&&summit>=50)||(vis!=null&&vis<10000))return["△",""];
   const unkai=below!=null&&below>=60&&(summit??0)<=30;
-  if((summit??0)<=20&&(vis==null||vis>=20000))return["◎",unkai?"雲海":""];
+  if((summit??0)<=20&&(vis==null||vis>=20000)){
+    // 視程が欠測のときは相対湿度で裏を取る。高湿ならガスの可能性があるので ◎ にしない
+    if(vis==null&&rh!=null&&rh>=VIEW_RH_GATE)return["○",unkai?"雲海":""];
+    return["◎",unkai?"雲海":""];
+  }
   return["○",unkai?"雲海":""];
 }
 const visTxt=vis=>vis==null?null:vis>=1000?`${Math.round(vis/1000)}km`:`${Math.round(vis)}m`;
@@ -1042,9 +1155,12 @@ async function run(mt){
   // 気圧面は常に6面すべて取得する。どの面が配信されるかはリクエスト前には分からず
   // (無い面は 400 ではなく全 null で返る)、標高から2面に絞ると GSM 期間に補間できなくなる。
   // 1山1リクエストなのでペイロード増は軽微。
-  const hourly=["temperature_2m","precipitation","weather_code",
+  const hourly=["temperature_2m","relative_humidity_2m","precipitation","weather_code",
     "cloud_cover_low","cloud_cover_mid","cloud_cover_high",
     "wind_speed_10m","wind_direction_10m","snowfall",
+    // 上空の寒気。実測で気象庁モデルは 850/700/500hPa とも全期間そろう
+    // (気圧面「風」が MSM 6面 / GSM 4面と違うのとは別扱い)
+    "temperature_850hPa","temperature_700hPa","temperature_500hPa",
     ...LEVELS.flatMap(p=>[`wind_speed_${p[0]}hPa`,`wind_direction_${p[0]}hPa`])];
   status.className="";status.textContent="予報を取得中…";
   const common={
@@ -1058,21 +1174,59 @@ async function run(mt){
   // 気象庁モデル側に揃っているので、補完だけ諦めて予報は出す。
   // Promise.all のままだと補完の失敗で主要データごと捨てることになり、判断に必要な情報まで
   // 見せられなくなる = 安全と逆方向。
-  const[dataR,supR]=await Promise.allSettled([
+  // 周辺4方位の CAPE/CIN。山岳雷の源は谷や麓の湿った下層気塊で、山頂格子の CAPE はそれを
+  // 表さない(実測: 槍ヶ岳で山頂 1340 に対し周辺 3050、264時刻中172時刻で周辺が上回る)。
+  // Open-Meteo はカンマ区切りのマルチ地点に対応し1リクエストで配列が返るので本数は増えない。
+  // elevation は外す(CAPEは気柱の量で標高指定に依存せず、1つの値を4地点に渡すと食い違う)。
+  const nb=CAPE_NEIGHBOR_DEG;
+  const{elevation:_omitElev,latitude:_omitLat,longitude:_omitLon,...areaCommon}=common;
+  const[dataR,supR,areaR]=await Promise.allSettled([
     apiJson(JMA_URL,{...common,hourly:hourly.join(","),
       daily:"weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,sunrise,sunset"}),
-    apiJson(FORECAST_URL,{...common,hourly:SUPPLEMENT_HOURLY.join(","),daily:SUPPLEMENT_DAILY.join(",")})
+    apiJson(FORECAST_URL,{...common,hourly:SUPPLEMENT_HOURLY.join(","),daily:SUPPLEMENT_DAILY.join(",")}),
+    apiJson(FORECAST_URL,{...areaCommon,
+      latitude:[mt.lat+nb,mt.lat-nb,mt.lat,mt.lat].map(v=>v.toFixed(4)).join(","),
+      longitude:[mt.lon,mt.lon,mt.lon+nb,mt.lon-nb].map(v=>v.toFixed(4)).join(","),
+      hourly:"cape,convective_inhibition"})
   ]);
   if(dataR.status==="rejected")throw dataR.reason;   // 主要データの失敗だけが致命
   const data=dataR.value;
   const sup=supR.status==="fulfilled"?supR.value:{};
   const supFailed=supR.status==="rejected";
+  const areaRes=areaR.status==="fulfilled"&&Array.isArray(areaR.value)?areaR.value:null;
   const fetchedAt=new Date();   // APIレスポンス受信時刻(詳細表のキャプションに出す)
   // 補完を貼る前に形状を整える(mergeSeries は base.time があることを前提にするため)
   normalizeSeries(data,hourly,DAILY_KEYS);
   mergeSeries(data.hourly,sup.hourly||{},SUPPLEMENT_HOURLY);
   mergeSeries(data.daily,sup.daily||{},SUPPLEMENT_DAILY);
+  // 周辺CAPE は cape_area / cin_area に入れ、山頂の cape は上書きしない。
+  // ⚠夕方フラグの雷条件(lv>=2)にこの値を入れると、夏は周辺のどこかが必ず1000 J/kgを超えるため
+  // フラグがほぼ毎日立ち、日を区別できなくなる(実測: 槍ヶ岳で11日中1日 → 10日)。
+  // 毎日出る警告は無視されるので安全と逆方向に働く。表示だけ周辺最大を使う。
+  const areaOk=!!areaRes;
+  if(areaRes){
+    const n=data.hourly.time.length;
+    const ca=(data.hourly.cape||new Array(n).fill(null)).slice();
+    const ci=(data.hourly.convective_inhibition||new Array(n).fill(null)).slice();
+    for(const loc of areaRes){
+      const lh=loc.hourly||{};const pos=new Map((lh.time||[]).map((t,k)=>[t,k]));
+      for(let i=0;i<n;i++){
+        const k=pos.get(data.hourly.time[i]);
+        if(k==null||lh.cape?.[k]==null)continue;
+        if(ca[i]==null||lh.cape[k]>ca[i]){ca[i]=lh.cape[k];ci[i]=lh.convective_inhibition?.[k]??null}
+      }
+    }
+    data.hourly.cape_area=ca;data.hourly.cin_area=ci;
+  }
   const h=data.hourly,times=h.time,d=data.daily;
+  // ブロックの発雷リスク入力 (CAPE=最大, CIN=|最小|)。周辺の取得に失敗すれば山頂格子に落ちる
+  const areaCape=blk=>{
+    const ca=h.cape_area||h.cape||[],ci=h.cin_area||h.convective_inhibition||[];
+    const cs=blk.map(i=>ca[i]).filter(v=>v!=null);
+    const is=blk.map(i=>ci[i]).filter(v=>v!=null);
+    return[cs.length?Math.max(...cs):null,
+      is.length?is.reduce((a,b)=>Math.abs(b)<Math.abs(a)?b:a):null];
+  };
   // 日代表天気を hourly から自前算出(daily.weather_code のmaxは使わない)
   const wxByDate=new Map(summarizeDailyWeather(times,h.weather_code).map(r=>[r.date,r]));
   // 期間内に積雪・降雪が一度でもあれば各表に積雪列を出す(夏山では省略して表を簡潔に保つ)
@@ -1086,8 +1240,22 @@ async function run(mt){
   const lowElev=mt.elev<LOW_ELEV;
   const windLbl=lowElev?"地上風(10m)":"稜線風";
   const lowNote=lowElev
-    ?`<li>標高${LOW_ELEV}m未満のため、風は気圧面から推定した稜線風ではなく<b>地上10mの風</b>を`
-     +`そのまま表示しています(登山指数・体感温度もこの値で判定)。</li>`:"";
+    ?`<li>標高${LOW_ELEV}m未満のため、表示している風はほぼ<b>地上10mの風</b>です`
+     +`(登山指数・体感温度もこの値で判定)。</li>`
+    :mt.elev<BLEND_ELEV
+    ?`<li>標高${BLEND_ELEV}m未満のため、稜線風は<b>地上10mの風と上空約${BLEND_ELEV}m(925hPa)の風を`
+     +`標高で内挿</b>して求めています。</li>`:"";
+  // 4日目以降は気圧面が2面減り、稜線風を弱めに見積もる。実測値を持っているので開示する
+  // (風の閾値の刻みが2〜5m/sなので、-1.2m/s は1段階ぶんに相当する)
+  const gsmNote=`<li><b>4日目以降は稜線風をやや弱めに見積もる傾向</b>があります`
+    +`(気圧面が2面減るため。実測: 標高1950〜3010mで平均 -1.2m/s)。後半の日は強めに読んでください。</li>`;
+  // 突風と稜線風は高度が違う。同じ表に並ぶので明示しないと「稜線の突風」と読まれる
+  const gustNote=`<li>突風は<b>地上10m</b>の値です。稜線風(山頂標高の気圧面)とは高度が違うため、`
+    +`稜線での実際の突風はこの値より強いことがあります。</li>`;
+  const capeNote=areaOk
+    ?`<li>発雷リスクの CAPE は<b>山頂と周辺4方位(±0.25度)の最大値</b>です`
+     +`(山岳雷の源は谷の下層気塊で、山頂だけ見ると過小評価になるため)。</li>`
+    :`<li>周辺CAPEの取得に失敗したため、発雷リスクは山頂地点の値のみで算出しています。</li>`;
   // 補完APIが落ちた回は、降水確率・突風・発雷リスク・視程・積雪が全て「-」になる。
   // 黙って空欄にすると「データ上そうだった(降水確率0%・雷の心配なし)」と誤解されるので、
   // 欠けているのは取得失敗が原因だと明示する。
@@ -1105,7 +1273,8 @@ async function run(mt){
     +`気温・体感温度は山頂の値になっていない可能性があります。</li>`;
   let htmlOut=`${backToFind}<h2>${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""} の山岳気象予報</h2><ul class="meta">
     <li>地点: 北緯${mt.lat.toFixed(4)} 東経${mt.lon.toFixed(4)} / 標高 ${Math.round(mt.elev)}m
-      (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li>${lowNote}${supNote}${elevNote}</ul>`;
+      (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li>${lowNote}${gsmNote}${gustNote}${capeNote}${supNote}${elevNote}
+    <li>⚠ <a href="https://www.jma.go.jp/bosai/warning/" target="_blank" rel="noopener">気象庁の警報・注意報</a>も必ず確認してください。</li></ul>`;
 
   // 表だけをスクショしても山名と取得日時が分かるよう、各表の見出し直下に小さく添える。
   // 予報の日付が JST 基準なので、取得時刻も JST で揃えて明示する(端末ローカル時刻で出すと
@@ -1146,33 +1315,48 @@ async function run(mt){
   for(let dt2=new Date(today);dt2<=fetchEnd;dt2=addDays(dt2,1)){
     const ds=iso(dt2),di=d.time.indexOf(ds);if(di<0)continue;
     const idxs=dayIdx(times,ds);
-    const th=seasonTh(dt2.getMonth()+1);
-    const act=idxs.filter(i=>{const hr=+times[i].slice(11,13);return hr>=5&&hr<=17});
+    // 夏冬モードはその日の山頂気温も見て決める(日単位。同一日内では閾値を変えない)
+    const th=seasonTh(dt2.getMonth()+1,...modeTemps(h,times,idxs));
+    const act=idxs.filter(i=>{const hr=+times[i].slice(11,13);return hr>=ACT_HOURS[0]&&hr<=ACT_HOURS[1]});
+    // ブロックの指数と降格理由。降格条件の材料は安全側に取る
+    // (気温=最小・風=最大・降水=合計・視程=最小)
+    const blkVerdict=blk=>{
+      const rw=blk.map(i=>ridgeWind(h,i,mt.elev));
+      const wsArr=rw.map(x=>x[0]).filter(v=>v!=null);
+      const ws=wsArr.length?Math.max(...wsArr):null;
+      const pr=sumOrNull(blk.map(i=>h.precipitation[i]));
+      const tArr=blk.map(i=>h.temperature_2m?.[i]).filter(v=>v!=null);
+      const tmn=tArr.length?Math.min(...tArr):null;
+      const vArr=blk.map(i=>h.visibility?.[i]).filter(v=>v!=null);
+      const vmn=vArr.length?Math.min(...vArr):null;
+      // 湿度は最大値(最も熱が逃げにくい = 安全側)
+      const rArr=blk.map(i=>h.relative_humidity_2m?.[i]).filter(v=>v!=null);
+      const rhx=rArr.length?Math.max(...rArr):null;
+      return[...blockIndex(ws,pr,th,tmn,feelsLike(tmn,ws,rhx),vmn),ws,rw];
+    };
     // 判定できたブロックだけを集め、その最悪値を日の指数にする。
     // 1つも判定できなければ dayIdxV は null (判定不能) のままにする
     const verdicts=[];let wsMax=null,wdMax=null;
     for(let sh=3;sh<18;sh+=3){
       const blk=act.filter(i=>Math.floor(+times[i].slice(11,13)/3)*3===sh);
       if(!blk.length)continue;
-      const rw=blk.map(i=>ridgeWind(h,i,mt.elev));
-      const ws=Math.max(...rw.map(x=>x[0]??-1));
-      if(ws>=0&&(wsMax==null||ws>wsMax)){wsMax=ws;wdMax=rw.find(x=>x[0]===ws)?.[1]}
-      const pr=sumOrNull(blk.map(i=>h.precipitation[i]));
-      const bi=blockIndex(ws<0?null:ws,pr,th);
-      if(bi!=null)verdicts.push(bi);
+      const[bi,rs,ws,rw]=blkVerdict(blk);
+      if(ws!=null&&(wsMax==null||ws>wsMax)){wsMax=ws;wdMax=rw.find(x=>x[0]===ws)?.[1]}
+      if(bi!=null)verdicts.push([bi,rs]);
     }
-    const dayIdxV=["C","B","A"].find(v=>verdicts.includes(v))??null;
+    const dayIdxV=["C","B","A"].find(v=>verdicts.some(x=>x[0]===v))??null;
+    // 日の指数を決めたブロックの降格理由を採用する(最悪値と同じ評価の最初のもの)
+    const dayReason=verdicts.find(x=>x[0]===dayIdxV&&x[1])?.[1]??"";
     // 日中がA/Bで夕方(17-20時)が荒れるなら急変警告フラグ (日中の指数は変えない)。
     // 風雨がC相当のときに加えて、発雷リスクが「注意」以上のときも立てる
     let evening=false;
     if(dayIdxV!=null&&dayIdxV!=="C"){
       const eve=idxs.filter(i=>{const hr=+times[i].slice(11,13);return hr>=17&&hr<=20});
       if(eve.length){
-        const rw=eve.map(i=>ridgeWind(h,i,mt.elev));
-        const wsE=Math.max(...rw.map(x=>x[0]??-1));
-        const prE=sumOrNull(eve.map(i=>h.precipitation[i]));
-        evening=blockIndex(wsE<0?null:wsE,prE,th)==="C";
+        evening=blkVerdict(eve)[0]==="C";
         if(!evening){
+          // 雷の条件は「山頂格子の」CAPE で見る。周辺最大を入れると夏はほぼ毎日 lv>=2 に
+          // 達してフラグが日を区別できなくなる(cape_area を作っている箇所の注記を参照)
           const capeArrE=eve.map(i=>h.cape?.[i]).filter(v=>v!=null);
           const cinArrE=eve.map(i=>h.convective_inhibition?.[i]).filter(v=>v!=null);
           const ltE=lightningRisk(capeArrE.length?Math.max(...capeArrE):null,
@@ -1181,6 +1365,19 @@ async function run(mt){
         }
       }
     }
+    // 夜間(21時〜翌5時)の荒天フラグ。行動時間帯にも夕方にも入らないため、これまでこの帯は
+    // 完全に無評価だった。冬型では風のピークが夜間に来ることが多く、テント泊・小屋泊・
+    // 早発ち(アルパインスタート)で最初に効く。発雷は条件に入れない(効くのは風)。
+    let nightBad=false;
+    if(dayIdxV!=null&&dayIdxV!=="C"){
+      const nds=iso(addDays(dt2,1));
+      const ni=[];
+      for(let i=0;i<times.length;i++){
+        const hr=+times[i].slice(11,13);
+        if((times[i].startsWith(ds)&&hr>=21)||(times[i].startsWith(nds)&&hr<=5))ni.push(i);
+      }
+      if(ni.length)nightBad=blkVerdict(ni)[0]==="C";
+    }
     // 朝の景色 (4-8時の最良)。併記する視程は「採用した時刻そのもの」の値を持ち回る
     const order={"◎":0,"○":1,"△":2,"✕":3};let best=null,bestVis=null;
     for(const i of idxs){
@@ -1188,7 +1385,7 @@ async function run(mt){
       const vi=h.visibility?.[i];
       const p1=h.precipitation[i];
       const v=viewScore(mt.elev,h.cloud_cover_low[i],h.cloud_cover_mid[i],
-        p1==null?null:p1*3,vi);
+        p1==null?null:p1*3,vi,h.relative_humidity_2m?.[i]);
       if(v==null)continue; // その時刻は判定材料なし。最良値の候補に入れない
       if(best==null||order[v[0]]<order[best[0]]){best=v;bestVis=vi}
     }
@@ -1206,6 +1403,7 @@ async function run(mt){
       prob:d.precipitation_probability_max[di],
       sf:d.snowfall_sum?.[di]??hAgg("snowfall",v=>v.reduce((a,b)=>a+b,0)),
       depth:dep.length?Math.max(...dep):null,
+      reason:dayReason,night:nightBad,mode:th.mode,
       view:best?vhtml(best,bestVis):"-"});
   }
   // 既定は先頭7日だけ出し、8日目以降は hidden で畳む(スマホで表が長くなりすぎるため)。
@@ -1216,7 +1414,7 @@ async function run(mt){
     <tr><th>日付</th><th>指数</th><th>天気</th><th>🏔 景色(朝)</th><th>山頂気温</th><th>${windLbl}max(5-17時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
   rows.forEach((r,i)=>{
     const more=i>=WK_HEAD;
-    htmlOut+=`<tr${more?` class="wk-more"${wkOpen?"":" hidden"}`:""}><td>${md(r.d)}${wj(r.d)}</td><td>${IDX[r.idx]??"-"}${r.eve?'<span class="ew"> ⚠夕方</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
+    htmlOut+=`<tr${more?` class="wk-more"${wkOpen?"":" hidden"}`:""}><td>${md(r.d)}${wj(r.d)}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"> ⚠夕方</span>':""}${r.night?'<span class="ew"> ⚠夜間</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
     <td>${r.view}</td><td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws)}</td>
     <td>${u1(r.pr,"mm")}</td><td>${u0(r.prob,"%")}</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
   });
@@ -1226,13 +1424,55 @@ async function run(mt){
     htmlOut+=`<button type="button" class="wk-toggle" aria-controls="wk-tbl" aria-expanded="${wkOpen}">`+
       `${wkOpen?"折りたたむ":`残り${rows.length-WK_HEAD}日を表示`}</button>`;
   if(rows.some(r=>r.eve))htmlOut+=`<p class="ewnote">⚠夕方: 17〜20時に天候の急変(C相当)、または発雷リスク「注意」以上が予想されます。日中の指数には含めていませんが、下山遅れ・テント泊・ご来光待ちの際は特に注意してください。</p>`;
+  if(rows.some(r=>r.night))htmlOut+=`<p class="ewnote">⚠夜間: 21時〜翌朝5時にC相当の荒天が予想されます。日中の指数には含めていませんが、テント泊・小屋泊・早発ち(アルパインスタート)の際は特に注意してください。</p>`;
+  // 降格理由の凡例。出た日だけ出す(理由の付かない表に説明だけ残らないように)
+  {
+    const rset=new Set(rows.map(r=>r.reason).filter(Boolean));
+    const leg={"低体温":"低体温=気温10℃以下+降水+風8m/s以上(濡れによる低体温症の条件)",
+      "体感":"体感=体感温度-20℃以下(凍傷リスク域)",
+      "視界":"視界=視程200m未満+風10m/s以上(地吹雪・ホワイトアウトで行動困難)"};
+    if(rset.size)htmlOut+=`<p class="ewnote">指数に付く語は、風・降水の基準ではなく<b>降格条件</b>で下がったことを示します: `
+      +["低体温","体感","視界"].filter(k=>rset.has(k)).map(k=>leg[k]).join(" / ")+`</p>`;
+    // 今どちらの閾値で判定したかを示す。10/31 と 11/1、寒い日と暖かい日で基準が変わるため
+    const modes=[...new Set(rows.map(r=>r.mode).filter(Boolean))];
+    const thTxt={"夏山":"稜線風10/15m/s・3h降水1/5mm","冬山・残雪期":"稜線風8/12m/s・3h降水1/3mm"};
+    if(modes.length)htmlOut+=`<p class="ewnote">判定モード: `
+      +modes.map(m=>`${m}(${thTxt[m]})`).join(" / ")
+      +(modes.length>1?"（日ごとに山頂気温を見て切り替わります）":"")+`</p>`;
+  }
+  // 上空の寒気。寒気の強さは冬型の荒れ方と夏の不安定度の両方を規定するが山頂気温では読めない
+  {
+    const UP=[["temperature_850hPa","850hPa(約1500m)"],["temperature_700hPa","700hPa(約3000m)"],
+      ["temperature_500hPa","500hPa(約5500m)"]];
+    const sc=v=>{const r=Math.round(v);return r===0?"0℃":(r>0?"+":"")+r+"℃"};
+    const urows=[];
+    for(let dt2=new Date(today);dt2<=fetchEnd;dt2=addDays(dt2,1)){
+      const ds=iso(dt2);
+      const ii=dayIdx(times,ds).filter(i=>{const hr=+times[i].slice(11,13);return hr>=9&&hr<=15});
+      if(!ii.length)continue;
+      const cells=UP.map(([k])=>{const vs=ii.map(i=>h[k]?.[i]).filter(v=>v!=null);
+        return vs.length?sc(vs.reduce((a,b)=>a+b,0)/vs.length):"-"});
+      if(cells.some(c=>c!=="-"))urows.push([dt2,cells]);
+    }
+    if(urows.length){
+      htmlOut+=`<h2>上空の寒気(日中9〜15時の平均)</h2>${cap}<div class="tbl"><table>
+        <tr><th>日付</th>${UP.map(u=>`<th>${u[1]}</th>`).join("")}</tr>`;
+      for(const[dt3,cells]of urows)
+        htmlOut+=`<tr><td>${md(dt3)}${wj(dt3)}</td>${cells.map(c=>`<td>${c}</td>`).join("")}</tr>`;
+      htmlOut+=`</table></div><ul class="meta">
+        <li>500hPa(上空約5500m)は大気の不安定度の目安。気象庁の雷注意報では夏-6℃以下・冬-36℃以下が発雷しやすい目安とされます</li>
+        <li>850hPa(上空約1500m)は冬型の強さの目安。-6℃以下で平地でも雪、-12℃以下で日本海側は大雪になりやすい</li>
+        <li>A/B/C判定には使いません(気圧配置を自分で読むための参考値です)</li></ul>`;
+    }
+  }
 
   // 詳細 (表示間隔 step=3 or 1)
   for(let dt2=new Date(start);dt2<=detailEnd;dt2=addDays(dt2,1)){
     const ds=iso(dt2),idxs=dayIdx(times,ds);if(!idxs.length)continue;
     const di=d.time.indexOf(ds);
     const sun=di>=0&&d.sunrise?.[di]?` (日の出${d.sunrise[di].slice(11,16)} / 日の入${d.sunset[di].slice(11,16)})`:"";
-    const thD=seasonTh(dt2.getMonth()+1);
+    // 夏冬モードは日単位。同一日の中でブロックごとに閾値が変わると表の中で基準がぶれる
+    const thD=seasonTh(dt2.getMonth()+1,...modeTemps(h,times,idxs));
     htmlOut+=`<h2>${ds} ${wj(dt2)} ${step===1?"1時間ごと":"3時間ごと"}詳細${sun}</h2>${cap}<div class="tbl"><table>
       <tr><th>時刻</th><th>指数</th><th>天気</th><th>🏔 景色(眺望)</th><th>気温</th><th>体感</th><th>${windLbl}</th><th>突風</th><th>降水</th><th>降水%(参考)</th><th>⚡ 発雷リスク</th><th>雲(下/中/上)</th>${hasSnow?"<th>積雪(新雪)</th>":""}</tr>`;
     for(let sh=0;sh<24;sh+=step){
@@ -1249,16 +1489,14 @@ async function run(mt){
       const pr=sumOrNull(blk.map(i=>h.precipitation[i]));
       const probArr=blk.map(i=>h.precipitation_probability?.[i]).filter(v=>v!=null);
       const prob=probArr.length?Math.max(...probArr):null;
-      const capeArr=blk.map(i=>h.cape?.[i]).filter(v=>v!=null);
-      const cape=capeArr.length?Math.max(...capeArr):null;
-      // CIN は「蓋が最も薄い時刻」を代表値にする(絶対値の最小 = 安全側)
-      const cinArr=blk.map(i=>h.convective_inhibition?.[i]).filter(v=>v!=null);
-      const cin=cinArr.length?cinArr.reduce((a,b)=>Math.abs(b)<Math.abs(a)?b:a):null;
+      // CAPE は周辺4方位を含めた最大、CIN は「蓋が最も薄い時刻」(絶対値の最小 = 安全側)
+      const[cape,cin]=areaCape(blk);
       const lt=lightningRisk(cape,cin);
       const visArr=blk.map(i=>h.visibility?.[i]).filter(v=>v!=null);
       const vis=visArr.length?Math.min(...visArr):null;
-      const feel=feelsLike(temp,ws);
-      const vsc=viewScore(mt.elev,h.cloud_cover_low[i0],h.cloud_cover_mid[i0],pr==null?null:pr*3/step,vis);
+      const rh=h.relative_humidity_2m?.[i0]??null;
+      const feel=feelsLike(temp,ws,rh);
+      const vsc=viewScore(mt.elev,h.cloud_cover_low[i0],h.cloud_cover_mid[i0],pr==null?null:pr*3/step,vis,rh);
       const view=vsc?vhtml(vsc,vis):"-";
       const cl=`${f0(h.cloud_cover_low[i0])}/${f0(h.cloud_cover_mid[i0])}/${f0(h.cloud_cover_high[i0])}%`;
       // 指数は表示間隔によらず3時間ブロック単位で判定する (A/B/Cの降水閾値がmm/3h定義のため)
@@ -1268,12 +1506,26 @@ async function run(mt){
       const ws3Arr=rw3.map(x=>x[0]).filter(v=>v!=null);
       const ws3=ws3Arr.length?Math.max(...ws3Arr):null;
       const pr3=sumOrNull(blk3.map(i=>h.precipitation[i]));
-      const bi=blockIndex(ws3,pr3,thD);
+      // 降格条件の材料も3時間ブロックから安全側に取る(気温=最小・視程=最小)
+      const t3Arr=blk3.map(i=>h.temperature_2m?.[i]).filter(v=>v!=null);
+      const t3=t3Arr.length?Math.min(...t3Arr):null;
+      const v3Arr=blk3.map(i=>h.visibility?.[i]).filter(v=>v!=null);
+      const v3=v3Arr.length?Math.min(...v3Arr):null;
+      // 湿度は最大値(最も熱が逃げにくい = 安全側)
+      const r3Arr=blk3.map(i=>h.relative_humidity_2m?.[i]).filter(v=>v!=null);
+      const r3=r3Arr.length?Math.max(...r3Arr):null;
+      const[bi,biReason]=blockIndex(ws3,pr3,thD,t3,feelsLike(t3,ws3,r3),v3);
+      // 体感は乾いた状態の値。濡れ+風+低温がそろう時間帯は印を付けて「表示より下がる」と示す
+      const wet=wetWarn(temp,ws,pr)?'<span class="dr">濡れ注意</span>':"";
+      // 降水は水換算なので、雨か雪かを 0℃高度から補って出す(表示のみ・判定には使わない)
+      const flArr=blk.map(i=>h.freezing_level_height?.[i]).filter(v=>v!=null);
+      const phase=precipPhase(flArr.length?Math.min(...flArr):null,mt.elev);
+      const prTxt=u1(pr,"mm")+(phase&&pr!=null&&pr>=0.1?`<span class="dr">${phase}</span>`:"");
       const depArr=blk.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
       const sfBlk=blk.reduce((s,i)=>s+(h.snowfall?.[i]||0),0);
-      htmlOut+=`<tr><td>${String(sh).padStart(2,"0")}時</td><td>${IDX[bi]??"-"}</td><td>${wxCodeIcon(h.weather_code[i0])}</td><td>${view}</td>
-        <td>${u1(temp,"℃")}</td><td>${u0(feel,"℃")}</td><td>${windCell(wd2,ws)}</td>
-        <td>${u0(gust,"m/s")}</td><td>${u1(pr,"mm")}</td><td>${u0(prob,"%")}</td><td>${ltCell(lt,cape,cin)}</td>
+      htmlOut+=`<tr><td>${String(sh).padStart(2,"0")}時</td><td>${idxCell(bi,biReason)}</td><td>${wxCodeIcon(h.weather_code[i0])}</td><td>${view}</td>
+        <td>${u1(temp,"℃")}</td><td>${u1(feel,"℃")}${wet}</td><td>${windCell(wd2,ws)}</td>
+        <td>${u0(gust,"m/s")}</td><td>${prTxt}</td><td>${u0(prob,"%")}</td><td>${ltCell(lt,cape,cin)}</td>
         <td>${cl}</td>${hasSnow?`<td>${snowCell(depArr.length?Math.max(...depArr):null,sfBlk)}</td>`:""}</tr>`;
     }
     htmlOut+=`</table></div>`;

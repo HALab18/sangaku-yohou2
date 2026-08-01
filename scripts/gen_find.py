@@ -130,6 +130,14 @@ td.nm .nmrow{display:flex;justify-content:space-between;align-items:flex-start;g
 td.nm .scb{font-weight:800;font-size:1.05em;font-variant-numeric:tabular-nums;flex-shrink:0;line-height:1.2}
 /* スコアの色は A/B/C ランクに合わせて色分け (find-score.html の閾値と一致):
    A(70-100)=緑 / B(45-69)=橙 / C(0-44)=赤。視認性重視で濃いめの色を選ぶ。 */
+/* 正式指数 A/B/C のバッジ。index.html の .b-a/.b-b/.b-c と同じ配色にして、
+   詳細ページと同じ意味の値だと分かるようにする。 */
+.abc{display:inline-block;min-width:1.5em;text-align:center;border-radius:4px;
+     padding:1px 4px;font-weight:800;font-size:.9em}
+.abc-a{background:#d8efe1;color:#1c5b3f}
+.abc-b{background:#fdeec9;color:#7b5e00}
+.abc-c{background:#f9d9cf;color:#a03415}
+.abcr{display:block;font-size:.72em;color:#a03415;font-weight:700;margin-top:2px;white-space:nowrap}
 td.nm .scb.rank-a{color:#1f7a34}
 td.nm .scb.rank-b{color:#b26b00}
 td.nm .scb.rank-c{color:#b3261e}
@@ -588,12 +596,19 @@ footer a{color:var(--link)}
   // 山頂標高を挟む上下2気圧面の風速を線形補間して「稜線風速」を推定する。
   // LEVELS[i]=[気圧面hPa, 標準高度m]。 500m台の里山から3800m級までを 6面でカバー。
   var LEVELS=[[925,760],[900,990],[850,1460],[800,1950],[700,3010],[600,4200]];
-  // 気圧面の最下端は 925hPa = 標準高度760m。それより低い標高は最下面の生値にクランプされ、
-  // 平地では上空760mの風が稜線風として出てしまう。標高 LOW_ELEV 未満は地形の影響が支配的なので
-  // 補間をやめて地上10m風をそのまま使う (index.html の LOW_ELEV / mountain_weather.py の
-  // LOW_ELEV_M と同一)。内蔵DBの最低標高は 122m なので現時点では発火しないが、
-  // 3系統でロジックを揃えるために入れてある。
-  var LOW_ELEV=100;
+  // 気圧面の最下端は 925hPa = 標準高度760m。ここに地上10m風を「高度10mの面」として足し、
+  // 標高760m未満は地上風と925hPaの間で内挿する。こうしないと 760m 未満がすべて 925hPa の
+  // 生値にクランプされ、低山で上空760mの風がそのまま稜線風として出る
+  // (実測: 衣張山122m で最大 13.3 → 5.9 m/s)。内蔵DBでは標高100〜760mに76座ある。
+  // index.html の SURFACE_WIND_M / mountain_weather.py の SURFACE_WIND_M と同一。
+  var SURFACE_WIND_M=10;
+  // ---- 夏冬モード (index.html の seasonTh / mountain_weather.py の season_thresholds と同一) ----
+  // 月ベース(6〜10月=夏)を基本に、寒い日だけ冬モードへ倒す。安全側にのみ効かせる。
+  var WINTER_TMAX=0, WINTER_TMIN=-3;
+  // ---- 降格条件のしきい値 ----
+  // find は視程を取得しないため D4(視界不良)は計算できない。D1・D2 までを併記する。
+  var WET_HYPO_TEMP=10, WET_HYPO_PRECIP=1.0, WET_HYPO_WIND_B=8, WET_HYPO_WIND_C=12;
+  var FEELS_B=-20, FEELS_C=-30;
   // 「その時刻に実際に値がある気圧面」だけで山頂標高の風速を補間する。
   // pts=[[標準高度m, 風速], ...] を高度の昇順で渡す。範囲外は最寄りの面の値をそのまま使う。
   //
@@ -633,7 +648,7 @@ footer a{color:var(--link)}
   var JMA_URL="https://api.open-meteo.com/v1/jma";
   var FC_URL="https://api.open-meteo.com/v1/forecast";
   var DAILY="snowfall_sum";
-  var HOURLY="weather_code,temperature_2m,precipitation,"+
+  var HOURLY="weather_code,temperature_2m,relative_humidity_2m,precipitation,"+
     "sunshine_duration,wind_speed_925hPa,wind_speed_900hPa,wind_speed_850hPa,"+
     "wind_speed_800hPa,wind_speed_700hPa,wind_speed_600hPa,wind_speed_10m";
   // /v1/forecast(ベストマッチ合成)から補う変数。
@@ -778,12 +793,14 @@ footer a{color:var(--link)}
     for(var i=0;i<N;i++){
       if(!inRange(times[i]))continue;
       var pts=[];
+      // 地上10m風を内挿の最下点に置く(SURFACE_WIND_M のコメント参照)
+      var s10=w10?w10[i]:null;
+      if(s10!=null)pts.push([SURFACE_WIND_M,s10]);
       for(var li=0;li<LEVELS.length;li++){
         var a=lvArrs[li], v=a?a[i]:null;
         if(v!=null)pts.push([LEVELS[li][1],v]);
       }
-      // 標高 LOW_ELEV 未満は気圧面補間をせず地上10m風をそのまま使う(LOW_ELEV のコメント参照)
-      var w=mt.el<LOW_ELEV?(w10?w10[i]:null):interpWind(pts,mt.el);
+      var w=interpWind(pts,mt.el);
       if(w==null)continue;
       // hasW は「値が1つでもあったか」なので if の外。1行に並べると条件付きに見えるので分ける
       if(w>mv)mv=w;
@@ -824,6 +841,12 @@ footer a{color:var(--link)}
     // ガードをすり抜け、天気・気温・稜線風・降水がすべて「-」の行が①だけの減点=80点前後の
     // ランクAとして最上位付近に出てしまう。
     if(sunJma==null&&code==null&&psum==null&&ridgeWmax==null)return null;
+    // 夏冬モード。月ベースを基本に、行動時間帯の山頂気温が低ければ冬側へ倒す。
+    // これを入れないと、冬・快晴・稜線風12m/s が「80点=ランクA」で最上位に出るのに、
+    // 詳細ページの正式判定では C(冬モードは12m/sでC)になる ── 入口が安全と逆を向く。
+    var mon=parseInt((times[0]||"").slice(5,7),10)||1;
+    var winter=!(mon>=6&&mon<=10);
+    if(!winter&&((tmax!=null&&tmax<WINTER_TMAX)||(tmin!=null&&tmin<WINTER_TMIN)))winter=true;
     var s=100;
     // ① 晴天度 (最大 -28)
     if(sunFrac!=null)s-=(1-sunFrac)*28;
@@ -834,23 +857,83 @@ footer a{color:var(--link)}
     // 以前は「確率-10 / 量-20」だったが、気象庁モデルに降水確率が無いため量に一本化した。
     // 降水確率(pprob)は表には出すが、ここには足さない(スコアの意味を変えないため)
     if(psum!=null)s-=Math.min(psum,10)/10*30;
-    // ③ 稜線風 (最大 -32) - 6m/s以下=0、18m/s以上=最大
-    if(ridgeWmax!=null)s-=Math.max(0,Math.min(1,(ridgeWmax-6)/12))*32;
+    // ③ 稜線風 (最大 -32)
+    // 夏: 6m/s以下=0、18m/s以上=最大 / 冬: 4m/s以下=0、12m/s以上=最大。
+    // 冬は同じ風速でも危険度が段違いに上がるため、正式判定の閾値(8/12m/s)に合わせて前倒しする。
+    if(ridgeWmax!=null){
+      var w0=winter?4:6, wSpan=winter?8:12;
+      s-=Math.max(0,Math.min(1,(ridgeWmax-w0)/wSpan))*32;
+    }
     // ④ 雪・寒気 (最大 -10)
     if(snow!=null&&snow>0)s-=Math.min(snow,5)/5*5;
     if(tmin!=null&&tmin<-5)s-=Math.min((-5-tmin),15)/15*5;
     return {v:Math.round(Math.max(0,Math.min(100,s))),sunFrac:sunFrac,sunAlt:sunAlt,
-      code:code,wxRep:wxRep,
+      code:code,wxRep:wxRep,winter:winter,abc:formalIndex(d,mt,winter),
       psum:psum,pprob:pprob,ridgeWmax:ridgeWmax,tmax:tmax,tmin:tmin};
   }
-  // 安全性の足切り: 稜線風速 >=18m/s または 降水量 >=10mm のいずれかで別表送り
+  // 詳細ページと同じ「正式な登山指数 A/B/C」を各行に併記するために計算する。
+  // スコア(相対比較のふるい)とは別物なので、両方を並べて食い違いに気づけるようにする。
+  // 行動時間帯 5〜17時を3時間ブロックに割り、最悪値を採る(index.html の日別指数と同じ)。
+  // ★ find は視程を取得しないため D4(視界不良)は判定できない。主判定+D1+D2 までを出す。
+  function formalIndex(d,mt,winter){
+    var hr=d.hourly, times=(hr&&hr.time)||[], N=times.length;
+    var th=winter?{wind:[8,12],precip:[1,3]}:{wind:[10,15],precip:[1,5]};
+    var lvArrs=LEVELS.map(function(L){return hr&&hr["wind_speed_"+L[0]+"hPa"]});
+    var w10=hr&&hr["wind_speed_10m"];
+    function windAt(i){
+      var pts=[], s10=w10?w10[i]:null;
+      if(s10!=null)pts.push([SURFACE_WIND_M,s10]);
+      for(var li=0;li<LEVELS.length;li++){var a=lvArrs[li],v=a?a[i]:null;if(v!=null)pts.push([LEVELS[li][1],v])}
+      return interpWind(pts,mt.el);
+    }
+    var worst=null, worstReason="", RANKV={A:0,B:1,C:2};
+    for(var sh=3;sh<18;sh+=3){
+      var ws=null, pr=null, prN=0, tmn=null, rhx=null;
+      for(var i=0;i<N;i++){
+        var h2=parseInt(times[i].slice(11,13),10);
+        if(h2<5||h2>17||Math.floor(h2/3)*3!==sh)continue;
+        var w=windAt(i); if(w!=null&&(ws==null||w>ws))ws=w;
+        var p=hr.precipitation?hr.precipitation[i]:null;
+        if(p!=null){pr=(pr==null?0:pr)+p;prN++}
+        var t=hr.temperature_2m?hr.temperature_2m[i]:null;
+        if(t!=null&&(tmn==null||t<tmn))tmn=t;
+        // 湿度は最大値(最も熱が逃げにくい = 安全側)
+        var rv=hr.relative_humidity_2m?hr.relative_humidity_2m[i]:null;
+        if(rv!=null&&(rhx==null||rv>rhx))rhx=rv;
+      }
+      if(ws==null&&pr==null)continue;
+      var idx="A";
+      var worseF=function(v){if(v==="C"||idx==="C")idx="C";else if(v==="B")idx="B"};
+      if(ws!=null){if(ws>=th.wind[1])worseF("C");else if(ws>=th.wind[0])worseF("B")}
+      if(pr!=null){if(pr>=th.precip[1])worseF("C");else if(pr>=th.precip[0])worseF("B")}
+      var base=idx, reason="";
+      // D1 湿潤低体温
+      if(tmn!=null&&pr!=null&&ws!=null&&tmn<=WET_HYPO_TEMP&&pr>=WET_HYPO_PRECIP){
+        var g=ws>=WET_HYPO_WIND_C?"C":(ws>=WET_HYPO_WIND_B?"B":null);
+        if(g&&RANKV[g]>RANKV[idx]){idx=g;reason="低体温"}
+      }
+      // D2 体感温度。豪州気象局の Apparent Temperature (index.html の feelsLike と同一)。
+      // 風冷指数(JAG/TI)は10℃超で適用外になり冷却を表さないため置き換えた。
+      var fl=(tmn==null||ws==null||rhx==null)?null:
+        (tmn+0.33*((rhx/100)*6.105*Math.exp(17.27*tmn/(237.7+tmn)))-0.70*ws-4.00);
+      if(fl!=null){
+        var g2=fl<=FEELS_C?"C":(fl<=FEELS_B?"B":null);
+        if(g2&&RANKV[g2]>RANKV[idx]){idx=g2;reason="体感"}
+      }
+      if(worst==null||RANKV[idx]>RANKV[worst]){worst=idx;worstReason=reason}
+    }
+    return worst==null?null:{v:worst,reason:worstReason};
+  }
+  // 安全性の足切り: 稜線風速(夏18/冬12 m/s以上) または 降水量 >=10mm で別表送り。
+  // 冬の12m/sは正式判定でC(登山不適)なので、一覧の本表に残してはいけない。
+  function cutWind(s){return s.winter?12:18}
   function isDangerous(s){
-    return (s.ridgeWmax!=null&&s.ridgeWmax>=18)||(s.psum!=null&&s.psum>=10);
+    return (s.ridgeWmax!=null&&s.ridgeWmax>=cutWind(s))||(s.psum!=null&&s.psum>=10);
   }
   // 足切り理由のラベル (足切り表の「理由」列に表示)
   function reasonLabel(s){
     var parts=[];
-    if(s.ridgeWmax!=null&&s.ridgeWmax>=18)parts.push("稜線風 "+Math.round(s.ridgeWmax)+"m/s");
+    if(s.ridgeWmax!=null&&s.ridgeWmax>=cutWind(s))parts.push("稜線風 "+Math.round(s.ridgeWmax)+"m/s");
     if(s.psum!=null&&s.psum>=10)parts.push("降水量 "+Math.round(s.psum)+"mm");
     return parts.join(" / ");
   }
@@ -875,12 +958,14 @@ footer a{color:var(--link)}
   //           その旨を sunAlt で持つ。日照は窓9時間そろっている時だけ採用に変更。
   //           稜線風を「値のある気圧面から時刻ごとに補間」に変更(GSM は 900/800hPa を
   //           配信せず、従来の決め打ちだと4日目以降の稜線風が丸ごと欠測になっていた)
-  //  / find8: キャッシュを {t:取得時刻, rows:…} 形式にし TTL を導入)
+  //  / find8: キャッシュを {t:取得時刻, rows:…} 形式にし TTL を導入
+  //  / find9: 稜線風の減点・足切りを夏冬で分け、正式指数 abc を併記
+  //  / find10: 体感温度を風冷指数から Apparent Temperature へ(相対湿度を追加取得))
   // 上げ忘れると旧キャッシュがそのまま復元され、天気列だけ古い表示になる。
-  function cacheKey(r,p,date){return "find8:"+r+":"+p+":"+date}
+  function cacheKey(r,p,date){return "find10:"+r+":"+p+":"+date}
   // 直近の検索条件を保存するキー。ページを再訪した時にセレクタと結果を復元する用途
   // (bfcache が効かない iOS 直リンク等のフォールバック。詳細は末尾の restoreLastSearch)。
-  var LAST_KEY="find8:last";
+  var LAST_KEY="find10:last";
   // キャッシュの有効期限。キーは「エリア:県:対象日」だけで時刻成分を持たないので、
   // TTL が無いと同一セッション中は永久に最初の取得結果が返る。気象庁モデルは1日に複数回
   // 更新されるため、タブを開きっぱなしにした利用者へ朝6時の予報を夜18時に「最新」として
@@ -950,6 +1035,9 @@ footer a{color:var(--link)}
         '<small>'+esc(m.pref)+' / '+m.el+'m</small>'+
       '</td>'+
       reason+
+      // 正式指数。スコア(相対比較のふるい)と食い違う日に気づけるよう並べて出す
+      '<td>'+(s.abc?'<span class="abc abc-'+s.abc.v.toLowerCase()+'">'+s.abc.v+'</span>'
+             +(s.abc.reason?'<span class="abcr">'+esc(s.abc.reason)+'</span>':""):"-")+'</td>'+
       '<td>'+(wx.ic?'<svg class="wxico" aria-hidden="true"><use href="#'+wx.ic+'"/></svg>':"-")+
             '<span class="wxlbl">'+esc(wx.lb)+'</span>'+
             (wx.nt&&wx.nt.length?'<span class="wxnote">'+esc(wx.nt.join(" / "))+'</span>':"")+'</td>'+
@@ -965,6 +1053,7 @@ footer a{color:var(--link)}
   function tableHtml(rows,date,caution){
     var head='<tr><th>#</th><th>山名 / スコア</th>'+
       (caution?'<th>理由</th>':'')+
+      '<th>指数</th>'+
       '<th>天気</th><th class="num">日照</th><th class="num">気温</th><th class="num">稜線風</th>'+
       '<th class="num">降水確率</th><th class="num">降水量</th></tr>';
     var body='';
@@ -973,7 +1062,7 @@ footer a{color:var(--link)}
       '</thead><tbody>'+body+'</tbody></table></div>';
   }
 
-  // 表の下に置く「各列の意味」凡例。対象時間帯(朝7時～夜3時)・単位・重要ポイントを簡潔に説明
+  // 表の下に置く「各列の意味」凡例。対象時間帯(朝7時〜夕方3時)・単位・重要ポイントを簡潔に説明
   var LEGEND_HTML=(
     '<div class="legend"><h4>表の見方</h4>'+
     '<dl>'+
@@ -982,18 +1071,24 @@ footer a{color:var(--link)}
       '<span class="rk rk-b">B</span>45〜69 '+
       '<span class="rk rk-c">C</span>0〜44 '+
       '(<a href="find-score.html">計算の詳細</a>)</dd>'+
-    '<dt>天気</dt><dd>朝7時～夜3時の天気。最も続く天気を表示。危険な天気は1時間でも優先します</dd>'+
-    '<dt>日照</dt><dd>朝7時～夜3時の晴れ時間の割合 (%)。<b>*</b>印は別モデルからの補完</dd>'+
-    '<dt>気温</dt><dd>朝7時～夜3時の最高気温／最低気温（℃）。山頂の標高で計算済み</dd>'+
-    // find の足切りは 18m/s (③の減点が最大に達する境界) だが、個別の山の詳細ページに出る
-    // 正式な A/B/C 判定は 夏山15 / 冬山12 m/s で C になる。つまり「登れそう」の表に載った山を
-    // 開いたら C だった、が起こりうる。根拠は find-score.html にあるが一覧からは辿れないので、
-    // 列の意味を説明するここで基準の違いに触れておく(スコア式そのものは変更しない)。
-    '<dt>稜線風</dt><dd>山頂付近の稜線風速の朝7時～夜3時最大値（m/s）。'+
-      'この一覧の足切りは18m/sですが、個別の山の<b>正式な登山指数A/B/Cはより厳しい基準</b>'+
-      '(夏山15m/s・冬山12m/s以上でC)です。15m/s前後の山は必ず個別ページもご確認ください</dd>'+
-    '<dt>降水確率</dt><dd>朝7時～夜3時の降水確率の最大値 (%)。参考表示のみです</dd>'+
-    '<dt>降水量</dt><dd>朝7時～夜3時の合計降水量（mm）。スコアに直接影響します</dd>'+
+    // スコアは相対比較の「ふるい」、指数は行動可否の「正式判定」。別物なので両方出し、
+    // 食い違い(スコアは高いが指数はC 等)にその場で気づけるようにする。
+    '<dt>指数</dt><dd>個別の山のページと同じ<b>正式な登山指数</b>'+
+      '<span class="abc abc-a">A</span>登山適 '+
+      '<span class="abc abc-b">B</span>要注意 '+
+      '<span class="abc abc-c">C</span>登山不適。'+
+      '行動時間帯5〜17時を3時間ごとに判定した最悪値です。'+
+      'スコアは「相対的に天気の良い山を探すためのふるい」、指数は「行動できるかの判定」で別物です。'+
+      '<b>この一覧では視程を取得していないため、視界不良による判定だけは含まれません</b>。'+
+      '実際に登る前に必ず個別ページでご確認ください</dd>'+
+    '<dt>天気</dt><dd>朝7時〜夕方3時の天気。最も続く天気を表示。危険な天気は1時間でも優先します</dd>'+
+    '<dt>日照</dt><dd>朝7時〜夕方3時の晴れ時間の割合 (%)。<b>*</b>印は別モデルからの補完</dd>'+
+    '<dt>気温</dt><dd>朝7時〜夕方3時の最高気温／最低気温（℃）。山頂の標高で計算済み</dd>'+
+    '<dt>稜線風</dt><dd>山頂付近の稜線風速の朝7時〜夕方3時最大値（m/s）。'+
+      'スコアの減点も足切りも<b>夏と冬で基準が変わります</b>'+
+      '(足切り: 夏18m/s・冬12m/s以上)。冬は同じ風速でも危険度が大きく上がるためです</dd>'+
+    '<dt>降水確率</dt><dd>朝7時〜夕方3時の降水確率の最大値 (%)。参考表示のみです</dd>'+
+    '<dt>降水量</dt><dd>朝7時〜夕方3時の合計降水量（mm）。スコアに直接影響します</dd>'+
     '</dl></div>');
 
   function render(rows,date){
