@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>気象情報リンク — PeakWeather</title>
+<meta name="description" content="雨雲・雷レーダー、今後の雨、天気図、気象警報・注意報、天気分布予報。登山の判断に使う気象庁の情報へ、現在地を指定してすぐアクセスできます。">
+<link rel="icon" type="image/png" href="../icons/favicon-32.png">
+<meta name="theme-color" content="#1e2d4a">
+<!-- gate.js は読み込まない。ゲートの目的は Open-Meteo の無料枠を守ることで(gate.js 冒頭)、
+     このページは外部(気象庁)へのリンク集で API を一切叩かない。docs/point.html がゲート対象なのは
+     「index.html を素通しで動かす入口になる」ためで、こちらはその経路も持たない。
+     読み込まない副次的な利点として、認証コードの年次更新で ?v= を直す対象ファイルが増えない。 -->
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-B4FYN1EJ2S');
+</script>
+<style>
+:root{--night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
+  --btn:#4276b5;--btn-d:#3a68a3;--sel:#dceaf9;--bg:#f4f6f9;--line:#dee4ee}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:#222;
+  font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+  font-size:14px;line-height:1.7}
+
+header{background:var(--night);color:#fff;text-align:center;padding:30px 20px 0;position:relative}
+header .back{position:absolute;left:14px;top:12px;color:#c9d3e5;font-size:.82em;text-decoration:none}
+header .back:hover{color:#fff}
+header h1{margin:0;font-size:1.45em;font-weight:800;letter-spacing:.06em}
+header .sub{margin:8px 0 0;font-size:.85em;color:#c9d3e5}
+.ridge{display:block;width:100%;height:44px;margin-top:18px}
+@media(min-width:700px){header h1{font-size:1.7em}}
+
+main{max-width:640px;margin:0 auto;padding:18px 14px 8px}
+p{margin:8px 0}
+a{color:var(--link)}
+
+/* 現在地ボタン: 押した時だけ1回測位し、座標対応リンクの href を書き換える。
+   index.html の #gps と同じ「セカンダリの控えめな外観」に揃える */
+#geo{width:100%;padding:12px;font-size:15px;border-radius:12px;border:1.5px solid #c9d2e0;
+  background:#fff;color:var(--link);font-weight:700;cursor:pointer;font-family:inherit;margin-top:14px}
+#geo:hover{background:var(--sel)}
+#geo:disabled{color:#9aa7bd;cursor:wait}
+#geostatus{margin:6px 2px 0;font-size:.86em;color:#5b6b8a;font-weight:600;min-height:1.4em}
+#geostatus.err{color:#a03415}
+
+.linklist{background:#fff;border-radius:14px;box-shadow:0 2px 12px rgba(30,45,74,.10);
+  margin:14px 0;overflow:hidden}
+.linkitem{display:flex;align-items:center;gap:14px;padding:15px 16px;
+  border-bottom:1px solid var(--line);text-decoration:none;color:inherit}
+.linkitem:last-child{border-bottom:0}
+.linkitem:hover,.linkitem:focus-visible{background:#f7f9fc}
+.li-icon{width:40px;height:40px;border-radius:50%;background:var(--sel);color:var(--night);
+  display:flex;align-items:center;justify-content:center;flex:none;font-size:19px}
+.li-body{flex:1;min-width:0}
+.li-title{display:block;font-weight:700;font-size:.95em;color:#222}
+.li-desc{display:block;font-size:.8em;color:#7a8398;line-height:1.6}
+/* 現在地が反映されたリンクにだけ出す印。既定は非表示 */
+.li-here{display:none;font-size:.78em;color:var(--btn);font-weight:700}
+.linkitem.here .li-here{display:block}
+.li-go{flex:none;font-size:.78em;font-weight:700;color:var(--link)}
+
+.notice{background:#edf2f9;border-left:5px solid var(--slate);color:#44506b;padding:10px 12px;
+  border-radius:0 6px 6px 0;margin:16px 0;font-size:.86em}
+
+footer{color:#888;font-size:.82em;margin-top:26px;border-top:1px solid var(--line);
+  padding-top:10px;padding-bottom:16px}
+footer a{color:var(--link)}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="back" href="../index.html">← トップへ戻る</a>
+  <h1>気象情報リンク</h1>
+  <p class="sub">登山の判断に使う気象庁の情報へ、すぐアクセスできます</p>
+  <svg class="ridge" viewBox="0 0 750 44" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 44 L0 30 L95 12 L185 26 L290 5 L395 24 L500 9 L610 27 L695 15 L750 24 L750 44 Z" fill="#f4f6f9"/>
+  </svg>
+</header>
+
+<main>
+
+<p>PeakWeather が扱うのは数値予報です。出発直前の「いま雨雲がどこにあるか」「警報が出ていないか」は、
+気象庁の実況ページで確認してください。</p>
+
+<button id="geo" type="button">📍 現在地を反映する</button>
+<p id="geostatus" role="status"></p>
+
+<!-- data-geo 付きの3つは href に全国表示URLを直書きしておき、測位に成功した時だけ
+     data-tmpl から座標付きURLを作って差し替える。JSが一切動かなくても全国表示として機能する。
+     残り2つ(天気図・警報)は座標指定に対応しない: 天気図は画像ビューアで座標概念が無く、
+     警報は #area_type/#area_code で地域を指定する仕組みで lat/lon を渡しても地図が動かない(実測) -->
+<div class="linklist">
+
+  <a class="linkitem" id="lk-nowc" target="_blank" rel="noopener"
+     href="https://www.jma.go.jp/bosai/nowc/" data-geo
+     data-tmpl="https://www.jma.go.jp/bosai/nowc/#zoom:10/lat:{lat}/lon:{lon}/colordepth:normal/elements:hrpns&liden">
+    <span class="li-icon" aria-hidden="true">☂</span>
+    <span class="li-body">
+      <span class="li-title">雨雲・雷レーダー</span>
+      <span class="li-desc">高解像度降水ナウキャストと雷活動度。1時間先までの動きを再生できます</span>
+      <span class="li-here">現在地を中心に表示します</span>
+    </span>
+    <span class="li-go" aria-hidden="true">開く ›</span>
+  </a>
+
+  <a class="linkitem" id="lk-kaikotan" target="_blank" rel="noopener"
+     href="https://www.jma.go.jp/bosai/kaikotan/" data-geo
+     data-tmpl="https://www.jma.go.jp/bosai/kaikotan/#zoom:10/lat:{lat}/lon:{lon}/colordepth:normal/elements:slmcs&rasrf">
+    <span class="li-icon" aria-hidden="true">🌧</span>
+    <span class="li-body">
+      <span class="li-title">今後の雨</span>
+      <span class="li-desc">降水短時間予報。15時間先までの雨量の見通し</span>
+      <span class="li-here">現在地を中心に表示します</span>
+    </span>
+    <span class="li-go" aria-hidden="true">開く ›</span>
+  </a>
+
+  <a class="linkitem" id="lk-wdist" target="_blank" rel="noopener"
+     href="https://www.jma.go.jp/bosai/wdist/" data-geo
+     data-tmpl="https://www.jma.go.jp/bosai/wdist/#zoom:10/lat:{lat}/lon:{lon}/colordepth:normal/elements:wm">
+    <span class="li-icon" aria-hidden="true">🌤</span>
+    <span class="li-body">
+      <span class="li-title">天気分布予報</span>
+      <span class="li-desc">天気・気温・降水量・降雪量を面的に。地域時系列予報も同じ画面から</span>
+      <span class="li-here">現在地を中心に表示します</span>
+    </span>
+    <span class="li-go" aria-hidden="true">開く ›</span>
+  </a>
+
+  <a class="linkitem" id="lk-map" target="_blank" rel="noopener"
+     href="https://www.jma.go.jp/bosai/weather_map/">
+    <span class="li-icon" aria-hidden="true">🗺</span>
+    <span class="li-body">
+      <span class="li-title">天気図</span>
+      <span class="li-desc">実況天気図と予想天気図。前線・気圧配置の全体像をつかむ</span>
+    </span>
+    <span class="li-go" aria-hidden="true">開く ›</span>
+  </a>
+
+  <a class="linkitem" id="lk-warn" target="_blank" rel="noopener"
+     href="https://www.jma.go.jp/bosai/warning/">
+    <span class="li-icon" aria-hidden="true">⚠</span>
+    <span class="li-body">
+      <span class="li-title">気象警報・注意報</span>
+      <span class="li-desc">地域を選んで発表状況を確認。登る前に必ず一度</span>
+    </span>
+    <span class="li-go" aria-hidden="true">開く ›</span>
+  </a>
+
+</div>
+
+<p class="notice">
+「📍 現在地を反映する」を押すと、上の3つが現在地を中心にした画面で開くようになります。
+座標はURLの<b>#より後ろ</b>にだけ入るため、気象庁のサーバーへは送信されません。
+位置情報を許可しない場合や取得できない場合は、全国表示のまま開きます。
+</p>
+
+</main>
+
+<footer>
+<a href="../index.html">← PeakWeather トップへ戻る</a> /
+リンク先の情報提供: <a href="https://www.jma.go.jp/" target="_blank" rel="noopener">気象庁</a> /
+<a href="mountains.html">対応山リスト</a> / <a href="terms.html">利用規約・免責事項</a>
+</footer>
+
+<script>
+"use strict";
+(function(){
+// GA4 の薄いラッパ (gate.js の pwTrack と同じ方針)。gtag.js は async 読み込みのため
+// 広告ブロッカーや読み込み前の呼び出しで未定義になりうる。計測の失敗でページを壊さない。
+function track(name,params){ try{ if(typeof gtag==="function")gtag("event",name,params||{}) }catch(e){} }
+
+// 日本域の判定。index.html の inJapan / docs/point.html と同一の範囲。片方だけ変えないこと
+// (気象庁のナウキャストは日本域のみ。域外の座標を渡すと真っ白な地図が開くだけになる)
+function inJapan(lat,lon){ return lat>=20&&lat<=46.5&&lon>=122&&lon<=154 }
+
+const btn=document.getElementById("geo"),status=document.getElementById("geostatus");
+const geoLinks=[...document.querySelectorAll(".linkitem[data-geo]")];
+
+// リンクを開いた回数の計測。座標そのものは送らず、現在地を反映済みかどうかだけ記録する
+document.querySelectorAll(".linkitem").forEach(a=>a.addEventListener("click",()=>{
+  track("weather_link",{link_id:a.id,here:a.classList.contains("here")});
+}));
+
+function say(msg,err){ status.textContent=msg; status.className=err?"err":"" }
+
+btn.addEventListener("click",()=>{
+  // 位置情報APIは安全なコンテキスト限定。file:// 直開きやHTTP配信では呼んでも必ず失敗する
+  if(!navigator.geolocation||!window.isSecureContext){
+    say("この環境では位置情報を利用できません(HTTPSでのアクセスが必要です)",true);
+    track("weather_geo",{result:"unsupported"});return;
+  }
+  btn.disabled=true;say("現在地を取得中…");
+  navigator.geolocation.getCurrentPosition(pos=>{
+    btn.disabled=false;
+    const lat=pos.coords.latitude,lon=pos.coords.longitude;
+    if(!inJapan(lat,lon)){
+      say("日本国内でのみ現在地に対応します。リンクは全国表示のまま開きます",true);
+      track("weather_geo",{result:"out_of_jp"});return;
+    }
+    // 座標はURLフラグメントに載せるだけなので気象庁へ送信されない。4桁(約10m)で十分
+    const la=lat.toFixed(4),lo=lon.toFixed(4);
+    geoLinks.forEach(a=>{
+      a.href=a.dataset.tmpl.replace("{lat}",la).replace("{lon}",lo);
+      a.classList.add("here");
+    });
+    btn.textContent="📍 現在地を取り直す";
+    say("現在地を反映しました。上の3つが現在地を中心に開きます");
+    track("weather_geo",{result:"ok"}); // 座標は送らない
+  },e=>{
+    btn.disabled=false;
+    // 失敗しても href は全国表示のまま。エラー文言は index.html の locateAndGo と揃える
+    say((e.code===1?"位置情報の利用が許可されませんでした。ブラウザの設定で位置情報を許可してください"
+      :e.code===3?"現在地の取得がタイムアウトしました。空の開けた場所で再度お試しください"
+      :"現在地を取得できませんでした。時間をおいて再度お試しください")
+      +"（リンクは全国表示のまま開きます）",true);
+    track("weather_geo",{result:e.code===1?"denied":e.code===3?"timeout":"unavailable"});
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
+});
+})();
+</script>
+</body>
+</html>

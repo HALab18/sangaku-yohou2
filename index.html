@@ -77,6 +77,14 @@ h1{margin:0;font-size:2.15em;font-weight:800;letter-spacing:.05em;color:#fff;
 .hero-find .btnface{display:inline-block;padding:9px 26px;border-radius:999px;background:rgba(255,255,255,.05);
   border:1px solid rgba(255,255,255,.32);backdrop-filter:blur(3px);transition:background .2s}
 .hero-find:hover .btnface,.hero-find:focus-visible .btnface{background:rgba(255,255,255,.16)}
+/* 三次ボタン: 気象庁リンク集への入口。上2つより一段小さく・淡くして主従を崩さない。
+   幅は3つが逆三角形に見えるよう横paddingで詰める(209→166→124px)。文字数を変えたら測り直すこと */
+.hero-weather{margin-top:8px;color:#a3aec4;text-decoration:none;font-weight:600;
+  font-size:.72em;letter-spacing:.04em}
+.hero-weather .btnface{display:inline-block;padding:6px 28px;border-radius:999px;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.22);
+  backdrop-filter:blur(3px);transition:background .2s}
+.hero-weather:hover .btnface,.hero-weather:focus-visible .btnface{background:rgba(255,255,255,.12)}
 .chev{color:#fff;font-size:1.5em;line-height:1;margin-top:6px;animation:bob 1.8s ease-in-out infinite}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
 @media(prefers-reduced-motion:reduce){.chev{animation:none}}
@@ -427,6 +435,11 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
     <a class="hero-find gate-off" href="docs/find.html" data-gatelink aria-disabled="true"
        onclick="pwSDrop('pw_find_back')">
       <span class="btnface">天気の良い山をさがす</span>
+    </a>
+    <!-- data-gatelink を付けないのは意図的。ゲートは Open-Meteo の無料枠を守るためのもので、
+         このリンク先(docs/weather-links.html)は気象庁への外部リンク集でAPIを叩かない -->
+    <a class="hero-weather" href="docs/weather-links.html">
+      <span class="btnface">気象情報リンク</span>
     </a>
     <span class="chev" aria-hidden="true">⌄</span>
   </div>
