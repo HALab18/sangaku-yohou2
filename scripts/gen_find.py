@@ -158,6 +158,12 @@ th:nth-child(2),td.nm{box-shadow:inset -1px 0 0 var(--line)}
 td.nm a{color:var(--link);font-weight:700;text-decoration:none}
 td.nm a:hover{text-decoration:underline}
 td.nm small{display:block;color:#8a94a8;font-size:.82em;font-weight:400}
+/* 行全体をクリック可能に(index.htmlの見通し表の行ジャンプと挙動を統一)。
+   tr自体にはtabindexを付けない: 山名の<a>が既にキーボードでフォーカスできる本物のリンクで、
+   行にも付けると同じ行でTab停止が2回になってしまう(マウス/タッチだけの利便性強化)。
+   sticky列(td.rank/td.nm)は個別の背景色指定があるため明示的に上書きする */
+tr[data-href]{cursor:pointer}
+tr[data-href]:hover td,tr[data-href]:hover td.rank,tr[data-href]:hover td.nm{background:#dde6f2}
 /* 結果ブロックの見出しと注記 (メイン表 / 足切り表を分ける) */
 h3.results-h{margin:18px 0 4px;font-size:1em;color:var(--night);font-weight:700}
 h3.results-h.caution{color:#b26b00}
@@ -1025,7 +1031,9 @@ footer a{color:var(--link)}
     var href="../index.html#"+encodeURIComponent(m.n)+"/"+date;
     var wx=dispWx(s);
     var reason=caution?'<td class="reason">⚠ '+esc(reasonLabel(s))+'</td>':'';
-    return '<tr>'+
+    // 行のどこを押しても詳細予報へ飛べるようにする(見通し表の行ジャンプと挙動を統一)。
+    // href は既に encodeURIComponent 済みなので data-href にそのまま埋めて安全
+    return '<tr data-href="'+href+'">'+
       '<td class="rank">'+(i+1)+'</td>'+
       '<td class="nm">'+
         '<div class="nmrow">'+
@@ -1140,9 +1148,16 @@ footer a{color:var(--link)}
   // 山名リンクを押したとき、遷移先(index.html)に「この一覧から来た」ことを1回だけ伝える。
   // index.html 側は読んだ直後に削除するので、その回の詳細予報にだけ「一覧に戻る」が出る。
   // 行ごとの onclick 属性ではなく委譲リスナー1本にして、生成HTMLを軽く保つ。
+  // 山名リンク自体はブラウザの既定遷移に任せ、行の他の部分(ランク・指数・天気・気温など)を
+  // 押した場合だけ JS で同じ遷移先(tr[data-href])へ移動する(index.htmlの見通し表の
+  // 行ジャンプと操作性を統一)。
   elResults.addEventListener("click",function(e){
     var a=e.target.closest?e.target.closest("td.nm a"):null;
-    if(a)pwSSave("pw_entry","find");
+    if(a){pwSSave("pw_entry","find");return}
+    var tr=e.target.closest?e.target.closest("tr[data-href]"):null;
+    if(!tr)return;
+    pwSSave("pw_entry","find");
+    location.href=tr.dataset.href;
   });
 
   // ---- 復元してよいのは「一覧から開いた詳細予報」から戻ってきた時だけ ----
