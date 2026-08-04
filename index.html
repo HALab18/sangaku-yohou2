@@ -266,6 +266,15 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
 .wk-toggle:hover{background:#eef2f8}
 .wk-toggle::after{content:"▾";margin-left:6px;display:inline-block;transition:transform .15s}
 .wk-toggle[aria-expanded="true"]::after{transform:rotate(180deg)}
+/* 見通し表の行→詳細予報へのジャンプ。行をタップ/クリックすると該当日の詳細に移動する */
+.wk-row{cursor:pointer}
+.wk-row:hover td,.wk-row:focus-visible td,
+.wk-row:hover td:first-child,.wk-row:focus-visible td:first-child{background:#dde6f2}
+.wk-row:focus-visible{outline:2px solid var(--link);outline-offset:-2px}
+.detail-day{scroll-margin-top:10px}
+@keyframes detailFlash{0%,100%{background:transparent}30%,70%{background:#fdeec2}}
+.detail-flash{animation:detailFlash 1.4s ease-in-out}
+@media(prefers-reduced-motion:reduce){.detail-flash{animation:none}}
 .notice{background:#edf2f9;border-left:5px solid var(--slate);color:#44506b;padding:10px 12px;
   border-radius:0 6px 6px 0;margin:18px 0;font-size:.9em}
 footer{color:#888;font-size:.82em;margin-top:8px;text-align:center}
@@ -1427,7 +1436,8 @@ async function run(mt){
     <tr><th>日付</th><th>指数</th><th>天気</th><th>🏔 景色(朝)</th><th>山頂気温</th><th>${windLbl}max(5-17時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
   rows.forEach((r,i)=>{
     const more=i>=WK_HEAD;
-    htmlOut+=`<tr${more?` class="wk-more"${wkOpen?"":" hidden"}`:""}><td>${md(r.d)}${wj(r.d)}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"> ⚠夕方</span>':""}${r.night?'<span class="ew"> ⚠夜間</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
+    const cls=["wk-row"];if(more)cls.push("wk-more");
+    htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}" tabindex="0" role="button" aria-label="${md(r.d)}${wj(r.d)}の詳細予報へ移動"><td>${md(r.d)}${wj(r.d)}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"> ⚠夕方</span>':""}${r.night?'<span class="ew"> ⚠夜間</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
     <td>${r.view}</td><td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws)}</td>
     <td>${u1(r.pr,"mm")}</td><td>${u0(r.prob,"%")}</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
   });
@@ -1460,7 +1470,9 @@ async function run(mt){
     const sun=di>=0&&d.sunrise?.[di]?` (日の出${d.sunrise[di].slice(11,16)} / 日の入${d.sunset[di].slice(11,16)})`:"";
     // 夏冬モードは日単位。同一日の中でブロックごとに閾値が変わると表の中で基準がぶれる
     const thD=seasonTh(dt2.getMonth()+1,...modeTemps(h,times,idxs));
-    htmlOut+=`<h2>${ds} ${wj(dt2)} ${step===1?"1時間ごと":"3時間ごと"}詳細${sun}</h2>${cap}<div class="tbl"><table>
+    // 見通し表の行クリックからのジャンプ先。id は iso(dt2) と一致させる(jumpToDetail が参照する)
+    htmlOut+=`<section id="detail-${ds}" class="detail-day">
+    <h2>${ds} ${wj(dt2)} ${step===1?"1時間ごと":"3時間ごと"}詳細${sun}</h2>${cap}<div class="tbl"><table>
       <tr><th>時刻</th><th>指数</th><th>天気</th><th>🏔 景色(眺望)</th><th>気温</th><th>体感</th><th>${windLbl}</th><th>突風</th><th>降水</th><th>降水%(参考)</th><th>⚡ 発雷リスク</th><th>雲(下/中/上)</th>${hasSnow?"<th>積雪(新雪)</th>":""}</tr>`;
     for(let sh=0;sh<24;sh+=step){
       const blk=idxs.filter(i=>Math.floor(+times[i].slice(11,13)/step)*step===sh);
@@ -1515,7 +1527,7 @@ async function run(mt){
         <td>${u0(gust,"m/s")}</td><td>${prTxt}</td><td>${u0(prob,"%")}</td><td>${ltCell(lt,cape,cin)}</td>
         <td>${cl}</td>${hasSnow?`<td>${snowCell(depArr.length?Math.max(...depArr):null,sfBlk)}</td>`:""}</tr>`;
     }
-    htmlOut+=`</table></div>`;
+    htmlOut+=`</table></div></section>`;
   }
 
   // モデル比較 (常時表示。ただし補助情報なので、失敗しても主要な予報表は必ず描画する)
@@ -1634,8 +1646,12 @@ const runBtns=()=>[document.getElementById("go"),document.getElementById("gps")]
 function trackSearch(term,result){
   pwTrack("search",{search_term:String(term).slice(0,100),pw_entry:ENTRY,pw_result:result});
 }
+// 見通し表の行クリックからのジャンプ(jumpToDetail)が、GPS再測位や地名再解決を
+// やり直さずに「同じ地点・別日付」で再検索できるよう、直近の検索条件を覚えておく
+let lastMt=null;
 async function go(mt){
   if(!pwGateOk())return; // inert 非対応ブラウザ対策の多重防御
+  lastMt=mt;
   const status=document.getElementById("status");
   const term=mt.here?"(現在地)":mt.coord?"(座標指定)":mt.name;
   runBtns().forEach(b=>b.disabled=true);
@@ -1925,6 +1941,40 @@ document.getElementById("out").addEventListener("click",e=>{
   more.forEach(tr=>{tr.hidden=!open});
   btn.setAttribute("aria-expanded",open);
   btn.textContent=open?"折りたたむ":`残り${more.length}日を表示`;
+});
+
+// 見通し表の行→詳細予報へのジャンプ。
+// 対象日が現在の詳細ウィンドウ(検索開始日から4日分)に入っていればスクロールするだけ、
+// 入っていなければ #mdate をその日にして同じ地点(lastMt)で検索し直してからスクロールする。
+function scrollToDetail(sec){
+  const reduce=matchMedia("(prefers-reduced-motion:reduce)").matches;
+  sec.scrollIntoView({behavior:reduce?"auto":"smooth",block:"start"});
+  sec.classList.remove("detail-flash");
+  void sec.offsetWidth; // アニメーション再トリガー用のリフロー
+  sec.classList.add("detail-flash");
+}
+let jumpBusy=false;
+async function jumpToDetail(dateStr){
+  const existing=document.getElementById("detail-"+dateStr);
+  if(existing){scrollToDetail(existing);return}
+  if(!lastMt||jumpBusy)return; // 検索前、または既に別のジャンプ/検索が進行中なら何もしない
+  jumpBusy=true;
+  try{
+    document.getElementById("mdate").value=dateStr;
+    await go(lastMt);
+    const sec=document.getElementById("detail-"+dateStr);
+    if(sec)scrollToDetail(sec);
+  }finally{jumpBusy=false}
+}
+document.getElementById("out").addEventListener("click",e=>{
+  const row=e.target.closest("tr[data-date]");if(!row)return;
+  jumpToDetail(row.dataset.date);
+});
+document.getElementById("out").addEventListener("keydown",e=>{
+  if(e.key!=="Enter"&&e.key!==" ")return;
+  const row=e.target.closest("tr[data-date]");if(!row)return;
+  e.preventDefault();
+  jumpToDetail(row.dataset.date);
 });
 
 // ヒーローCTA: ハッシュを変えずにフォームへスクロール (#startが残ると共有URLと紛らわしいため)
