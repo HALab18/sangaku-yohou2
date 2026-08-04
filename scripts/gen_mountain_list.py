@@ -56,7 +56,7 @@ def build_rows(rows):
         href = "../index.html#" + urllib.parse.quote(name)
         key = f"{name}{yomi}{pref}"
         out.append(
-            f'<tr data-k="{key}"><td class="nm"><a href="{href}">{name}</a>'
+            f'<tr data-k="{key}" data-href="{href}"><td class="nm"><a href="{href}">{name}</a>'
             f"<small>{yomi}</small></td>"
             f'<td>{pref}</td><td class="el">{elev:,}m</td></tr>'
         )
@@ -156,6 +156,8 @@ td.nm a:hover{{text-decoration:underline}}
 td.nm small{{display:block;color:#8a94a8;font-size:.82em;font-weight:400}}
 td.el{{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}}
 tr[hidden]{{display:none}}
+tr[data-href]{{cursor:pointer}}
+tr[data-href]:hover td{{background:#dde6f2}}
 
 footer{{color:#888;font-size:.82em;margin-top:26px;border-top:1px solid var(--line);padding-top:10px;padding-bottom:16px}}
 footer a{{color:var(--link)}}
@@ -226,9 +228,15 @@ footer a{{color:var(--link)}}
   }});
   // 山名リンクを押したとき、遷移先(index.html)に「この一覧から来た」ことを1回だけ伝える。
   // アクセス解析で「山一覧からの検索数」を数えるために使う(index.html側で読んだら即削除)。
+  // 山名リンク自体はブラウザの既定遷移に任せ、行の他の部分(都道府県・標高など)を押した
+  // 場合だけ JS で同じ遷移先(tr[data-href])へ移動する(見通し表・山さがし結果と操作性を統一)。
   document.addEventListener("click",function(e){{
     var a=e.target.closest?e.target.closest("td.nm a"):null;
-    if(a)try{{sessionStorage.setItem("pw_entry","list")}}catch(err){{}}
+    if(a){{try{{sessionStorage.setItem("pw_entry","list")}}catch(err){{}}return}}
+    var tr=e.target.closest?e.target.closest("tr[data-href]"):null;
+    if(!tr)return;
+    try{{sessionStorage.setItem("pw_entry","list")}}catch(err){{}}
+    location.href=tr.dataset.href;
   }});
 }})();
 </script>
