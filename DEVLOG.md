@@ -5,6 +5,36 @@
 
 ---
 
+## ファイル直開き(file://)のブロック（2026-08-05）
+
+**発端**: 開発者から「index.htmlをダウンロードしてパソコン等で直接開いて実行できない
+仕様にしたい。完全には無理でも非エンジニアレベルでできなければOK」という依頼。
+**この変更は利用者向けの改訂履歴(`docs/history.html`・`index.html`内の履歴リスト)には
+一切記載しない**（対策の手口を利用者に見せない方針。開発者からの明示指示）。
+
+**入れたもの**（[gate.js](gate.js) のみ。index.html/find.html/point.htmlは全ページ
+gate.js読み込み済みのため無変更）:
+- `pwIsLocalFile()`: `location.protocol === "file:"` を判定。`http://localhost`
+  （`python -m http.server`でのローカル確認手順）は対象外。
+- `pwGateOk()` をfail-closed化: `!pwIsLocalFile() && pwIsAgreed() && pwIsAuthed()`。
+  file://で開いている限り、同意・認証状態に関わらず常にfalseになり、`#appwrap`の
+  inert解除もサブページの`pwGuardPage()`も一切通らない。
+- `pwBlockLocalFile()`: `DOMContentLoaded`時にfile://なら全画面オーバーレイ
+  （`position:fixed; z-index:2147483647`）を挿入し、「このファイルを直接開いてのご利用は
+  できません」とオンライン版(`https://halab18.github.io/sangaku-yohou2/`)へのリンクを表示。
+
+**ローカルで確認済み**（ブラウザのJS実行経由）:
+- `http://localhost:8765/index.html` は通常通り動作（オーバーレイなし、同意・認証UIが
+  従来通り表示される）ことを確認。
+- `pwBlockLocalFile()`を手動実行し、全画面固定・最前面z-index・リンク先URLが正しいことを確認。
+- ブラウザプレビューの制約でfile://への実ナビゲーションは検証できなかったため、
+  `pwIsLocalFile()`のロジックとオーバーレイの見た目・配置を分けて確認する形で代替した。
+
+**未確認**: 実際にファイルをダウンロードしてPC/スマホでダブルクリックして開いた場合の
+実機確認（Chrome/Safari/Edge等、file://の扱いがブラウザ間で完全に同一とは限らない）。
+
+---
+
 ## find.html の行クリック統一・改訂履歴への追記 / ver 2.17β（2026-08-05）
 
 **発端**: 前回入れた「見通し表の行→詳細予報ジャンプ」を踏まえ、開発者から

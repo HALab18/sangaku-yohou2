@@ -47,8 +47,44 @@ function pwSDrop(k){ delete pwSMem[k]; try{ sessionStorage.removeItem(k) }catch(
 function pwIsAgreed(){ return pwLoad(PW_AGREE_KEY) === "1" }
 function pwIsAuthed(){ return pwLoad(PW_AUTH_KEY) === PW_AUTH_VER }
 
-/* 操作を許可してよいか。規約同意と認証の両方が揃って初めて true */
-function pwGateOk(){ return pwIsAgreed() && pwIsAuthed() }
+/* ファイルをダウンロードしてローカルで直接開いた(file://)かどうか。
+ * http://localhost 経由のローカル確認(python -m http.server)は http: なので対象外。 */
+function pwIsLocalFile(){ return location.protocol === "file:" }
+
+/* 操作を許可してよいか。規約同意・認証に加え、ローカルファイル直開きでないことが必要。
+ * fail-closed: file:// で開いている限り、同意・認証が済んでいても常に false。 */
+function pwGateOk(){ return !pwIsLocalFile() && pwIsAgreed() && pwIsAuthed() }
+
+/* ---- ローカルファイル直開きの全画面ブロック ----
+ * ダウンロードしたHTMLをそのまま開いて使われるのを防ぐ表示。pwGateOk()のfail-closedだけでも
+ * 機能的には止まるが、非エンジニアにも分かるよう理由とオンライン版への導線を明示する。 */
+function pwBlockLocalFile(){
+  var ov = document.createElement("div");
+  ov.className = "pwgate-localblock";
+  ov.innerHTML =
+    '<div class="pwgate-localblock-card">' +
+      '<div class="pwgate-icon">🔒</div>' +
+      '<h2>このファイルを直接開いてのご利用はできません</h2>' +
+      '<p>お使いのファイルはダウンロードされたもので、パソコンやスマートフォンに保存して' +
+      '直接開く形ではご利用いただけません。下記のオンライン版をご利用ください。</p>' +
+      '<p class="pwgate-act"><a class="pwgate-btn" href="https://halab18.github.io/sangaku-yohou2/">' +
+        'オンライン版を開く</a></p>' +
+    '</div>';
+  var st = document.createElement("style");
+  st.textContent =
+    ".pwgate-localblock{position:fixed;inset:0;z-index:2147483647;background:#f4f6fb;" +
+      "display:flex;align-items:center;justify-content:center;padding:20px}" +
+    ".pwgate-localblock-card{max-width:520px;padding:26px 22px;background:#fff;" +
+      "border:1px solid #dee4ee;border-radius:12px;text-align:center;line-height:1.8}" +
+    ".pwgate-localblock-card h2{margin:8px 0 12px;font-size:1.1em;color:#1e2d4a}" +
+    ".pwgate-localblock-card p{margin:10px 0;font-size:.92em;color:#44506b;text-align:left}" +
+    ".pwgate-localblock-card p.pwgate-act{text-align:center}";
+  document.head.appendChild(st);
+  document.body.appendChild(ov);
+}
+if(typeof document !== "undefined" && pwIsLocalFile()){
+  document.addEventListener("DOMContentLoaded", pwBlockLocalFile);
+}
 
 /* 認証コードのハッシュ化。scripts/gen_auth_hash.py と同一パラメータを維持すること */
 async function pwHashAuthCode(code){
