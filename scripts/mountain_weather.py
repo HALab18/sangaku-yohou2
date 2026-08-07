@@ -1269,15 +1269,32 @@ tr:nth-child(even) td{background:#f3f0e8}
 .v-ex{color:#1c5b3f;font-weight:700}.v-ok{color:#2d6a4f}.v-so{color:#7b5e00}
 .v-ng{color:#a03415}
 .sat{color:#1857a4;font-weight:600}.sun{color:#c0392b;font-weight:600}
+/* ⚠夕方/⚠夜間: 指数バッジと並んでも見落とされないよう背景色付きバッジにする(Web版と同じ) */
+.ew{display:inline-block;margin-left:4px;padding:1px 6px;border-radius:8px;
+  background:#f9d9cf;color:#a03415;font-weight:700;font-size:.85em;
+  white-space:nowrap;vertical-align:middle}
+.ew .ewi{font-size:1.3em;line-height:1;vertical-align:-.15em;margin-right:1px}
 /* 発雷リスク: 稲妻の本数と色の二重表現。下段に CAPE/CIN の実数値 */
 .lt{font-weight:600;white-space:nowrap}
 .lt-0{color:#7b6a00}.lt-1{color:#8a5a00}.lt-2{color:#8f4212}.lt-3{color:#a03415}
-.ltnum,.vwnum{display:block;font-size:.78em;color:#6b7280;margin-top:2px;line-height:1.3}
+.ltnum{display:block;font-size:.78em;color:#6b7280;margin-top:2px;line-height:1.3;cursor:help}
+.vwnum{display:block;font-size:.78em;color:#6b7280;margin-top:2px;line-height:1.3}
 .notice{background:#fff8e6;border-left:5px solid var(--warn);padding:10px 12px;
   border-radius:0 6px 6px 0;margin:18px 0;font-size:.92em}
 footer{color:#888;font-size:.85em;margin-top:20px}
 @media(max-width:600px){body{padding:8px;font-size:13px}}
 """
+
+
+# CAPE/CIN の意味は初心者には自明ではないため、生値に軽い説明を title で添える
+# (Web版 index.html の ltCell / find.htmlの sunAlt マーカーと同じ native title= のパターン)
+CAPE_CIN_TIP = "CAPE(対流有効位置エネルギー)は雷雲の発達しやすさ、CIN(対流抑制)は蓋の強さの目安です。値が大きいほど発雷リスクが高まります(参考表示)。"
+
+
+def _wrap_ew(text):
+    """指数の後ろに続く⚠夕方/⚠夜間マークを、Web版と同じ背景色付きバッジに置き換える"""
+    return (text.replace("⚠夕方", '<span class="ew"><span class="ewi">⚠</span>夕方</span>')
+                .replace("⚠夜間", '<span class="ew"><span class="ewi">⚠</span>夜間</span>'))
 
 
 def _decorate_cell(cell):
@@ -1286,13 +1303,13 @@ def _decorate_cell(cell):
     m = re.match(r"^([ABC])($|\s.*)", c)
     if m:
         cls = {"A": "b b-a", "B": "b b-b", "C": "b b-c"}[m.group(1)]
-        return f'<span class="{cls}">{m.group(1)}</span>{m.group(2)}'
+        return f'<span class="{cls}">{m.group(1)}</span>{_wrap_ew(m.group(2))}'
     m = re.match(r"^(⚡+)\s(低|やや注意|注意|高い)\s\((.+)\)$", c)
     if m:
         # 発雷リスク: 段階に応じた色を付け、CAPE/CIN の実数値は下段に小さく表示
         lv = min(len(m.group(1)) - 1, 3)
         return (f'<span class="lt lt-{lv}">{m.group(1)} {m.group(2)}</span>'
-                f'<span class="ltnum">{m.group(3)}</span>')
+                f'<span class="ltnum" title="{CAPE_CIN_TIP}">{m.group(3)}</span>')
     m = re.match(r"^([◎○△✕])\s(\S+?)(\s\(視程(.+)\))?$", c)
     if m:
         # 景色(眺望): 判定色を付け、併記の視程は下段に小さく表示 (Web版の2段構成に合わせる)

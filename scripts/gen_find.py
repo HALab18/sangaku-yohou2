@@ -138,6 +138,13 @@ td.nm .scb{font-weight:800;font-size:1.05em;font-variant-numeric:tabular-nums;fl
 .abc-b{background:#fdeec9;color:#7b5e00}
 .abc-c{background:#f9d9cf;color:#a03415}
 .abcr{display:block;font-size:.72em;color:#a03415;font-weight:700;margin-top:2px;white-space:nowrap}
+/* 一覧の初期表示を上位FIND_HEAD件に畳む開閉ボタン(index.htmlのwk-toggleと同じ考え方) */
+.find-more[hidden]{display:none}
+.find-toggle{width:100%;padding:9px;font-size:.92em;font-weight:600;border-radius:10px;
+  margin:2px 0 14px;background:#fff;color:var(--link);border:1.5px solid var(--line)}
+.find-toggle:hover{background:#eef2f8}
+.find-toggle::after{content:"▾";margin-left:6px;display:inline-block;transition:transform .15s}
+.find-toggle[aria-expanded="true"]::after{transform:rotate(180deg)}
 td.nm .scb.rank-a{color:#1f7a34}
 td.nm .scb.rank-b{color:#b26b00}
 td.nm .scb.rank-c{color:#b3261e}
@@ -153,6 +160,11 @@ td.rank,td.nm{z-index:1}
 th:first-child,th:nth-child(2){z-index:3}
 /* 偶数行の背景色が透けないよう明示 (sticky で親の背景が引き継がれないため) */
 tr:nth-child(even) td.rank,tr:nth-child(even) td.nm{background:#eef1f6}
+/* 指数Cの行は背景色で警告する(スコア順位に関わらず要注意〜不適であることに気づけるように)。
+   td個別に背景を敷く tr:nth-child(even) td / sticky列の背景指定と同じ specificity になるよう
+   td.rank/td.nm も明示し、上記2つのルールより後方に置くことで確実に上書きする */
+tr.row-c td{background:#fbe0da}
+tr.row-c td.rank,tr.row-c td.nm{background:#fbe0da}
 /* 山名列の右端に境界線 (横スクロール時に固定範囲の右端が視認しやすい) */
 th:nth-child(2),td.nm{box-shadow:inset -1px 0 0 var(--line)}
 td.nm a{color:var(--link);font-weight:700;text-decoration:none}
@@ -1026,14 +1038,19 @@ footer a{color:var(--link)}
   }
 
   // 表 1行分の HTML (メイン/足切り共通、caution=true で「理由」列を出す)
-  function rowHtml(row,i,date,caution){
+  // more=先頭FIND_HEAD件より後ろの行か、open=表示開始時点で展開済みか(「もっと見る」用)
+  function rowHtml(row,i,date,caution,more,open){
     var m=row.mt,s=row.sc;
     var href="../index.html#"+encodeURIComponent(m.n)+"/"+date;
     var wx=dispWx(s);
     var reason=caution?'<td class="reason">⚠ '+esc(reasonLabel(s))+'</td>':'';
+    // 指数Cはスコア順位に関わらず要注意〜不適であることに気づけるよう行全体を警告色にする
+    var cls=[];if(s.abc&&s.abc.v==="C")cls.push("row-c");if(more)cls.push("find-more");
+    var clsAttr=cls.length?' class="'+cls.join(" ")+'"':'';
+    var hiddenAttr=(more&&!open)?' hidden':'';
     // 行のどこを押しても詳細予報へ飛べるようにする(見通し表の行ジャンプと挙動を統一)。
     // href は既に encodeURIComponent 済みなので data-href にそのまま埋めて安全
-    return '<tr data-href="'+href+'">'+
+    return '<tr'+clsAttr+hiddenAttr+' data-href="'+href+'">'+
       '<td class="rank">'+(i+1)+'</td>'+
       '<td class="nm">'+
         '<div class="nmrow">'+
@@ -1058,16 +1075,26 @@ footer a{color:var(--link)}
       '</tr>';
   }
 
+  // 既定は先頭FIND_HEAD件だけ出し、残りは hidden で畳む(スマホで表が長くなりすぎるため)。
+  // index.html の週間見通し表(WK_HEAD/wk-toggle)と同じ考え方
+  var FIND_HEAD=10;
+
   function tableHtml(rows,date,caution){
+    var tblId="tbl-"+(caution?"caution":"safe");
+    var open=rows.length<=FIND_HEAD;
     var head='<tr><th>#</th><th>山名 / スコア</th>'+
       (caution?'<th>理由</th>':'')+
       '<th>指数</th>'+
       '<th>天気</th><th class="num">日照</th><th class="num">気温</th><th class="num">稜線風</th>'+
       '<th class="num">降水確率</th><th class="num">降水量</th></tr>';
     var body='';
-    rows.forEach(function(row,i){body+=rowHtml(row,i,date,caution)});
-    return '<div class="tbl'+(caution?' caution':'')+'"><table><thead>'+head+
+    rows.forEach(function(row,i){body+=rowHtml(row,i,date,caution,i>=FIND_HEAD,open)});
+    var html='<div class="tbl'+(caution?' caution':'')+'" id="'+tblId+'"><table><thead>'+head+
       '</thead><tbody>'+body+'</tbody></table></div>';
+    if(rows.length>FIND_HEAD)
+      html+='<button type="button" class="find-toggle" aria-controls="'+tblId+'" aria-expanded="'+open+'">'+
+        (open?"折りたたむ":"残り"+(rows.length-FIND_HEAD)+"件を表示")+'</button>';
+    return html;
   }
 
   // 表の下に置く「各列の意味」凡例。対象時間帯(朝7時〜夕方3時)・単位・重要ポイントを簡潔に説明
@@ -1152,6 +1179,16 @@ footer a{color:var(--link)}
   // 押した場合だけ JS で同じ遷移先(tr[data-href])へ移動する(index.htmlの見通し表の
   // 行ジャンプと操作性を統一)。
   elResults.addEventListener("click",function(e){
+    var toggleBtn=e.target.closest?e.target.closest(".find-toggle"):null;
+    if(toggleBtn){
+      var open=toggleBtn.getAttribute("aria-expanded")!=="true";
+      var tbl=document.getElementById(toggleBtn.getAttribute("aria-controls"));
+      var more=tbl.querySelectorAll("tr.find-more");
+      more.forEach(function(tr){tr.hidden=!open});
+      toggleBtn.setAttribute("aria-expanded",open);
+      toggleBtn.textContent=open?"折りたたむ":"残り"+more.length+"件を表示";
+      return;
+    }
     var a=e.target.closest?e.target.closest("td.nm a"):null;
     if(a){pwSSave("pw_entry","find");return}
     var tr=e.target.closest?e.target.closest("tr[data-href]"):null;

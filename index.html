@@ -235,7 +235,10 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
 .b-a{background:#d8efe1;color:#1c5b3f}.b-b{background:#fdeec9;color:#7b5e00}.b-c{background:#f9d9cf;color:#a03415}
 .v-ex{color:#1c5b3f;font-weight:700}.v-ok{color:#2d6a4f}.v-so{color:#7b5e00}.v-ng{color:#a03415}
 .sat{color:#1857a4;font-weight:600}.sun{color:#c0392b;font-weight:600}
-.ew{color:#a03415;font-weight:700;font-size:.85em;white-space:nowrap}
+.ew{display:inline-block;margin-left:4px;padding:1px 6px;border-radius:8px;
+  background:#f9d9cf;color:#a03415;font-weight:700;font-size:.85em;
+  white-space:nowrap;vertical-align:middle}
+.ew .ewi{font-size:1.3em;line-height:1;vertical-align:-.15em;margin-right:1px}
 /* 指数の降格理由・濡れ注意・雨雪の別。数値の読み取りを邪魔しないよう小さく下段に置く。
    色は .ew と同系にして「注意を促す情報」であることを揃える。 */
 .dr{display:block;font-size:.76em;color:#a03415;font-weight:700;margin-top:2px;line-height:1.3;white-space:nowrap}
@@ -250,7 +253,7 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
 .lt{display:inline-flex;align-items:center;gap:3px;font-weight:600;white-space:nowrap}
 .lt svg{width:1.9em;height:1.15em;flex:none}
 .lt-0{color:#7b6a00}.lt-1{color:#8a5a00}.lt-2{color:#8f4212}.lt-3{color:#a03415}
-.ltnum{display:block;font-size:.76em;color:#6b7280;margin-top:2px;line-height:1.3}
+.ltnum{display:block;font-size:.76em;color:#6b7280;margin-top:2px;line-height:1.3;cursor:help}
 /* 景色(眺望)列: 発雷リスクと同じ2段構成。上段=アイコン+記号+ラベル / 下段=視程を小さく併記。
    視程は単独の列にはせず、景色を読むための補足情報として置く。svg は 1.5em=21px */
 .vw{display:inline-flex;align-items:center;gap:3px;font-weight:600;white-space:nowrap}
@@ -524,7 +527,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.171β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.18β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -1055,13 +1058,16 @@ function vhtml([v,n],vis){
     (visTxt(vis)?`<span class="vwnum">視程 ${visTxt(vis)}</span>`:"");
 }
 // 発雷リスク列の表示。上段= アイコン(本数+色)とラベル、下段= 元の CAPE/CIN 値
+// CAPE/CIN の意味は初心者には自明ではないため、生値に軽い説明を title で添える
+// (find.htmlの sunAlt マーカーと同じ native title= のパターンを踏襲。gen_find.py 参照)
+const CAPE_CIN_TIP="CAPE(対流有効位置エネルギー)は雷雲の発達しやすさ、CIN(対流抑制)は蓋の強さの目安です。値が大きいほど発雷リスクが高まります(参考表示)。";
 function ltCell(lt,cape,cin){
   if(!lt)return"-";
   // CIN は API が絶対値で返すが、慣例に合わせて負値表記で見せる(0 は素の 0)
   const a=cin==null?null:Math.round(Math.abs(cin));
   const num=`CAPE ${Math.round(cape)}`+(a==null?"":` / CIN ${a===0?0:-a}`);
   return`<span class="lt lt-${lt.lv}"><svg aria-hidden="true"><use href="#lt-${lt.lv}"/></svg>${lt.label}</span>`+
-    `<span class="ltnum">${num}</span>`;
+    `<span class="ltnum" title="${CAPE_CIN_TIP}">${num}</span>`;
 }
 function snowCell(depthM,sfCm){
   // 積雪列の表示。「85cm(+12)」= 積雪深85cm・新雪12cm
@@ -1424,7 +1430,7 @@ async function run(mt){
   rows.forEach((r,i)=>{
     const more=i>=WK_HEAD;
     const cls=["wk-row"];if(more)cls.push("wk-more");
-    htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}" tabindex="0" role="button"><td>${md(r.d)}${wj(r.d)}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"> ⚠夕方</span>':""}${r.night?'<span class="ew"> ⚠夜間</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
+    htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}" tabindex="0" role="button"><td>${md(r.d)}${wj(r.d)}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"><span class="ewi">⚠</span>夕方</span>':""}${r.night?'<span class="ew"><span class="ewi">⚠</span>夜間</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
     <td>${r.view}</td><td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws)}</td>
     <td>${u1(r.pr,"mm")}</td><td>${u0(r.prob,"%")}</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
   });
