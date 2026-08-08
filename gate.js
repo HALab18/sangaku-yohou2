@@ -19,9 +19,9 @@ var PW_AGREE_KEY = "sangaku-yohou2-agreed-v1";
  * 生成は scripts/gen_auth_hash.py。正規化(trim+大文字化)・反復回数は両者で一致させること。
  * AUTH_VER を変えると全端末の localStorage の認証済み印が無効になり、再入力が求められる。 */
 var PW_AUTH_KEY  = "peakweather2-auth",
-    PW_AUTH_VER  = "2026",
-    PW_AUTH_SALT = "0d5c8ead991540ff412074d0cd056776",
-    PW_AUTH_HASH = "be1caef9b1a4012a4297740a3d0118f5d5d371a6a221526e28de12c9c5bbc2a4",
+    PW_AUTH_VER  = "2026b",
+    PW_AUTH_SALT = "e4124b9719e30f22a006610d78b3fe31",
+    PW_AUTH_HASH = "7348823df8e3bca69f7be53af9b9fc69e4f8bec7bcf60563d5573149d125e92a",
     PW_AUTH_ITER = 300000;
 
 /* ---- ストレージアクセスの唯一の入口 ----
