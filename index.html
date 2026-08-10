@@ -197,6 +197,16 @@ button:disabled{background:#9aa7bd;cursor:wait}
   font-size:14px;color:#222}
 #sugg div:hover{background:#e8eef7}
 #sugg small{color:#888;white-space:nowrap}
+/* 最近見た山 (未入力時だけ先頭に出す履歴。見出しは data-n を持たないので選択されない) */
+#sugg .rchead{display:block;padding:6px 12px 4px;font-size:11.5px;color:#8a94a8;
+  font-weight:700;letter-spacing:.04em;background:#f4f6f9;cursor:default}
+#sugg .rchead:hover{background:#f4f6f9}
+#sugg .rc.rclast{border-bottom:1px solid var(--line,#dee4ee)}
+#sugg .rc small{margin-left:auto}
+/* ×は指で押せる大きさを確保する。行タップとの誤爆を避けるため履歴行にだけ出す */
+#sugg .rcx{flex:0 0 auto;margin:-9px -6px -9px 0;padding:9px 10px;border:0;background:none;
+  color:#aab2c0;font-size:15px;line-height:1;cursor:pointer}
+#sugg .rcx:hover{color:#a03415}
 
 #status{margin:12px auto;font-size:.95em;color:#5b6b8a;font-weight:600}
 #status.err{color:#a03415;font-weight:600}
@@ -527,7 +537,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.18β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.19β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -1648,7 +1658,7 @@ async function go(mt){
   const status=document.getElementById("status");
   const term=mt.here?"(現在地)":mt.coord?"(座標指定)":mt.name;
   runBtns().forEach(b=>b.disabled=true);
-  try{await run(mt);trackSearch(term,"success")}
+  try{await run(mt);recentAdd(mt);trackSearch(term,"success")}
   catch(e){
     // apiJson が既に利用者向けの文面(対処つき)に変換しているのでそのまま出す
     status.className="err";status.textContent=e.message;
@@ -1883,19 +1893,52 @@ function applyHash(){
   document.getElementById("authform").addEventListener("submit",e=>{e.preventDefault();tryAuth()});
 }
 
+// ---- 最近見た山 (端末内にだけ残す検索履歴) ----
+// 同じ山を何度も打ち直す手間を省くためのもの。保存先は localStorage だが、
+// アクセス自体が例外を投げる環境があるので必ず gate.js のラッパ(pwLoad/pwSave/pwDrop)を通す。
+// 保存形を変えるときはキーの v を上げること(古い形が残っていても読めるように)。
+const RECENT_KEY="pw-recent-v1",RECENT_MAX=8,RECENT_TTL=3*24*3600*1000; // 3日
+function recentLoad(){
+  let a;
+  try{a=JSON.parse(pwLoad(RECENT_KEY)||"[]")}catch(e){return []}
+  if(!Array.isArray(a))return [];
+  const lim=Date.now()-RECENT_TTL;
+  // 期限切れはここで落とす(書き込み時ではなく読み出し時に切るので、放置しても勝手に消える)
+  return a.filter(x=>x&&typeof x.n==="string"&&typeof x.t==="number"&&x.t>lim).slice(0,RECENT_MAX);
+}
+function recentAdd(mt){
+  // 現在地・座標指定は山名ではないうえ、個人の居場所に当たるので端末内でも残さない
+  if(!mt||mt.here||mt.coord||!mt.name)return;
+  const a=recentLoad().filter(x=>x.n!==mt.name); // 同じ山は積み直し(先頭へ移動)
+  a.unshift({n:mt.name,p:mt.pref||"",e:mt.elev==null?null:Math.round(mt.elev),t:Date.now()});
+  try{pwSave(RECENT_KEY,JSON.stringify(a.slice(0,RECENT_MAX)))}catch(e){}
+}
+function recentRemove(name){
+  const a=recentLoad().filter(x=>x.n!==name);
+  if(a.length)pwSave(RECENT_KEY,JSON.stringify(a));else pwDrop(RECENT_KEY);
+}
+
 // 山名サジェスト (datalistはスマホの多くのブラウザで候補が出ないため独自実装)
 {
   const inp=document.getElementById("mname"),sugg=document.getElementById("sugg");
-  function render(list){
-    if(!list.length){sugg.hidden=true;sugg.innerHTML="";return}
-    sugg.innerHTML=list.map(m=>
+  function render(list,recents){
+    if(!list.length&&!recents.length){sugg.hidden=true;sugg.innerHTML="";return}
+    const head=recents.length?`<span class="rchead">最近見た山</span>`+recents.map((r,i)=>
+      `<div data-n="${esc(r.n)}" class="rc${i===recents.length-1?" rclast":""}">`
+      +`<span>${esc(r.n)}</span><small>${esc(r.p)}${r.e==null?"":" "+r.e+"m"}</small>`
+      +`<button type="button" class="rcx" data-x="${esc(r.n)}" `
+      +`aria-label="${esc(r.n)}を履歴から削除">×</button></div>`).join(""):"";
+    sugg.innerHTML=head+list.map(m=>
       `<div data-n="${esc(m[0])}"><span>${esc(m[0])}</span><small>${esc(m[2])} ${m[5]}m</small></div>`).join("");
     sugg.hidden=false;sugg.scrollTop=0;
   }
   function update(){
     const q=inp.value.trim();
-    // 未入力時は先頭50件のみ(全件は対応山リストページへ)。入力時は全一致を表示
-    render(q?MOUNTAINS.filter(m=>m[0].includes(q)||m[1].includes(q)):MOUNTAINS.slice(0,50));
+    // 入力中は従来どおり全一致のみ。未入力時だけ履歴を先頭に固定し、
+    // その下は先頭50件(全件は対応山リストページへ)。履歴と同名は50件側から除いて重複を避ける
+    if(q)return render(MOUNTAINS.filter(m=>m[0].includes(q)||m[1].includes(q)),[]);
+    const r=recentLoad();
+    render(MOUNTAINS.filter(m=>!r.some(x=>x.n===m[0])).slice(0,50),r);
   }
   inp.addEventListener("input",update);
   inp.addEventListener("focus",update);
@@ -1904,10 +1947,13 @@ function applyHash(){
   let downX=0,downY=0;
   sugg.addEventListener("pointerdown",e=>{
     downX=e.clientX;downY=e.clientY;
-    if(e.target.closest("div[data-n]"))e.preventDefault(); // 入力欄のフォーカスを維持
+    if(e.target.closest("div[data-n],[data-x]"))e.preventDefault(); // 入力欄のフォーカスを維持
   });
   sugg.addEventListener("pointerup",e=>{
     if(Math.hypot(e.clientX-downX,e.clientY-downY)>10)return; // スクロール操作
+    // ×(履歴削除)は行の選択より先に見る。削除後もサジェストは開いたままにする
+    const x=e.target.closest("[data-x]");
+    if(x){recentRemove(x.dataset.x);update();return}
     const d=e.target.closest("div[data-n]");if(!d)return;
     inp.value=d.dataset.n;sugg.hidden=true;sugg.innerHTML="";
     inp.blur(); // スマホのキーボードを閉じる
