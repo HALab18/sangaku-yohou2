@@ -15,7 +15,7 @@
      ?v= は gate.js の PW_AUTH_VER と同じ値にする。付けないと、認証コードを年次更新した際に
      古い gate.js がキャッシュに残った端末で「新コードを入れたのに弾かれる」事故になる。
      更新時は index.html / docs/find.html(gen_find.py) / docs/point.html の3ファイルを同時に。 -->
-<script src="gate.js?v=2026"></script>
+<script src="gate.js?v=2026b"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -201,12 +201,30 @@ button:disabled{background:#9aa7bd;cursor:wait}
 #sugg .rchead{display:block;padding:6px 12px 4px;font-size:11.5px;color:#8a94a8;
   font-weight:700;letter-spacing:.04em;background:#f4f6f9;cursor:default}
 #sugg .rchead:hover{background:#f4f6f9}
-#sugg .rc.rclast{border-bottom:1px solid var(--line,#dee4ee)}
-#sugg .rc small{margin-left:auto}
-/* ×は指で押せる大きさを確保する。行タップとの誤爆を避けるため履歴行にだけ出す */
-#sugg .rcx{flex:0 0 auto;margin:-9px -6px -9px 0;padding:9px 10px;border:0;background:none;
+#sugg .rc.rclast,
+/* ピン群と履歴群の境目。ピンは期限なしで先頭に固まるので、どこまでがピンかを線で示す */
+#sugg .rc.rcpinlast{border-bottom:1px solid var(--line,#dee4ee)}
+/* ボタンが2つ並ぶぶん、履歴行は隙間を詰める(通常候補の gap:14px より狭い) */
+#sugg .rc{gap:8px}
+/* 長い山名(カムイエクウチカウシ山など)が折り返して行だけ2段になるのを防ぐ。
+   日本語はどこでも改行できるので、nowrap にしないと span が縦に伸びて高さが揃わない。
+   縮むのは県名(small)が先。flex-shrink を大きく差を付けて、幅が足りないときは県名から
+   削るようにする(山名が読めないと候補として選べないため、山名の省略は最後の手段) */
+#sugg .rc>span{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sugg .rc small{margin-left:auto;flex:0 999 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+#sugg .rc.pinned{background:#f7faff}
+#sugg .rc.pinned:hover{background:#e8eef7}
+/* ×・📌は指で押せる大きさを確保する。行タップとの誤爆を避けるため履歴行にだけ出す。
+   負マージンで行の padding へ食い込ませ、見た目の行高(約40px)は通常候補と揃えたまま */
+#sugg .rcx,#sugg .rcp{flex:0 0 auto;margin:-9px 0;padding:9px 7px;border:0;background:none;
   color:#aab2c0;font-size:15px;line-height:1;cursor:pointer}
+#sugg .rcx{margin-right:-6px;padding-right:10px}
 #sugg .rcx:hover{color:#a03415}
+/* 未ピンの📌も出しておく(淡く)。押せることが分からないと機能に気づけない */
+#sugg .rcp{font-size:13px;opacity:.3;filter:grayscale(1)}
+#sugg .rc.pinned .rcp{opacity:1;filter:none}
+#sugg .rcp:hover{opacity:.75}
+#sugg .rc.pinned .rcp:hover{opacity:.75}
 
 #status{margin:12px auto;font-size:.95em;color:#5b6b8a;font-weight:600}
 #status.err{color:#a03415;font-weight:600}
@@ -537,7 +555,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.19β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.21β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -855,6 +873,8 @@ const JST_YMD=new Intl.DateTimeFormat("en-CA",
   {timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"});
 const JST_HM=new Intl.DateTimeFormat("en-GB",
   {timeZone:"Asia/Tokyo",hour:"2-digit",minute:"2-digit",hour12:false});
+// 発表時刻の併記用(年は省く)。en-GB は dd/mm なので、日本式の MM/DD になるよう明示的に組む
+const JST_MD={format:d=>JST_YMD.format(d).slice(5).replace("-","/")};
 // JST の今日を「ローカル深夜の Date」として返す。時刻成分を持たないので、
 // 以降の addDays / iso / md / wj は従来どおりそのまま使える。
 function jstToday(){
@@ -903,10 +923,15 @@ function ridgeWind(h,i,elev){
   // 最下面の生値にクランプされるのを防ぐため。標高100m の不連続な切り替えも同時に消える。
   const s10=h.wind_speed_10m?.[i];if(s10!=null)pts.push([SURFACE_WIND_M,s10]);
   const dd10=h.wind_direction_10m?.[i];if(dd10!=null)dirs.push([SURFACE_WIND_M,dd10]);
+  let lv=0; // その時刻に値がある気圧面の数(地上10mは数えない)
   for(const[p,z]of LEVELS){
-    const s=h[`wind_speed_${p}hPa`]?.[i];if(s!=null)pts.push([z,s]);
+    const s=h[`wind_speed_${p}hPa`]?.[i];if(s!=null){pts.push([z,s]);lv++}
     const dd=h[`wind_direction_${p}hPa`]?.[i];if(dd!=null)dirs.push([z,dd]);
   }
+  // 気圧面が1つも無い時刻は「稜線風は判定不能」に倒す。ここで地上10m風だけの pts を通すと、
+  // interpWind が最下点の生値(=地上風)を返し、稜線20m/s相当の日が地上4m/sとして通ってしまう。
+  // 「データが無い→好条件」は安全と逆方向なので、欠測は欠測のまま出す。
+  if(!lv)return[null,null];
   const dir=dirs.length
     ?dirs.reduce((a,b)=>Math.abs(b[0]-elev)<Math.abs(a[0]-elev)?b:a)[1]
     :null;
@@ -1049,8 +1074,14 @@ function viewScore(elev,low,mid,pr3,vis,rh){
   if(vis!=null&&vis<2000)return["✕","ガス"];
   if(summit!=null&&summit>=80)return["✕","ガス"];
   if((summit!=null&&summit>=50)||(vis!=null&&vis<10000))return["△",""];
-  const unkai=below!=null&&below>=60&&(summit??0)<=30;
-  if((summit??0)<=20&&(vis==null||vis>=20000)){
+  // ここから下は「良い方」の判定。冒頭のガードは引数のどれかがあれば通すが、
+  // 良い方を名乗るには「実際に判定に使う材料」(山頂の雲量 or 視程)が要る。
+  // 2000m以上は summit=mid なので、low だけ取れて mid が欠測だと summit が null のままここへ来る。
+  // 降水0mmだけを根拠に ○/◎ を出すのも「データが無い→好条件」で安全と逆方向。
+  if(summit==null&&vis==null)return null;
+  // summit 欠測のまま「雲海」「◎」を名乗らせない (null を雲量0として扱わない)
+  const unkai=below!=null&&below>=60&&summit!=null&&summit<=30;
+  if(summit!=null&&summit<=20&&(vis==null||vis>=20000)){
     // 視程が欠測のときは相対湿度で裏を取る。高湿ならガスの可能性があるので ◎ にしない
     if(vis==null&&rh!=null&&rh>=VIEW_RH_GATE)return["○",unkai?"雲海":""];
     return["◎",unkai?"雲海":""];
@@ -1140,6 +1171,42 @@ async function apiJson(url,params,retries=3){
   throw apiError(lastErr);
 }
 
+// ---- 予報の発表時刻(モデル初期時刻) ----
+// Open-Meteo が公開しているモデルのメタ情報。last_run_initialisation_time(Unix秒)が
+// そのモデルの初期時刻 = 予報の「発表」時刻。
+// ★ レスポンスの generationtime_ms は「サーバの処理時間」であって発表時刻ではない。
+//   名前が紛らわしいので取り違えないこと(値は数msで、予報の新しさとは無関係)。
+// 気象庁モデルは1日に複数回更新される(MSM=3時間ごと / GSM=6時間ごと)。取得時刻だけを出しても
+// 「さっき見た値と違う」の説明にならないので、予報そのものの発表時刻を併記する。
+const META_MODELS={jma_msm:"MSM",jma_gsm:"GSM"};
+const META_KEY=m=>`pwmeta1:${m}`;
+const META_TTL_MS=10*60*1000;   // 10分。MSM の更新間隔3時間に対して十分細かく、
+                                // かつ検索のたびにリクエストが増えない(無料枠を守るのが優先)
+async function modelInit(model){
+  try{
+    const c=JSON.parse(pwSLoad(META_KEY(model))||"null");
+    if(c&&typeof c.t==="number"&&(Date.now()-c.t)<=META_TTL_MS)
+      return typeof c.v==="number"?new Date(c.v*1000):null;
+  }catch(e){}
+  // 発表時刻は補助表示。ここで落として予報が出なくなるのは本末転倒なので、
+  // 失敗は必ず握りつぶして null を返す(注記からこの項目が消えるだけにする)
+  try{
+    const r=await fetch(`https://api.open-meteo.com/data/${model}/static/meta.json`);
+    if(!r.ok)return null;
+    const j=await r.json();
+    const v=j.last_run_initialisation_time;
+    if(typeof v!=="number")return null;
+    try{pwSSave(META_KEY(model),JSON.stringify({t:Date.now(),v}))}catch(e){}
+    return new Date(v*1000);
+  }catch(e){return null}
+}
+// 「MSM 08/10 18:00 ／ GSM 08/10 15:00」の形にする。取れたモデルだけ並べ、
+// 1つも取れなければ "" を返す(呼び出し側が発表時刻の記載ごと落とす)
+const initTxt=inits=>Object.keys(META_MODELS)
+  .filter(m=>inits[m])
+  .map(m=>`${META_MODELS[m]} ${JST_MD.format(inits[m])} ${JST_HM.format(inits[m])}`)
+  .join(" ／ ");
+
 // ---- 山名解決 ----
 function resolveLocal(name){
   let hits=MOUNTAINS.filter(m=>m[0]===name||m[1]===name);
@@ -1186,7 +1253,10 @@ async function run(mt){
   const horizon=addDays(today,JMA_DAYS-1);
   let start=document.getElementById("mdate").value?new Date(document.getElementById("mdate").value+"T00:00"):today;
   if(start<today)start=today;
-  if(start>horizon){status.className="err";status.textContent=`予報範囲外です(最長${JMA_DAYS}日先=${iso(horizon)}まで)`;return}
+  // 範囲外は throw で抜ける。通常の return にすると go() の try が正常終了として扱い、
+  // 予報が1行も出ていないのに recentAdd()(最近見た山)へ記録され、GA4 にも success が飛ぶ
+  // (共有URL "#山名/未来の日付" を開いた時に実際に起きる)。文面は go() の catch がそのまま出す。
+  if(start>horizon)throw new Error(`予報範囲外です(最長${JMA_DAYS}日先=${iso(horizon)}まで)`);
   const detailEnd=new Date(Math.min(addDays(start,days-1),horizon));
   const fetchEnd=horizon;
 
@@ -1218,20 +1288,25 @@ async function run(mt){
   // elevation は外す(CAPEは気柱の量で標高指定に依存せず、1つの値を4地点に渡すと食い違う)。
   const nb=CAPE_NEIGHBOR_DEG;
   const{elevation:_omitElev,latitude:_omitLat,longitude:_omitLon,...areaCommon}=common;
-  const[dataR,supR,areaR]=await Promise.allSettled([
+  // 発表時刻(モデル初期時刻)も同じ束で取る。modelInit は自分で失敗を握って null を返すので、
+  // ここが遅れたり落ちたりしても予報の表示には影響しない(sessionStorage に10分キャッシュ)
+  const[dataR,supR,areaR,msmR,gsmR]=await Promise.allSettled([
     apiJson(JMA_URL,{...common,hourly:hourly.join(","),
       daily:"weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,sunrise,sunset"}),
     apiJson(FORECAST_URL,{...common,hourly:SUPPLEMENT_HOURLY.join(","),daily:SUPPLEMENT_DAILY.join(",")}),
     apiJson(FORECAST_URL,{...areaCommon,
       latitude:[mt.lat+nb,mt.lat-nb,mt.lat,mt.lat].map(v=>v.toFixed(4)).join(","),
       longitude:[mt.lon,mt.lon,mt.lon+nb,mt.lon-nb].map(v=>v.toFixed(4)).join(","),
-      hourly:"cape,convective_inhibition"})
+      hourly:"cape,convective_inhibition"}),
+    modelInit("jma_msm"),modelInit("jma_gsm")
   ]);
   if(dataR.status==="rejected")throw dataR.reason;   // 主要データの失敗だけが致命
   const data=dataR.value;
   const sup=supR.status==="fulfilled"?supR.value:{};
   const supFailed=supR.status==="rejected";
   const areaRes=areaR.status==="fulfilled"&&Array.isArray(areaR.value)?areaR.value:null;
+  const inits={jma_msm:msmR.status==="fulfilled"?msmR.value:null,
+               jma_gsm:gsmR.status==="fulfilled"?gsmR.value:null};
   const fetchedAt=new Date();   // APIレスポンス受信時刻(詳細表のキャプションに出す)
   // 補完を貼る前に形状を整える(mergeSeries は base.time があることを前提にするため)
   normalizeSeries(data,hourly,DAILY_KEYS);
@@ -1297,15 +1372,25 @@ async function run(mt){
     `<li><b>⚠ 気温の標高補正が確認できませんでした</b>(要求 ${Math.round(mt.elev)}m / `
     +`応答 ${Number.isFinite(data.elevation)?Math.round(data.elevation)+"m":"不明"})。`
     +`気温・体感温度は山頂の値になっていない可能性があります。</li>`;
+  // データの出どころと発表時刻。CLI(mountain_weather.py の emit)は同じ内容をヘッダに出していたが、
+  // Web側は画面に出していなかった。気象庁モデルは1日に複数回更新されるので、「いつ発表された
+  // 予報を見ているのか」が分からないと「さっき見た値と違う」を利用者が説明できない。
+  const initAll=initTxt(inits);
+  const srcNote=`<li>データ: 気象庁モデル(0〜4日目=MSM 約5km / 5〜${JMA_DAYS}日目=GSM。自動切替)`
+    +`${initAll?` / <b>発表(初期時刻) ${initAll} JST</b>`:""} / 出典: Open-Meteo</li>`;
   let htmlOut=`${backToFind}<h2>${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""} の山岳気象予報</h2><ul class="meta">
     <li>地点: 北緯${mt.lat.toFixed(4)} 東経${mt.lon.toFixed(4)} / 標高 ${Math.round(mt.elev)}m
-      (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li>${lowNote}${supNote}${elevNote}</ul>`;
+      (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li>${srcNote}${lowNote}${supNote}${elevNote}</ul>`;
 
   // 表だけをスクショしても山名と取得日時が分かるよう、各表の見出し直下に小さく添える。
   // 予報の日付が JST 基準なので、取得時刻も JST で揃えて明示する(端末ローカル時刻で出すと
-  // 海外から見たとき「表の日付」と「取得時刻」が別基準になって読み解けない)
+  // 海外から見たとき「表の日付」と「取得時刻」が別基準になって読み解けない)。
+  // 発表時刻は MSM のみ。キャプションは5つの表で使い回すので長くしすぎない
+  // (詳細表が対象にするのは主に1〜4日目 = MSM 期間。両モデルの併記は上の srcNote 側で出す)
+  const capInit=inits.jma_msm
+    ?` / 発表 ${JST_MD.format(inits.jma_msm)} ${JST_HM.format(inits.jma_msm)}`:"";
   const capMeta=`${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""}`
-    +` / 取得 ${JST_YMD.format(fetchedAt)} ${JST_HM.format(fetchedAt)} JST`;
+    +` / 取得 ${JST_YMD.format(fetchedAt)} ${JST_HM.format(fetchedAt)}${capInit} JST`;
   const cap=`<p class="tblcap">${capMeta}</p>`;
 
   // 直近実況(モデル解析値・過去3日)
@@ -1517,8 +1602,11 @@ async function run(mt){
       const r3Arr=blk3.map(i=>h.relative_humidity_2m?.[i]).filter(v=>v!=null);
       const r3=r3Arr.length?Math.max(...r3Arr):null;
       const[bi,biReason]=blockIndex(ws3,pr3,thD,t3,feelsLike(t3,ws3,r3),v3);
-      // 体感は乾いた状態の値。濡れ+風+低温がそろう時間帯は印を付けて「表示より下がる」と示す
-      const wet=wetWarn(temp,ws,pr)?'<span class="dr">濡れ注意</span>':"";
+      // 体感は乾いた状態の値。濡れ+風+低温がそろう時間帯は印を付けて「表示より下がる」と示す。
+      // 判定は指数と同じ3時間ブロックの材料で行う。表示間隔ブロック(temp/ws/pr)で判定してはいけない:
+      // WET_PRECIP は mm/3h 定義なので、「3時間ごと」で出た印が「1時間ごと」に切り替えると消える。
+      // 表示間隔を変えただけで安全側の警告が消えるのは意図と逆方向。
+      const wet=wetWarn(t3,ws3,pr3)?'<span class="dr">濡れ注意</span>':"";
       // 降水は水換算なので、雨か雪かを 0℃高度から補って出す(表示のみ・判定には使わない)
       const flArr=blk.map(i=>h.freezing_level_height?.[i]).filter(v=>v!=null);
       const phase=precipPhase(flArr.length?Math.min(...flArr):null,mt.elev);
@@ -1893,29 +1981,76 @@ function applyHash(){
   document.getElementById("authform").addEventListener("submit",e=>{e.preventDefault();tryAuth()});
 }
 
-// ---- 最近見た山 (端末内にだけ残す検索履歴) ----
+// ---- 最近見た山 / ピン留め (端末内にだけ残す検索履歴) ----
 // 同じ山を何度も打ち直す手間を省くためのもの。保存先は localStorage だが、
 // アクセス自体が例外を投げる環境があるので必ず gate.js のラッパ(pwLoad/pwSave/pwDrop)を通す。
 // 保存形を変えるときはキーの v を上げること(古い形が残っていても読めるように)。
-const RECENT_KEY="pw-recent-v1",RECENT_MAX=8,RECENT_TTL=3*24*3600*1000; // 3日
+//
+// ピン留め(pin:true)は「よく行く山を固定する」枠。**期限なし・最大4件**で先頭に並べ、
+// その下に従来どおりの履歴(3日・最大8件)を出す。ピンを入れた理由は、常連の山ほど
+// 3日TTLで消えたり他の検索に押し出されたりして、この機能の当初目的から外れていたため。
+const RECENT_KEY="pw-recent-v2",RECENT_MAX=8,PIN_MAX=4,RECENT_TTL=3*24*3600*1000; // 3日
 function recentLoad(){
   let a;
   try{a=JSON.parse(pwLoad(RECENT_KEY)||"[]")}catch(e){return []}
   if(!Array.isArray(a))return [];
-  const lim=Date.now()-RECENT_TTL;
-  // 期限切れはここで落とす(書き込み時ではなく読み出し時に切るので、放置しても勝手に消える)
-  return a.filter(x=>x&&typeof x.n==="string"&&typeof x.t==="number"&&x.t>lim).slice(0,RECENT_MAX);
+  const now=Date.now(),lim=now-RECENT_TTL;
+  // 全フィールドの型を見ること。localStorage は同一オリジンの別ページからも書けるうえ
+  // (halab18.github.io は他プロジェクトとオリジンを共有する。gate.js 冒頭のコメント参照)、
+  // 端末を共有していれば手で書き換えられる。ここを通った値は表示側で HTML に入るので、
+  // 「自分で書いた形のはず」を前提にしない。pin も同じ厳格さで見る(true か未設定のみ)。
+  const ok=a.filter(x=>x&&typeof x.n==="string"
+    &&typeof x.p==="string"
+    &&(x.e===null||typeof x.e==="number")
+    &&(x.pin===undefined||x.pin===true)
+    // t の上限は全件に効かせる(未来日時だと TTL が永久に効かない)。下限=期限切れは
+    // ピンだけ免除する。期限切れはここで落とす(書き込み時ではなく読み出し時に切るので、
+    // 放置しても勝手に消える)
+    &&typeof x.t==="number"&&x.t<=now&&(x.pin===true||x.t>lim));
+  // 表示順は「ピン(最大4件) → 履歴(最大8件)」。それぞれ配列の並び順(新しいものが先頭)を保つ
+  return ok.filter(x=>x.pin===true).slice(0,PIN_MAX)
+    .concat(ok.filter(x=>x.pin!==true).slice(0,RECENT_MAX));
+}
+function recentSave(a){
+  if(a.length)pwSave(RECENT_KEY,JSON.stringify(a));else pwDrop(RECENT_KEY);
 }
 function recentAdd(mt){
   // 現在地・座標指定は山名ではないうえ、個人の居場所に当たるので端末内でも残さない
   if(!mt||mt.here||mt.coord||!mt.name)return;
-  const a=recentLoad().filter(x=>x.n!==mt.name); // 同じ山は積み直し(先頭へ移動)
-  a.unshift({n:mt.name,p:mt.pref||"",e:mt.elev==null?null:Math.round(mt.elev),t:Date.now()});
-  try{pwSave(RECENT_KEY,JSON.stringify(a.slice(0,RECENT_MAX)))}catch(e){}
+  const all=recentLoad();
+  const prev=all.find(x=>x.n===mt.name);
+  const a=all.filter(x=>x.n!==mt.name); // 同じ山は積み直し(先頭へ移動)
+  const rec={n:mt.name,p:mt.pref||"",e:mt.elev==null?null:Math.round(mt.elev),t:Date.now()};
+  if(prev&&prev.pin===true)rec.pin=true; // 再検索でピンが外れないようにする
+  a.unshift(rec);
+  try{recentSave(a)}catch(e){}
+}
+function recentPin(name){
+  const a=recentLoad();
+  const i=a.findIndex(x=>x.n===name);
+  if(i<0)return;
+  const x=a[i];
+  x.pin=true;
+  // 押した山をピン群の先頭へ移す。ここで移さずに上限で切ると、既に4件ある状態では
+  // 「いま押した山」が最後尾になって真っ先に外れ、押しても何も起きないように見える
+  a.splice(i,1);a.unshift(x);
+  // 上限を超えたぶんは古いピンから履歴へ戻す。押した操作を黙って無効にせず、
+  // かつ消しもしない(「ピンできる数」の説明と挙動を一致させる)
+  a.filter(y=>y.pin===true).slice(PIN_MAX).forEach(y=>{delete y.pin});
+  try{recentSave(a)}catch(e){}
+}
+function recentUnpin(name){
+  const a=recentLoad();
+  const x=a.find(y=>y.n===name);
+  if(!x)return;
+  delete x.pin;
+  // 解除と同時に t を更新する。しないと3日以上前にピンした山が解除した瞬間に TTL で消え、
+  // 「解除しただけなのに行が消えた」という挙動になる
+  x.t=Date.now();
+  try{recentSave(a)}catch(e){}
 }
 function recentRemove(name){
-  const a=recentLoad().filter(x=>x.n!==name);
-  if(a.length)pwSave(RECENT_KEY,JSON.stringify(a));else pwDrop(RECENT_KEY);
+  recentSave(recentLoad().filter(x=>x.n!==name));
 }
 
 // 山名サジェスト (datalistはスマホの多くのブラウザで候補が出ないため独自実装)
@@ -1923,11 +2058,20 @@ function recentRemove(name){
   const inp=document.getElementById("mname"),sugg=document.getElementById("sugg");
   function render(list,recents){
     if(!list.length&&!recents.length){sugg.hidden=true;sugg.innerHTML="";return}
-    const head=recents.length?`<span class="rchead">最近見た山</span>`+recents.map((r,i)=>
-      `<div data-n="${esc(r.n)}" class="rc${i===recents.length-1?" rclast":""}">`
-      +`<span>${esc(r.n)}</span><small>${esc(r.p)}${r.e==null?"":" "+r.e+"m"}</small>`
+    // 見出しは1本のまま。ドロップダウンは max-height:min(280px,45vh) しかないので、
+    // ピン用にもう1本見出しを立てると行数を食いすぎる。文言で📌の所在を示す
+    const head=recents.length?`<span class="rchead">最近見た山（📌でピン留め）</span>`+recents.map((r,i)=>{
+      const pinned=r.pin===true;
+      // ピン群と履歴群の境目に区切り線を入れる(ピンが先頭に固まっている前提。recentLoad 参照)
+      const pinLast=pinned&&recents[i+1]&&recents[i+1].pin!==true;
+      return `<div data-n="${esc(r.n)}" class="rc${pinned?" pinned":""}`
+      +`${pinLast?" rcpinlast":""}${i===recents.length-1?" rclast":""}">`
+      +`<span>${esc(r.n)}</span><small>${esc(r.p)}${r.e==null?"":" "+esc(r.e)+"m"}</small>`
+      // 📌は未ピンの行にも出す(CSSで淡くする)。ピン済みの行にしか出さないと機能に気づけない
+      +`<button type="button" class="rcp" data-p="${esc(r.n)}" aria-pressed="${pinned}" `
+      +`aria-label="${esc(r.n)}のピン留めを${pinned?"解除":"する"}">📌</button>`
       +`<button type="button" class="rcx" data-x="${esc(r.n)}" `
-      +`aria-label="${esc(r.n)}を履歴から削除">×</button></div>`).join(""):"";
+      +`aria-label="${esc(r.n)}を履歴から削除">×</button></div>`}).join(""):"";
     sugg.innerHTML=head+list.map(m=>
       `<div data-n="${esc(m[0])}"><span>${esc(m[0])}</span><small>${esc(m[2])} ${m[5]}m</small></div>`).join("");
     sugg.hidden=false;sugg.scrollTop=0;
@@ -1947,11 +2091,17 @@ function recentRemove(name){
   let downX=0,downY=0;
   sugg.addEventListener("pointerdown",e=>{
     downX=e.clientX;downY=e.clientY;
-    if(e.target.closest("div[data-n],[data-x]"))e.preventDefault(); // 入力欄のフォーカスを維持
+    if(e.target.closest("div[data-n],[data-x],[data-p]"))e.preventDefault(); // 入力欄のフォーカスを維持
   });
   sugg.addEventListener("pointerup",e=>{
     if(Math.hypot(e.clientX-downX,e.clientY-downY)>10)return; // スクロール操作
-    // ×(履歴削除)は行の選択より先に見る。削除後もサジェストは開いたままにする
+    // 📌(ピン留め切替)と×(履歴削除)は行の選択より先に見る。操作後もサジェストは開いたままにする
+    const p=e.target.closest("[data-p]");
+    if(p){
+      const nm=p.dataset.p;
+      (p.getAttribute("aria-pressed")==="true"?recentUnpin:recentPin)(nm);
+      update();return;
+    }
     const x=e.target.closest("[data-x]");
     if(x){recentRemove(x.dataset.x);update();return}
     const d=e.target.closest("div[data-n]");if(!d)return;

@@ -228,10 +228,27 @@ def wx_note_text(notes):
     return f"（{' / '.join(notes)}）" if notes else ""
 
 
-def http_json(url, params, retries=3):
+class ApiError(RuntimeError):
+    """API取得に失敗したことを表す。http_json(fatal=False) でのみ送出し、呼び出し側が握る。"""
+
+
+def http_json(url, params, retries=3, fatal=True):
     """一時的な通信エラー(接続断・SSLハンドシェイクタイムアウト・5xx等)は指数バックオフで再試行する。
     予報モデルの更新時刻によっては end_date が予報長ぶん受け付けられず HTTP 400 になるため、
-    その場合は応答の reason から許容最終日をパースして end_date を縮め、1回だけ再試行する"""
+    その場合は応答の reason から許容最終日をパースして end_date を縮め、1回だけ再試行する。
+
+    fatal=True(既定)は主データ用で、諦める時点で sys.exit する。
+    fatal=False は補助的な取得(周辺4方位CAPE・/v1/forecast からの項目補完)用で、
+    sys.exit せず ApiError を送出する。呼び出し側はこれを握って「主データだけで続行」する。
+    ★ 引数で分ける必要がある: sys.exit が投げる SystemExit は BaseException 直下で
+      Exception を継承しないため、呼び出し側の `except Exception` では捕まえられない。
+      補助データの 400/429 ひとつで予報が1行も出ずに終わる、という事故になる
+      (docs/find.html は同じ状況を Promise.allSettled で「続行」に倒している)。"""
+    def fail(msg):
+        if fatal:
+            sys.exit(msg)
+        raise ApiError(msg)
+
     last_err = None
     clamped = False
     attempt = 1
@@ -254,7 +271,7 @@ def http_json(url, params, retries=3):
                     clamped = True
                     continue  # 再試行回数は消費しない
             if e.code < 500 or attempt == retries:
-                sys.exit(f"ERROR: API呼び出しに失敗しました ({url}): HTTP {e.code} {e.reason}")
+                fail(f"ERROR: API呼び出しに失敗しました ({url}): HTTP {e.code} {e.reason}")
         except Exception as e:
             last_err = e
             if attempt == retries:
@@ -264,8 +281,8 @@ def http_json(url, params, retries=3):
               file=sys.stderr)
         time.sleep(wait)
         attempt += 1
-    sys.exit(f"ERROR: API呼び出しに{retries}回失敗しました ({url}): {last_err}\n"
-             f"ネットワーク接続、プロキシ設定、セキュリティソフトのSSL検査機能を確認してください。")
+    fail(f"ERROR: API呼び出しに{retries}回失敗しました ({url}): {last_err}\n"
+         f"ネットワーク接続、プロキシ設定、セキュリティソフトのSSL検査機能を確認してください。")
 
 
 # ---------------------------------------------------------------- 山名解決
@@ -372,13 +389,20 @@ def ridge_wind(h, i, elev):
     d10 = val("wind_direction_10m")
     if d10 is not None:
         dirs.append((SURFACE_WIND_M, d10))
+    levels = 0  # その時刻に値がある気圧面の数(地上10mは数えない)
     for p, z in PRESSURE_LEVELS:
         s = val(f"wind_speed_{p}hPa")
         if s is not None:
             pts.append((z, s))
+            levels += 1
         d = val(f"wind_direction_{p}hPa")
         if d is not None:
             dirs.append((z, d))
+    # 気圧面が1つも無い時刻は「稜線風は判定不能」に倒す。ここで地上10m風だけの pts を通すと、
+    # interp_wind が最下点の生値(=地上風)を返し、稜線20m/s相当の日が地上4m/sとして通ってしまう。
+    # 「データが無い→好条件」は安全と逆方向なので、欠測は欠測のまま出す。
+    if not levels:
+        return None, None
     direction = min(dirs, key=lambda zd: abs(zd[0] - elev))[1] if dirs else None
     return interp_wind(pts, elev), direction
 
@@ -662,8 +686,15 @@ def view_score(elev, low, mid, precip_3h, vis, rh=None):
         return "✕", "ガス"
     if (summit_cl is not None and summit_cl >= 50) or (vis is not None and vis < 10000):
         return "△", ""
-    unkai = below_cl is not None and below_cl >= 60 and (summit_cl or 0) <= 30
-    if (summit_cl or 0) <= 20 and (vis is None or vis >= 20000):
+    # ここから下は「良い方」の判定。冒頭のガードは引数のどれかがあれば通すが、
+    # 良い方を名乗るには「実際に判定に使う材料」(山頂の雲量 or 視程)が要る。
+    # 2000m以上は summit_cl = mid なので、low だけ取れて mid が欠測だと summit_cl が None のまま
+    # ここへ来る。降水0mmだけを根拠に ○/◎ を出すのも「データが無い→好条件」で安全と逆方向。
+    if summit_cl is None and vis is None:
+        return None
+    # summit_cl 欠測のまま「雲海」「◎」を名乗らせない (None を雲量0として扱わない)
+    unkai = below_cl is not None and below_cl >= 60 and summit_cl is not None and summit_cl <= 30
+    if summit_cl is not None and summit_cl <= 20 and (vis is None or vis >= 20000):
         # 視程が欠測のときは相対湿度で裏を取る。高湿ならガスの可能性があるので ◎ にしない
         if vis is None and rh is not None and rh >= VIEW_RH_GATE:
             return "○", "雲海" if unkai else ""
@@ -738,11 +769,14 @@ def _merge_neighbor_cape(base, lat, lon, common):
     # elevation は外す。CAPE は気柱の量で標高指定に依存せず、1つの値を4地点に渡すと
     # 地点ごとの標高と食い違う。期間指定(start/end)とタイムゾーンだけ引き継ぐ。
     params = {k: v for k, v in common.items() if k not in ("latitude", "longitude", "elevation")}
+    # fatal=False。既定の fatal=True だと失敗時に http_json が sys.exit し、SystemExit は
+    # Exception を継承しないので下の except をすり抜けて CLI 全体が終了する
+    # (補助表示のために予報が1行も出なくなる)。
     try:
         res = http_json(FORECAST_URL, dict(
             params, latitude=",".join(f"{v:.4f}" for v in lats),
             longitude=",".join(f"{v:.4f}" for v in lons),
-            hourly="cape,convective_inhibition"))
+            hourly="cape,convective_inhibition"), fatal=False)
     except Exception:
         return False
     if not isinstance(res, list):
@@ -793,8 +827,15 @@ def fetch_forecast(lat, lon, elev, start, end, levels):
         hourly=",".join(dict.fromkeys(hourly)),
         daily="weather_code,temperature_2m_max,temperature_2m_min,"
               "precipitation_sum,snowfall_sum,sunrise,sunset"))
-    sup = http_json(FORECAST_URL, dict(common,
-        hourly=",".join(SUPPLEMENT_HOURLY), daily=",".join(SUPPLEMENT_DAILY)))
+    # 補完は fatal=False。ここが落ちても主データ(気象庁モデル)だけで表は出せるので、
+    # 降水確率・突風・視程・CAPE の列を「-」にして続行する(_merge_series が None で埋める)。
+    # 既定の fatal=True だと sys.exit → SystemExit で、この一本のために予報が1行も出なくなる。
+    try:
+        sup = http_json(FORECAST_URL, dict(common,
+            hourly=",".join(SUPPLEMENT_HOURLY), daily=",".join(SUPPLEMENT_DAILY)), fatal=False)
+    except ApiError as e:
+        print(f"補完データの取得に失敗しました。該当の列は「-」で続行します: {e}", file=sys.stderr)
+        sup = {}
     _merge_series(data["hourly"], sup.get("hourly") or {}, SUPPLEMENT_HOURLY)
     _merge_series(data["daily"], sup.get("daily") or {}, SUPPLEMENT_DAILY)
     data["cape_neighbor"] = _merge_neighbor_cape(data["hourly"], lat, lon, common)
@@ -849,7 +890,9 @@ def past_summary_rows(data, dates, elev):
         act = [i for i in idxs if 5 <= int(times[i][11:13]) <= 17]
         rws = [ridge_wind(h, i, elev) for i in act]
         ws = max((s for s, _ in rws if s is not None), default=None)
-        wd = next((dd for s, dd in rws if s == ws), None)
+        # 風速が取れた時だけ風向を出す(ws is None と一致させると欠測時刻の風向を拾ってしまい、
+        # 風速は「-」なのに風向だけ出る)。index.html の wd2 と同じ扱い
+        wd = next((dd for s, dd in rws if s == ws), None) if ws is not None else None
         depth = max((depth_all[i] for i in idxs if i < len(depth_all) and depth_all[i] is not None),
                     default=None)
         wxd = wx.get(date.isoformat(), {})
@@ -906,10 +949,15 @@ def print_detail_day(data, date, elev, has_snow=False, step=3):
 
     def block_abc(start_h3):
         """指数は表示間隔によらず3時間ブロック単位で判定 (A/B/Cの降水閾値がmm/3h定義のため)。
-        降格条件の材料もこの3時間ブロックから安全側に取る(気温=最小・風=最大・視程=最小)。"""
+        降格条件の材料もこの3時間ブロックから安全側に取る(気温=最小・風=最大・視程=最小)。
+
+        戻り値は (指数, 理由, 濡れ注意)。濡れ注意も同じ3時間ブロックの材料で判定して返す。
+        表示間隔ブロックの値で判定してはいけない: WET_PRECIP_MM は mm/3h 定義なので、
+        「3時間ごと」で出た印が「1時間ごと」に切り替えると消える。表示間隔を変えただけで
+        安全側の警告が消えるのは意図と逆方向。"""
         blk3 = [i for i in idxs if int(times[i][11:13]) // 3 * 3 == start_h3]
         if not blk3:
-            return None, ""
+            return None, "", False
         rws3 = [ridge_wind(h, i, elev) for i in blk3]
         ws3 = max((s for s, _ in rws3 if s is not None), default=None)
         pr3 = sum_or_none(h["precipitation"][i] for i in blk3)
@@ -920,7 +968,8 @@ def print_detail_day(data, date, elev, has_snow=False, step=3):
         # 湿度は最大値(最も熱が逃げにくい = 安全側)
         rh3 = max((rh_hall[i] for i in blk3
                    if i < len(rh_hall) and rh_hall[i] is not None), default=None)
-        return block_index(ws3, pr3, th, t3, feels_like(t3, ws3, rh3), v3)
+        bi3, reason3 = block_index(ws3, pr3, th, t3, feels_like(t3, ws3, rh3), v3)
+        return bi3, reason3, wet_warn(t3, ws3, pr3)
 
     print(f"\n### {date.isoformat()} ({'月火水木金土日'[date.weekday()]}) "
           f"{'1時間ごと' if step == 1 else '3時間ごと'}詳細{suntxt}")
@@ -934,7 +983,8 @@ def print_detail_day(data, date, elev, has_snow=False, step=3):
         temp = h["temperature_2m"][i0]
         rws = [ridge_wind(h, i, elev) for i in block]
         ws = max((s for s, _ in rws if s is not None), default=None)
-        wd = next((d for s, d in rws if s == ws), None)
+        # 風速が取れた時だけ風向を出す(上の past_summary_rows と同じ理由)
+        wd = next((d for s, d in rws if s == ws), None) if ws is not None else None
         gust = max((h["wind_gusts_10m"][i] for i in block if h["wind_gusts_10m"][i] is not None), default=None)
         pr = sum_or_none(h["precipitation"][i] for i in block)
         prob = max((h["precipitation_probability"][i] for i in block
@@ -950,11 +1000,12 @@ def print_detail_day(data, date, elev, has_snow=False, step=3):
         vw = view_score(elev, h["cloud_cover_low"][i0], h["cloud_cover_mid"][i0],
                         None if pr is None else pr * 3 / step, vis, rh)
         vw_txt = view_cell(*vw, vis) if vw else "-"
-        bi, reason = block_abc(start_h // 3 * 3)
+        bi, reason, wet = block_abc(start_h // 3 * 3)
         # 体感は乾いた状態の値。濡れ+風+低温がそろう時間帯は印を付けて「表示より下がる」と示す。
+        # 判定は指数と同じ3時間ブロックの材料で行う(block_abc が返す。理由はその docstring 参照)。
         # 桁数は必ず気温と揃える。気温が小数1桁・体感が整数だと、風冷式の適用外(気温10℃超)で
         # 「体感=気温」を返したときに 12.8℃ → 体感13℃ となり、風で暖まるように見える。
-        feel_c = fnum(feel, '{:.1f}') + ("℃ 濡れ注意" if wet_warn(temp, ws, pr) else "℃")
+        feel_c = fnum(feel, '{:.1f}') + ("℃ 濡れ注意" if wet else "℃")
         # 降水は水換算なので、雨か雪かを 0℃高度から補って出す(表示のみ・判定には使わない)
         fl_all = h.get("freezing_level_height") or []
         fl = min((fl_all[i] for i in block if i < len(fl_all) and fl_all[i] is not None), default=None)

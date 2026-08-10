@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1e2d4a">
 <!-- このファイルは scripts/gen_find.py により index.html から自動生成されます。直接編集しないでください
      (直接編集すると次回の再生成で消えます。修正は必ず scripts/gen_find.py 側に入れること) -->
-<script src="../gate.js?v=2026"></script>
+<script src="../gate.js?v=2026b"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -257,9 +257,13 @@ footer a{color:var(--link)}
 <a href="mountains.html">対応している山の一覧</a>
 </footer>
 
-<button id="totop" type="button" aria-label="ページ上部へ戻る"><svg class="mk" aria-hidden="true"><use href="#mkico"/></svg></button>
-
 </main>
+
+<!-- 「上に戻る」は <main> の外に置く。gate.js の pwGuardPage() は未認証時に main.innerHTML を
+     案内文で丸ごと差し替えるため、中に入れておくとボタンが消え、下の初期化 IIFE が
+     null 参照で毎回落ちる(未認証・file:// 直開き・gate.js が404 の fail-closed すべてで発生)。
+     position:fixed なので main の外でも見た目は変わらない。 -->
+<button id="totop" type="button" aria-label="ページ上部へ戻る"><svg class="mk" aria-hidden="true"><use href="#mkico"/></svg></button>
 
 <script>
 "use strict";
@@ -459,6 +463,16 @@ footer a{color:var(--link)}
       elHint=document.getElementById("hint"),elStatus=document.getElementById("status"),
       elResults=document.getElementById("results");
 
+  // 取得時刻・発表時刻は JST 固定で出す。表の日付が JST 基準なので、端末ローカル時刻で
+  // 出すと海外や時計ずれの端末で「表の日付」と「時刻」が別基準になって読み解けなくなる
+  // (index.html の JST_YMD / JST_HM / JST_MD と同一)。
+  var JST_YMD=new Intl.DateTimeFormat("en-CA",
+    {timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"});
+  var JST_HM=new Intl.DateTimeFormat("en-GB",
+    {timeZone:"Asia/Tokyo",hour:"2-digit",minute:"2-digit",hour12:false});
+  // en-GB は dd/mm なので、日本式の MM/DD になるよう YMD から組む
+  var JST_MD={format:function(d){return JST_YMD.format(d).slice(5).replace("-","/")}};
+
   // ---- 日付の選択肢 (今日〜FIND_DAYS-1 日先・曜日つき) ----
   // 以前は3日だった。スコアの主要素である日照(sunshine_duration)を気象庁モデルが
   // MSM 期間ぶんしか配信せず、4日目以降が丸ごと欠測になるためだったが、
@@ -607,6 +621,23 @@ footer a{color:var(--link)}
     }
     return pts[pts.length-1][1];
   }
+  // i時刻の稜線風速。lvArrs=LEVELS と同じ並びの風速配列、w10=地上10m風の配列。
+  // 気圧面が1つも無い時刻は null(判定不能)。ここで地上10m風だけの pts を interpWind に渡すと
+  // 最下点の生値(=地上風)が返り、稜線20m/s相当の日が地上4m/sとして通ってしまう。すると
+  // score() の欠測ガード(ridgeWmax!=null)もすり抜け、最大の減点③(-32)が消えて不当に上位へ出る。
+  // 「データが無い→好条件」は安全と逆方向なので、欠測は欠測のまま出す。
+  // (index.html の ridgeWind / mountain_weather.py の ridge_wind と同じ扱い。)
+  function ridgeAt(lvArrs,w10,i,elev){
+    var pts=[], lv=0, s10=w10?w10[i]:null;
+    // 地上10m風を内挿の最下点に置く(SURFACE_WIND_M のコメント参照)
+    if(s10!=null)pts.push([SURFACE_WIND_M,s10]);
+    for(var li=0;li<LEVELS.length;li++){
+      var a=lvArrs[li], v=a?a[i]:null;
+      if(v!=null){pts.push([LEVELS[li][1],v]);lv++}
+    }
+    if(!lv)return null;
+    return interpWind(pts,elev);
+  }
   // 対象時間帯: 7:00〜15:59 (hour 7〜15 の 9時間、登山コアタイム)
   function inRange(t){var h=parseInt(t.slice(11,13),10);return h>=7&&h<=15}
   var WIN_HOURS=9;              // 上の対象時間帯の時間数 (日照率の分母・被覆判定に使う)
@@ -682,6 +713,44 @@ footer a{color:var(--link)}
     }
     throw apiError(lastErr);
   }
+  // ---- 予報の発表時刻(モデル初期時刻) ----
+  // Open-Meteo が公開しているモデルのメタ情報。last_run_initialisation_time(Unix秒)が
+  // そのモデルの初期時刻 = 予報の「発表」時刻。
+  // ★ レスポンスの generationtime_ms は「サーバの処理時間」であって発表時刻ではない。
+  //   名前が紛らわしいので取り違えないこと(値は数msで、予報の新しさとは無関係)。
+  // このページは結果を sessionStorage に最大30分キャッシュして復元もするので、
+  // 「いつ取得した値か」「いつ発表された予報か」が画面から分からないと、古い順位表を
+  // 最新と誤解したまま山を選ぶことになる(CACHE_TTL_MS のコメントと同じ問題意識)。
+  // index.html の modelInit / initTxt と同一ロジック。
+  var META_MODELS=[["jma_msm","MSM"],["jma_gsm","GSM"]];
+  var META_TTL_MS=10*60*1000;   // 10分。MSM の更新間隔3時間に対して十分細かく、
+                                // かつ検索のたびにリクエストが増えない(無料枠を守るのが優先)
+  async function modelInit(model){
+    var k="pwmeta1:"+model, c=null;
+    try{c=JSON.parse(pwSLoad(k)||"null")}catch(e){}
+    if(c&&typeof c.t==="number"&&(Date.now()-c.t)<=META_TTL_MS)
+      return typeof c.v==="number"?new Date(c.v*1000):null;
+    // 発表時刻は補助表示。ここで落として一覧が出なくなるのは本末転倒なので、
+    // 失敗は必ず握りつぶして null を返す(注記からこの項目が消えるだけにする)
+    try{
+      var r=await fetch("https://api.open-meteo.com/data/"+model+"/static/meta.json");
+      if(!r.ok)return null;
+      var j=await r.json(), v=j.last_run_initialisation_time;
+      if(typeof v!=="number")return null;
+      try{pwSSave(k,JSON.stringify({t:Date.now(),v:v}))}catch(e){}
+      return new Date(v*1000);
+    }catch(e){return null}
+  }
+  // 「MSM 08/10 18:00 ／ GSM 08/10 15:00」の形。取れたモデルだけ並べ、1つも無ければ ""。
+  // find は FIND_DAYS=7 で MSM 期間と GSM 期間の両方にまたがるので、両方を出す
+  async function initTxt(){
+    var parts=[];
+    for(var i=0;i<META_MODELS.length;i++){
+      var d=await modelInit(META_MODELS[i][0]);
+      if(d)parts.push(META_MODELS[i][1]+" "+JST_MD.format(d)+" "+JST_HM.format(d));
+    }
+    return parts.join(" ／ ");
+  }
   // 補完APIの hourly を「base に貼るときのキー名」に組み替える。
   // sunshine_duration は気象庁モデル側にも同名で存在するため、ここで sunshine_supp に改名して
   // 別列として持つ。score() は気象庁モデルの日照を優先し、無い日だけこちらを使う。
@@ -743,6 +812,24 @@ footer a{color:var(--link)}
       if(mode==="count")return vs.length;
       return null;
     }
+    // 夏冬モードの判定にだけ使う気温。窓は行動時間帯 5〜17時で、表に出す tmax/tmin の窓
+    // (7:00〜15:59)とは別物なので分けている。ここを 7-15 で代用してはいけない:
+    // 詳細ページの正式判定(mountain_weather.py の mode_temps / index.html の modeTemps)は
+    // 5〜17時で冬モードを決めており、窓がずれると 5-6時だけ冷える日に find だけ夏モードのまま
+    // A を出し、開いた先の正式判定は B/C という食い違いが出る(凡例は「同じ正式な登山指数」と
+    // 説明している)。ACT_HOURS=(5,17) は両端を含む。
+    function actTemp(mode){
+      var arr=hr&&hr.temperature_2m; if(!arr)return null;
+      var vs=[];
+      for(var i=0;i<N;i++){
+        var h2=parseInt(times[i].slice(11,13),10);
+        if(h2<5||h2>17)continue;
+        var v=arr[i]; if(v==null)continue;
+        vs.push(v);
+      }
+      if(!vs.length)return null;
+      return mode==="max"?Math.max.apply(null,vs):Math.min.apply(null,vs);
+    }
     // 日照は「窓の9時間ぶんが全部そろっている時だけ」採用する。部分欠測のまま合計すると、
     // 例えば3時間ぶんしか来ていない日が「日照率33%」に見え、実際より悪く採点してしまう
     // (MSM→GSM の切れ目に当たる日で起こりうる。切れ目の位置はモデルラン時刻で動く)。
@@ -759,15 +846,7 @@ footer a{color:var(--link)}
     var mv=0, hasW=false;
     for(var i=0;i<N;i++){
       if(!inRange(times[i]))continue;
-      var pts=[];
-      // 地上10m風を内挿の最下点に置く(SURFACE_WIND_M のコメント参照)
-      var s10=w10?w10[i]:null;
-      if(s10!=null)pts.push([SURFACE_WIND_M,s10]);
-      for(var li=0;li<LEVELS.length;li++){
-        var a=lvArrs[li], v=a?a[i]:null;
-        if(v!=null)pts.push([LEVELS[li][1],v]);
-      }
-      var w=interpWind(pts,mt.el);
+      var w=ridgeAt(lvArrs,w10,i,mt.el);
       if(w==null)continue;
       // hasW は「値が1つでもあったか」なので if の外。1行に並べると条件付きに見えるので分ける
       if(w>mv)mv=w;
@@ -813,7 +892,8 @@ footer a{color:var(--link)}
     // 詳細ページの正式判定では C(冬モードは12m/sでC)になる ── 入口が安全と逆を向く。
     var mon=parseInt((times[0]||"").slice(5,7),10)||1;
     var winter=!(mon>=6&&mon<=10);
-    if(!winter&&((tmax!=null&&tmax<WINTER_TMAX)||(tmin!=null&&tmin<WINTER_TMIN)))winter=true;
+    var actMax=actTemp("max"), actMin=actTemp("min");
+    if(!winter&&((actMax!=null&&actMax<WINTER_TMAX)||(actMin!=null&&actMin<WINTER_TMIN)))winter=true;
     var s=100;
     // ① 晴天度 (最大 -28)
     if(sunFrac!=null)s-=(1-sunFrac)*28;
@@ -847,12 +927,7 @@ footer a{color:var(--link)}
     var th=winter?{wind:[8,12],precip:[1,3]}:{wind:[10,15],precip:[1,5]};
     var lvArrs=LEVELS.map(function(L){return hr&&hr["wind_speed_"+L[0]+"hPa"]});
     var w10=hr&&hr["wind_speed_10m"];
-    function windAt(i){
-      var pts=[], s10=w10?w10[i]:null;
-      if(s10!=null)pts.push([SURFACE_WIND_M,s10]);
-      for(var li=0;li<LEVELS.length;li++){var a=lvArrs[li],v=a?a[i]:null;if(v!=null)pts.push([LEVELS[li][1],v])}
-      return interpWind(pts,mt.el);
-    }
+    function windAt(i){return ridgeAt(lvArrs,w10,i,mt.el)}
     var worst=null, worstReason="", RANKV={A:0,B:1,C:2};
     for(var sh=3;sh<18;sh+=3){
       var ws=null, pr=null, prN=0, tmn=null, rhx=null;
@@ -927,12 +1002,15 @@ footer a{color:var(--link)}
   //           配信せず、従来の決め打ちだと4日目以降の稜線風が丸ごと欠測になっていた)
   //  / find8: キャッシュを {t:取得時刻, rows:…} 形式にし TTL を導入
   //  / find9: 稜線風の減点・足切りを夏冬で分け、正式指数 abc を併記
-  //  / find10: 体感温度を風冷指数から Apparent Temperature へ(相対湿度を追加取得))
+  //  / find10: 体感温度を風冷指数から Apparent Temperature へ(相対湿度を追加取得)
+  //  / find11: 夏冬モードの判定窓を詳細ページと同じ行動時間帯 5〜17時に統一(従来は 7〜15時で、
+  //            5-6時だけ冷える日に find だけ夏モードのままAを出していた)。あわせて、気圧面が
+  //            1つも無い時刻の稜線風を地上10m風で代用せず欠測に倒した(スコアが変わる))
   // 上げ忘れると旧キャッシュがそのまま復元され、天気列だけ古い表示になる。
-  function cacheKey(r,p,date){return "find10:"+r+":"+p+":"+date}
+  function cacheKey(r,p,date){return "find11:"+r+":"+p+":"+date}
   // 直近の検索条件を保存するキー。ページを再訪した時にセレクタと結果を復元する用途
   // (bfcache が効かない iOS 直リンク等のフォールバック。詳細は末尾の restoreLastSearch)。
-  var LAST_KEY="find10:last";
+  var LAST_KEY="find11:last";
   // キャッシュの有効期限。キーは「エリア:県:対象日」だけで時刻成分を持たないので、
   // TTL が無いと同一セッション中は永久に最初の取得結果が返る。気象庁モデルは1日に複数回
   // 更新されるため、タブを開きっぱなしにした利用者へ朝6時の予報を夜18時に「最新」として
@@ -949,10 +1027,13 @@ footer a{color:var(--link)}
       try{cached=JSON.parse(pwSLoad(key)||"null")}catch(e){}
       // 期限切れ・旧形式(rows が直接入った配列)は使わない。取り直す方が安全側。
       if(cached&&(!cached.t||!cached.rows||(Date.now()-cached.t)>CACHE_TTL_MS))cached=null;
-      var rows;
+      var rows,gotAt;
       if(cached){
         elStatus.textContent=fromRestore?"前回の検索結果を復元しました":"キャッシュから表示中…";
         rows=cached.rows;
+        // 取得時刻は「キャッシュに入れた時刻」。Date.now() にしてはいけない。
+        // 復元したのに「たった今取得」と出ると、最大30分前の順位表を最新と誤解させる
+        gotAt=cached.t;
       }
       else{
         var chunks=[];for(var i=0;i<ms.length;i+=CHUNK)chunks.push(ms.slice(i,i+CHUNK));
@@ -966,11 +1047,14 @@ footer a{color:var(--link)}
           }
         }
         rows.sort(function(a,b){return b.sc.v-a.sc.v});
-        pwSSave(key,JSON.stringify({t:Date.now(),rows:rows}));
+        gotAt=Date.now();
+        pwSSave(key,JSON.stringify({t:gotAt,rows:rows}));
       }
       // 復元用に「最後の検索条件」を保存 (実際の rows は cacheKey 側に既に入っている)
       pwSSave(LAST_KEY,JSON.stringify({r:r,p:p,date:date}));
-      render(rows,date);
+      // 発表時刻。失敗しても "" が返るだけで一覧の表示には影響しない
+      var initAll=await initTxt();
+      render(rows,date,gotAt,initAll);
       // 結果表示位置までスクロール(表示データが見やすい位置に移動)
       elResults.scrollIntoView({behavior:"smooth",block:"start"});
       // 足切り分離した内訳をステータスに出す
@@ -1075,7 +1159,9 @@ footer a{color:var(--link)}
     '<dt>降水量</dt><dd>朝7時〜夕方3時の合計降水量（mm）。スコアに直接影響します</dd>'+
     '</dl></div>');
 
-  function render(rows,date){
+  // gotAt = この順位表を取得した時刻(キャッシュ復元時はキャッシュに入れた時刻)
+  // initAll = 発表時刻の文字列("" なら取得できなかったので出さない)
+  function render(rows,date,gotAt,initAll){
     var safe=[],caution=[];
     rows.forEach(function(x){(isDangerous(x.sc)?caution:safe).push(x)});
     var h='';
@@ -1090,12 +1176,25 @@ footer a{color:var(--link)}
     // ② 足切り表: 該当ゼロなら表示しない
     if(caution.length){
       h+='<h3 class="results-h caution">⚠ 慎重に判断が必要 <span class="rcount">('+caution.length+'座)</span></h3>';
-      h+='<p class="rnote caution">稜線風速 18m/s 以上、または 7:00〜15:59 の降水量 10mm 以上。'+
+      // 風の閾値は cutWind と同じく夏冬で変わり、しかも夏冬は山ごとに決まる(同じ日でも標高で
+      // 分かれる)ので、1つの数字には決められない。両方を書く。18m/s 固定のままだと、冬に
+      // 13m/s で別表送りになった行を見た人が「18m/s 未満なのになぜ」と読めなくなる
+      h+='<p class="rnote caution">稜線風速 18m/s 以上(冬・残雪期は 12m/s 以上)、'+
+         'または 7:00〜15:59 の降水量 10mm 以上。'+
          '登山に不適格の可能性が高いため、参考として下位に表示しています。</p>';
       h+=tableHtml(caution,date,true);
     }
     h+='<p class="rnote">※ スコアは <b>登山コアタイム 7:00〜15:59</b> の気象値で算定しています。'+
        '<a href="find-score.html">計算方法の詳細</a></p>';
+    // いつ取得した値か・いつ発表された予報かを明記する。この一覧は結果を最大30分
+    // sessionStorage にキャッシュして復元もするため、これが無いと古い順位表を最新と
+    // 誤解したまま山を選ぶことになる(CACHE_TTL_MS のコメントと同じ問題意識)。
+    if(gotAt||initAll){
+      h+='<p class="rnote">データ: 気象庁モデル / 出典: Open-Meteo'+
+        (gotAt?' / 取得 '+JST_MD.format(new Date(gotAt))+' '+JST_HM.format(new Date(gotAt)):'')+
+        (initAll?' / <b>発表(初期時刻) '+initAll+'</b>':'')+
+        (gotAt||initAll?' JST':'')+'</p>';
+    }
     // 日照の出どころが気象庁モデルでない日は、表の下に1回だけ明記する。
     // 行ごとの * だけだと「何の印か」が分からないため。
     var altN=rows.filter(function(x){return x.sc.sunAlt}).length;
@@ -1242,6 +1341,7 @@ footer a{color:var(--link)}
 // ---- 上に戻るボタン (ヒーロー相当の高さを過ぎたら表示。戻り先はページ上部) ----
 (function(){
   const btn=document.getElementById("totop");
+  if(!btn)return; // 多重防御(ボタンは <main> の外にあるが、消えていても落とさない)
   btn.addEventListener("click",()=>window.scrollTo({top:0,behavior:"smooth"}));
   let tick=false;
   addEventListener("scroll",()=>{
