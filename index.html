@@ -1823,10 +1823,10 @@ async function run(mt){
   // 保存できたかどうかで案内の文面が変わるので、保存行だけは印(SNAP_SLOT)を置いておき
   // ここで差し込む。保存に失敗した回・GPS現在地・座標指定では行ごと出ない
   // = できない約束をしない。
-  if(!offline&&sid)
-    snapSave(mt,{data,supFailed,cmp:cmpSnap,
+  if(!offline&&sid&&snapSave(mt,{data,supFailed,cmp:cmpSnap,
       init:{msm:inits.jma_msm?inits.jma_msm.getTime():null,
-            gsm:inits.jma_gsm?inits.jma_gsm.getTime():null}});
+            gsm:inits.jma_gsm?inits.jma_gsm.getTime():null}}))
+    snapRequestPersist();  // 残す価値のあるデータができた回だけ。await しない(描画を待たせない)
   htmlOut=htmlOut.replace(SNAP_SLOT,()=>snapRowHtml(sid));
   out.innerHTML=htmlOut;
   status.textContent="";
@@ -2236,6 +2236,29 @@ function snapUnkeep(id){
   snapIndexSave(snapPrune(a));
 }
 
+// ---- 保存領域の永続化要求 ----
+// localStorage / Cache Storage は既定では best-effort 扱いで、端末の空き容量が逼迫すると
+// ブラウザの判断で古いサイトデータから破棄されうる。「山で開いたら消えていた」は
+// この機能の存在意義そのものを壊すので、破棄の対象から外すよう要求しておく。
+//
+// ★ ページ読み込み時には呼ばない。ブラウザで挙動が3通りに割れるため:
+//   - Chrome/Edge: プロンプトを出さず自動判定(インストール済み・利用頻度が高ければ許可)
+//   - Firefox: **利用者に許可ダイアログを出す**。開いた瞬間に理由も無く出るのは体験が悪い
+//   - Safari: persist() 自体が未実装(ホーム画面追加のアプリは Safari 側が自動で永続扱い)
+// なので「実際に残す価値のあるデータができた瞬間」と「固定を押した瞬間」だけで呼ぶ。
+// 自動の試行は端末につき1回だけ(断った利用者に予報のたび出し直さない)。
+// 永続化は保険であって前提ではない(失敗しても保存自体は効く)ので、結果は画面に出さない。
+const SNAP_PERSIST_KEY="pw-persist-asked";
+async function snapRequestPersist(force){
+  try{
+    if(typeof navigator.storage?.persist!=="function")return;
+    if(!force&&pwLoad(SNAP_PERSIST_KEY)==="1")return;
+    if(await navigator.storage.persisted())return;
+    pwSave(SNAP_PERSIST_KEY,"1");
+    await navigator.storage.persist();
+  }catch(e){}
+}
+
 // 予報の冒頭に出す「保存しました / 圏外用に固定」の行。run() は表を組み上げてから
 // 保存するため、この行だけ後から差し込む(印を置いておいて最後に置換する)。
 const SNAP_SLOT="<!--snaprow-->";
@@ -2263,6 +2286,9 @@ document.getElementById("out").addEventListener("click",e=>{
     const rel=snapKeep(id)||[];
     // 上限に達していたら古い固定が自動枠へ戻る。黙って入れ替えると気づけない
     if(rel.length)msg=`（${rel.join("・")}の固定を解除しました）`;
+    // 「圏外で見たいから残す」という意思そのものなので、ここだけは1回きりの制限を外して
+    // 毎回試す(利用者の操作の中なので、許可を求める実装のブラウザでも文脈が通る)
+    snapRequestPersist(true);
   }
   row.outerHTML=snapRowHtml(id,msg);
 });
