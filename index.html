@@ -557,7 +557,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.22β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.23β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -640,7 +640,7 @@ const BLEND_ELEV=760;      // 内挿に地上風が混ざる上限(925hPaの標�
 // 冬モードから夏モードへ戻す条件は設けない。純粋な気温ベースにすると 5月の北ア(日中+2〜5℃)が
 // 夏モードに落ちて現行より甘くなるため、月ベースは残す必要がある。
 const WINTER_TMAX=0, WINTER_TMIN=-3;
-const ACT_HOURS=[5,17];    // 行動時間帯。日別指数とモード判定の対象
+const ACT_HOURS=[5,16];    // 行動時間帯(5:00〜16:59)。日別指数とモード判定の対象
 // ---- 降格条件のしきい値 (references/criteria.md「降格条件」) ----
 const WET_HYPO_TEMP=10, WET_HYPO_PRECIP=1.0, WET_HYPO_WIND_B=8, WET_HYPO_WIND_C=12;
 const FEELS_B=-20, FEELS_C=-30;
@@ -949,7 +949,7 @@ function ridgeWind(h,i,elev){
     :null;
   return[interpWind(pts,elev),dir,degraded];
 }
-// 夏冬モードの判定に使う気温 (行動時間帯 5〜17時の最高・最低)。
+// 夏冬モードの判定に使う気温 (行動時間帯 5〜16時の最高・最低)。
 // 1日全体の最低気温を使ってはいけない。3000m級では真夏でも明け方に -3℃ を下回ることがあり
 // (実測: 富士山の8月)、行動時間帯は5℃前後なのに日中の判定まで冬モードに倒れる。
 function modeTemps(h,times,idxs){
@@ -1531,7 +1531,7 @@ async function run(mt){
   const WK_HEAD=7;
   const wkOpen=rows.length<=WK_HEAD||start>addDays(today,WK_HEAD-1);
   htmlOut+=`<h2>${JMA_DAYS}日間の見通し</h2>${cap}<div class="tbl" id="wk-tbl"><table>
-    <tr><th>日付</th><th>指数</th><th>天気</th><th>🏔 景色(朝)</th><th>山頂気温</th><th>${windLbl}max(5-17時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
+    <tr><th>日付</th><th>指数</th><th>天気</th><th>🏔 景色(朝)</th><th>山頂気温</th><th>${windLbl}max(5-16時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
   rows.forEach((r,i)=>{
     const more=i>=WK_HEAD;
     const cls=["wk-row"];if(more)cls.push("wk-more");

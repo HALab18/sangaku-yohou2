@@ -819,18 +819,18 @@ footer a{color:var(--link)}
       if(mode==="count")return vs.length;
       return null;
     }
-    // 夏冬モードの判定にだけ使う気温。窓は行動時間帯 5〜17時で、表に出す tmax/tmin の窓
+    // 夏冬モードの判定にだけ使う気温。窓は行動時間帯 5〜16時で、表に出す tmax/tmin の窓
     // (7:00〜15:59)とは別物なので分けている。ここを 7-15 で代用してはいけない:
     // 詳細ページの正式判定(mountain_weather.py の mode_temps / index.html の modeTemps)は
-    // 5〜17時で冬モードを決めており、窓がずれると 5-6時だけ冷える日に find だけ夏モードのまま
+    // 5〜16時で冬モードを決めており、窓がずれると 5-6時だけ冷える日に find だけ夏モードのまま
     // A を出し、開いた先の正式判定は B/C という食い違いが出る(凡例は「同じ正式な登山指数」と
-    // 説明している)。ACT_HOURS=(5,17) は両端を含む。
+    // 説明している)。ACT_HOURS=(5,16) は両端を含む。
     function actTemp(mode){
       var arr=hr&&hr.temperature_2m; if(!arr)return null;
       var vs=[];
       for(var i=0;i<N;i++){
         var h2=parseInt(times[i].slice(11,13),10);
-        if(h2<5||h2>17)continue;
+        if(h2<5||h2>16)continue;
         var v=arr[i]; if(v==null)continue;
         vs.push(v);
       }
@@ -927,7 +927,7 @@ footer a{color:var(--link)}
   }
   // 詳細ページと同じ「正式な登山指数 A/B/C」を各行に併記するために計算する。
   // スコア(相対比較のふるい)とは別物なので、両方を並べて食い違いに気づけるようにする。
-  // 行動時間帯 5〜17時を3時間ブロックに割り、最悪値を採る(index.html の日別指数と同じ)。
+  // 行動時間帯 5〜16時を3時間ブロックに割り、最悪値を採る(index.html の日別指数と同じ)。
   // ★ find は視程を取得しないため D4(視界不良)は判定できない。主判定+D1+D2 までを出す。
   function formalIndex(d,mt,winter){
     var hr=d.hourly, times=(hr&&hr.time)||[], N=times.length;
@@ -940,7 +940,7 @@ footer a{color:var(--link)}
       var ws=null, pr=null, prN=0, tmn=null, rhx=null;
       for(var i=0;i<N;i++){
         var h2=parseInt(times[i].slice(11,13),10);
-        if(h2<5||h2>17||Math.floor(h2/3)*3!==sh)continue;
+        if(h2<5||h2>16||Math.floor(h2/3)*3!==sh)continue;
         var w=windAt(i); if(w!=null&&(ws==null||w>ws))ws=w;
         var p=hr.precipitation?hr.precipitation[i]:null;
         if(p!=null){pr=(pr==null?0:pr)+p;prN++}
@@ -1015,16 +1015,18 @@ footer a{color:var(--link)}
   //            1つも無い時刻の稜線風を地上10m風で代用せず欠測に倒した(スコアが変わる))
   //  / find12: 稜線風に ridgeDegraded(900hPa/800hPa両欠測)を追加し、GSM期間の稜線風セルに
   //            `*` を出すようにした(sc の形が変わる)
+  //  / find13: 夏冬モードの判定窓・正式指数の判定窓を行動時間帯5〜17時→5〜16時に変更
+  //            (winter判定・稜線風の減点・abc がこの窓に依存するためスコアが変わりうる)
   // 上げ忘れると旧キャッシュがそのまま復元され、天気列だけ古い表示になる。
-  function cacheKey(r,p,date){return "find12:"+r+":"+p+":"+date}
+  function cacheKey(r,p,date){return "find13:"+r+":"+p+":"+date}
   // 直近の検索条件を保存するキー。ページを再訪した時にセレクタと結果を復元する用途
   // (bfcache が効かない iOS 直リンク等のフォールバック。詳細は末尾の restoreLastSearch)。
-  var LAST_KEY="find12:last";
+  var LAST_KEY="find13:last";
   // 旧世代のキャッシュキー掃除。バージョンを上げても古い接頭辞のキーが sessionStorage に
   // 残り続け、quota に達するとキャッシュが黙って無効化される(認証ゲートが守っている
   // 無料枠と逆方向に働く)。既知の旧接頭辞を明示的に消す(localStorageの列挙APIには依存しない)。
-  // 次にバージョンを上げる時は、この配列に現行の "find12" を追記すること。
-  var OLD_FIND_PREFIXES=["find2","find3","find4","find5","find6","find7","find8","find9","find10","find11"];
+  // 次にバージョンを上げる時は、この配列に現行の "find13" を追記すること。
+  var OLD_FIND_PREFIXES=["find2","find3","find4","find5","find6","find7","find8","find9","find10","find11","find12"];
   function cleanupOldCache(){
     try{
       var ks=[];for(var i=0;i<sessionStorage.length;i++)ks.push(sessionStorage.key(i));
@@ -1170,7 +1172,7 @@ footer a{color:var(--link)}
       '<span class="abc abc-a">A</span>登山適 '+
       '<span class="abc abc-b">B</span>要注意 '+
       '<span class="abc abc-c">C</span>登山不適。'+
-      '行動時間帯5〜17時を3時間ごとに判定した最悪値です。'+
+      '行動時間帯5〜16時を3時間ごとに判定した最悪値です。'+
       'スコアは「相対的に天気の良い山を探すためのふるい」、指数は「行動できるかの判定」で別物です。'+
       '<b>この一覧では視程を取得していないため、視界不良による判定だけは含まれません</b>。'+
       '実際に登る前に必ず個別ページでご確認ください</dd>'+

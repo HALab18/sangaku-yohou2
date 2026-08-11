@@ -430,11 +430,11 @@ def wind_label(elev):
     return "地上風(10m)" if elev < LOW_ELEV_M else "稜線風"
 
 
-ACT_HOURS = (5, 17)  # 行動時間帯。日別指数とモード判定の対象
+ACT_HOURS = (5, 16)  # 行動時間帯(5:00〜16:59)。日別指数とモード判定の対象
 
 
 def mode_temps(h, times, date):
-    """夏冬モードの判定に使う気温 (行動時間帯 5〜17時の最高・最低)。
+    """夏冬モードの判定に使う気温 (行動時間帯 5〜16時の最高・最低)。
 
     1日全体の最低気温を使ってはいけない。3000m級では真夏でも明け方に -3℃ を下回ることが
     あり(実測: 富士山の8月)、行動時間帯は 5℃前後なのに日中の判定まで冬モードに倒れる。
@@ -1109,7 +1109,7 @@ def daily_summary_rows(data, dates, elev):
 
         # 夏冬モードはその日の山頂気温も見て決める(日単位。同一日内では閾値を変えない)
         th = season_thresholds(date.month, *mode_temps(h, times, date))
-        # 行動時間帯 5-17時で指数判定
+        # 行動時間帯 5-16時で指数判定
         act = [i for i in idxs if ACT_HOURS[0] <= int(times[i][11:13]) <= ACT_HOURS[1]]
         # 判定できたブロックだけを集め、その最悪値を日の指数にする。
         # 1つも判定できなければ day_idx は None (判定不能) のままにする
@@ -1180,7 +1180,7 @@ def print_daily_summary(rows, title, has_snow=False, elev=None):
     print(f"\n### {title}")
     snow_h = " 積雪max(新雪) |" if has_snow else ""
     snow_sep = "---|" if has_snow else ""
-    print(f"| 日付 | 指数 | 天気 | 🏔 景色(朝) | 山頂気温 | {wind_label(elev)}max(5-17時) | 降水量 | 降水%(参考) |{snow_h}")
+    print(f"| 日付 | 指数 | 天気 | 🏔 景色(朝) | 山頂気温 | {wind_label(elev)}max(5-16時) | 降水量 | 降水%(参考) |{snow_h}")
     print(f"|---|---|---|---|---|---|---|---|{snow_sep}")
     for r in rows:
         wj = "月火水木金土日"[r["date"].weekday()]
