@@ -39,7 +39,9 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 ## 気象データの取得元
 
 基本は Open-Meteo の**気象庁モデル** `/v1/jma`（0〜4日目=MSM 約5km / 5〜11日目=GSM。自動切替）。
-**予報期間は11日**（`JMA_DAYS`。CLI・index.html の両方に定数を置いて揃える）。
+**予報期間は10日**（`JMA_DAYS`。CLI・index.html の両方に定数を置いて揃える）。
+モデル自体は11日目まで配信するが、11日目は昼過ぎでGSMが切れdaily集計が丸ごとnullになる
+（hourlyから作り直しても部分日にしかならない）ため、**完全にデータが揃う10日目までに表示を止める**。
 
 - 気象庁モデルに**無い**項目 = `precipitation_probability` / `wind_gusts_10m` / `cape` /
   `convective_inhibition` / `visibility` / `snow_depth`。これらだけ `/v1/forecast` から補完し、
@@ -52,9 +54,8 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
   `null` を返して一覧から外す（減点方式なので引く材料が無いと100点＝ランクAになるため）。
   **この手の「データが無い→好条件」は安全と逆方向なので、判定を足すときは必ず欠測側を確認する。**
 - **要注意**: 存在しない項目を `/v1/jma` に投げても **400 にはならず全て null で返る**。
-  「エラーが出ないから取れている」と誤解しやすい。期間も同様で、11日を超えて要求しても
-  エラーにならず黙って null が並ぶ。**日数はコード側で必ず制限する**。
-- 11日目は昼過ぎでモデルが切れ daily 集計値が null になるため、hourly から作り直して表を埋める。
+  「エラーが出ないから取れている」と誤解しやすい。期間も同様で、モデルの実配信期間(11日)を
+  超えて要求してもエラーにならず黙って null が並ぶ。**日数はコード側(`JMA_DAYS`)で必ず制限する**。
 - **MSM と GSM で配信される要素が違う**（実測）。GSM 期間（5日目以降）に無いもの:
   `sunshine_duration` / `shortwave_radiation`、および気圧面 **900hPa・800hPa**。
   `cloud_cover`・`weather_code`・`precipitation`・925/850/700/600hPa は全期間ある。

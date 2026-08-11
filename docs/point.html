@@ -169,7 +169,7 @@ const md=d=>`${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).pad
 const WJA="日月火水木金土";
 // 気象庁モデルの予報長。index.html の JMA_DAYS と必ず同じ値にすること
 // (ここが大きいと、選べる日付が本体側で「予報範囲外」になる)
-const JMA_DAYS=11;
+const JMA_DAYS=10;
 // 「今日」は必ず日本時間で決める。端末ローカルの日付で作ると TZ が JST でない端末で
 // 1日ずれ、渡した日付が本体側の選択肢に無く「今日扱い」に落ちる
 // (index.html の jstToday と同一。片方だけ直さないこと)
@@ -180,7 +180,7 @@ function jstToday(){
   return new Date(y,m-1,dd);
 }
 
-// 開始日の選択肢(今日〜10日先・曜日つき。index.html本体と同じ生成方法)
+// 開始日の選択肢(今日〜9日先・曜日つき。index.html本体と同じ生成方法)
 {
   const today=jstToday(),di=document.getElementById("mdate");
   for(let i=0;i<JMA_DAYS;i++){

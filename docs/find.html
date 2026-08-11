@@ -296,7 +296,7 @@ footer a{color:var(--link)}
   // 4日目以降の日照は /v1/forecast(ベストマッチ)から別名で補完している(SUPP_KEYS)。
   // ・期間を伸ばすときは補完側の配信期間も必ず実測で確認すること。このAPIは期間を超過しても
   //   エラーを返さず黙って null を並べるため、日数はコード側で制限するしかない。
-  // ・FIND_DAYS <= index.html の JMA_DAYS(11) は不変条件。山名リンク先は
+  // ・FIND_DAYS <= index.html の JMA_DAYS(10) は不変条件。山名リンク先は
   //   ../index.html#山名/日付 なので、超えると本体の予報範囲外の日付を渡すことになる。
   var FIND_DAYS=7;
   var PREF_ORDER=["北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県", "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県", "山梨県", "長野県", "新潟県", "富山県", "石川県", "福井県", "岐阜県", "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県", "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"];
@@ -621,7 +621,12 @@ footer a{color:var(--link)}
     }
     return pts[pts.length-1][1];
   }
-  // i時刻の稜線風速。lvArrs=LEVELS と同じ並びの風速配列、w10=地上10m風の配列。
+  // 900hPa・800hPa は MSM 期間にしか配信されない(GSM 期間はこの2面が丸ごと欠測)。この2面が
+  // 両方欠測の時刻は内挿点が減り、稜線風が実測で北ア級-1.2m/s程度弱く出る(埋め合わせは却下済み。
+  // 上のコメント参照)。degraded として持ち回り、score()/formalIndex() の表示側で `*` を出す。
+  var DEGRADED_LEVEL_IDX=LEVELS.reduce(function(a,L,li){
+    if(L[0]===900||L[0]===800)a.push(li);return a},[]);
+  // i時刻の稜線風速+degraded。lvArrs=LEVELS と同じ並びの風速配列、w10=地上10m風の配列。
   // 気圧面が1つも無い時刻は null(判定不能)。ここで地上10m風だけの pts を interpWind に渡すと
   // 最下点の生値(=地上風)が返り、稜線20m/s相当の日が地上4m/sとして通ってしまう。すると
   // score() の欠測ガード(ridgeWmax!=null)もすり抜け、最大の減点③(-32)が消えて不当に上位へ出る。
@@ -636,7 +641,9 @@ footer a{color:var(--link)}
       if(v!=null){pts.push([LEVELS[li][1],v]);lv++}
     }
     if(!lv)return null;
-    return interpWind(pts,elev);
+    var degraded=DEGRADED_LEVEL_IDX.every(function(li){
+      var a=lvArrs[li];return !a||a[i]==null});
+    return{v:interpWind(pts,elev),degraded:degraded};
   }
   // 対象時間帯: 7:00〜15:59 (hour 7〜15 の 9時間、登山コアタイム)
   function inRange(t){var h=parseInt(t.slice(11,13),10);return h>=7&&h<=15}
@@ -840,7 +847,7 @@ footer a{color:var(--link)}
     }
     // 稜線風速: 各時刻ごとに「値のある気圧面」から山頂標高の風速を補間し、その max をとる。
     // 面の取捨を時刻ごとにやるのは、MSM→GSM の切替で配信される面が変わるため(interpWind 参照)。
-    var ridgeWmax=null;
+    var ridgeWmax=null, ridgeDegraded=false;
     var lvArrs=LEVELS.map(function(L){return hr&&hr["wind_speed_"+L[0]+"hPa"]});
     var w10=hr&&hr["wind_speed_10m"];
     var mv=0, hasW=false;
@@ -849,7 +856,7 @@ footer a{color:var(--link)}
       var w=ridgeAt(lvArrs,w10,i,mt.el);
       if(w==null)continue;
       // hasW は「値が1つでもあったか」なので if の外。1行に並べると条件付きに見えるので分ける
-      if(w>mv)mv=w;
+      if(w.v>mv){mv=w.v;ridgeDegraded=w.degraded}
       hasW=true;
     }
     if(hasW)ridgeWmax=mv;
@@ -916,7 +923,7 @@ footer a{color:var(--link)}
     if(tmin!=null&&tmin<-5)s-=Math.min((-5-tmin),15)/15*5;
     return {v:Math.round(Math.max(0,Math.min(100,s))),sunFrac:sunFrac,sunAlt:sunAlt,
       code:code,wxRep:wxRep,winter:winter,abc:formalIndex(d,mt,winter),
-      psum:psum,pprob:pprob,ridgeWmax:ridgeWmax,tmax:tmax,tmin:tmin};
+      psum:psum,pprob:pprob,ridgeWmax:ridgeWmax,ridgeDegraded:ridgeDegraded,tmax:tmax,tmin:tmin};
   }
   // 詳細ページと同じ「正式な登山指数 A/B/C」を各行に併記するために計算する。
   // スコア(相対比較のふるい)とは別物なので、両方を並べて食い違いに気づけるようにする。
@@ -927,7 +934,7 @@ footer a{color:var(--link)}
     var th=winter?{wind:[8,12],precip:[1,3]}:{wind:[10,15],precip:[1,5]};
     var lvArrs=LEVELS.map(function(L){return hr&&hr["wind_speed_"+L[0]+"hPa"]});
     var w10=hr&&hr["wind_speed_10m"];
-    function windAt(i){return ridgeAt(lvArrs,w10,i,mt.el)}
+    function windAt(i){var w=ridgeAt(lvArrs,w10,i,mt.el);return w?w.v:null}
     var worst=null, worstReason="", RANKV={A:0,B:1,C:2};
     for(var sh=3;sh<18;sh+=3){
       var ws=null, pr=null, prN=0, tmn=null, rhx=null;
@@ -1006,11 +1013,28 @@ footer a{color:var(--link)}
   //  / find11: 夏冬モードの判定窓を詳細ページと同じ行動時間帯 5〜17時に統一(従来は 7〜15時で、
   //            5-6時だけ冷える日に find だけ夏モードのままAを出していた)。あわせて、気圧面が
   //            1つも無い時刻の稜線風を地上10m風で代用せず欠測に倒した(スコアが変わる))
+  //  / find12: 稜線風に ridgeDegraded(900hPa/800hPa両欠測)を追加し、GSM期間の稜線風セルに
+  //            `*` を出すようにした(sc の形が変わる)
   // 上げ忘れると旧キャッシュがそのまま復元され、天気列だけ古い表示になる。
-  function cacheKey(r,p,date){return "find11:"+r+":"+p+":"+date}
+  function cacheKey(r,p,date){return "find12:"+r+":"+p+":"+date}
   // 直近の検索条件を保存するキー。ページを再訪した時にセレクタと結果を復元する用途
   // (bfcache が効かない iOS 直リンク等のフォールバック。詳細は末尾の restoreLastSearch)。
-  var LAST_KEY="find11:last";
+  var LAST_KEY="find12:last";
+  // 旧世代のキャッシュキー掃除。バージョンを上げても古い接頭辞のキーが sessionStorage に
+  // 残り続け、quota に達するとキャッシュが黙って無効化される(認証ゲートが守っている
+  // 無料枠と逆方向に働く)。既知の旧接頭辞を明示的に消す(localStorageの列挙APIには依存しない)。
+  // 次にバージョンを上げる時は、この配列に現行の "find12" を追記すること。
+  var OLD_FIND_PREFIXES=["find2","find3","find4","find5","find6","find7","find8","find9","find10","find11"];
+  function cleanupOldCache(){
+    try{
+      var ks=[];for(var i=0;i<sessionStorage.length;i++)ks.push(sessionStorage.key(i));
+      ks.forEach(function(k){
+        if(OLD_FIND_PREFIXES.some(function(pfx){return k===pfx+":last"||k.indexOf(pfx+":")===0})){
+          pwSDrop(k);
+        }
+      });
+    }catch(e){} // sessionStorage 列挙が使えない環境では何もしない(実害なし)
+  }
   // キャッシュの有効期限。キーは「エリア:県:対象日」だけで時刻成分を持たないので、
   // TTL が無いと同一セッション中は永久に最初の取得結果が返る。気象庁モデルは1日に複数回
   // 更新されるため、タブを開きっぱなしにした利用者へ朝6時の予報を夜18時に「最新」として
@@ -1102,7 +1126,8 @@ footer a{color:var(--link)}
       '<td class="num">'+pct(s.sunFrac)+
         (s.sunAlt?'<span class="altm" title="別の予報モデルで補完した日照">*</span>':"")+'</td>'+
       '<td class="num">'+fnum(s.tmax,"")+' / '+fnum(s.tmin,"℃")+'</td>'+
-      '<td class="num">'+fnum(s.ridgeWmax,"m/s")+'</td>'+
+      '<td class="num">'+fnum(s.ridgeWmax,"m/s")+
+        (s.ridgeDegraded?'<span class="altm" title="900hPa/800hPaのデータが無く、やや弱めに出ている可能性があります">*</span>':"")+'</td>'+
       '<td class="num">'+(s.pprob==null?"-":Math.round(s.pprob)+"%")+'</td>'+
       '<td class="num">'+pmm(s.psum)+'</td>'+
       '</tr>';
@@ -1205,6 +1230,14 @@ footer a{color:var(--link)}
          '天気・降水量・稜線風・積雪は気象庁モデルのままです'+
          '(<a href="find-score.html">計算方法</a>)。</p>';
     }
+    // 稜線風が900hPa/800hPa欠測(GSM期間・5日目以降)でやや弱めに出ている山も、表の下に1回だけ明記する。
+    var degN=rows.filter(function(x){return x.sc.ridgeDegraded}).length;
+    if(degN){
+      h+='<p class="rnote">※ 稜線風の <b>*</b> 印'+(degN<rows.length?"が付いた山":"")+
+         'は、この時間帯が<b>900hPa/800hPaのデータが無い期間</b>(GSM期間)のため、'+
+         '稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。'+
+         '強めに見積もって判断してください。</p>';
+    }
     // 日照そのものが取れなかった山は、天気コードによる粗い代替評価になっている。
     // 黙って精度が落ちると気づけないので、これも表に出す。
     var noSunN=rows.filter(function(x){return x.sc.sunFrac==null}).length;
@@ -1306,6 +1339,7 @@ footer a{color:var(--link)}
     if(pwSLoad(key))search(true);
   }
 
+  cleanupOldCache();
   fillPrefs();
   if(takeBackFlag()){
     restoreLastSearch();

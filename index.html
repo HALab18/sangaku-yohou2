@@ -270,6 +270,8 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
 /* 指数の降格理由・濡れ注意・雨雪の別。数値の読み取りを邪魔しないよう小さく下段に置く。
    色は .ew と同系にして「注意を促す情報」であることを揃える。 */
 .dr{display:block;font-size:.76em;color:#a03415;font-weight:700;margin-top:2px;line-height:1.3;white-space:nowrap}
+/* 稜線風の degraded 印(900hPa/800hPa欠測)。find の .altm と同じ「控えめだが見える」トーン */
+.dgd{color:#8a94a8;font-weight:700;margin-left:1px}
 .wxnote{display:block;font-size:.78em;color:#6b7280;margin-top:2px;line-height:1.3}
 /* 詳細表の見出し直下に出す控えめなキャプション(山名とデータ取得日時)。スクショを切り取っても
    どの山のいつの取得か分かるようにするため。目立たせない */
@@ -289,7 +291,7 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
 .vwnum{display:block;font-size:.76em;color:#6b7280;margin-top:2px;line-height:1.3}
 .ewnote{background:#f9d9cf;border-left:5px solid #a03415;padding:8px 12px;
   border-radius:0 6px 6px 0;margin:6px 0 14px;font-size:.9em}
-/* 11日間の見通し: 8日目以降の行と開閉ボタン。
+/* 10日間の見通し: 8日目以降の行と開閉ボタン。
    tr に display を指定する作者スタイルは無いが、意図を残すため [hidden] を明示する */
 .wk-more[hidden]{display:none}
 .wk-toggle{width:100%;padding:9px;font-size:.92em;font-weight:600;border-radius:10px;
@@ -555,7 +557,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.21β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.22β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -668,8 +670,10 @@ const PAST_DAYS=3; // 直近実況(モデル解析値)として遡る日数
 const JMA_URL="https://api.open-meteo.com/v1/jma";
 const FORECAST_URL="https://api.open-meteo.com/v1/forecast";
 // 気象庁モデルの予報長。forecast_days/end_date を伸ばしてもAPIはエラーを返さず黙って null を
-// 並べるだけなので、期間は必ずこちらで 11日 (today+10) に制限する。
-const JMA_DAYS=11;
+// 並べるだけなので、期間は必ずこちらで 10日 (today+9) に制限する。
+// 11日目は昼過ぎでGSMが切れdaily集計が丸ごとnullになるため対象から外している(hourlyからの
+// 作り直しでは埋めきれない部分日になるため、完全にデータが揃う10日目までに統一)。
+const JMA_DAYS=10;
 // 気象庁モデルに存在しない項目。JMA_URL に投げても 400 にはならず全て null で返るため、
 // 「エラーが出ないから取れている」と誤解しやすい。必ず FORECAST_URL 側から補完する。
 // freezing_level_height は実測で気象庁モデルは全期間 null、FORECAST_URL は 264/264 取得できた。
@@ -854,8 +858,10 @@ const f1=v=>v==null?"-":v.toFixed(1);
 // 欠測はハイフン1つだけにする。数値がある時だけ単位を付ける。
 const u0=(v,unit)=>v==null?"-":Math.round(v)+unit;
 const u1=(v,unit)=>v==null?"-":v.toFixed(1)+unit;
-// 風は「風向 風速」の組。風速が欠測ならまとめて "-"(風向だけ出しても読めないため)
-const windCell=(wd,ws)=>ws==null?"-":`${wdir(wd)} ${ws.toFixed(1)}m/s`;
+// 風は「風向 風速」の組。風速が欠測ならまとめて "-"(風向だけ出しても読めないため)。
+// degraded(900hPa/800hPa両欠測)のときは `*` を付け、やや弱めに出ている可能性を示す
+const windCell=(wd,ws,degraded)=>ws==null?"-":`${wdir(wd)} ${ws.toFixed(1)}m/s`
+  +(degraded?'<span class="dgd" title="900hPa/800hPaのデータが無く、やや弱めに出ている可能性があります">*</span>':"");
 // 気温レンジ。両端とも欠測なら "-"
 const tempRange=(lo,hi)=>lo==null&&hi==null?"-":`${f0(lo)}〜${f0(hi)}℃`;
 // ' も落とす。今の生成HTMLは属性を全て " で囲んでいるので実害は無いが、
@@ -866,8 +872,8 @@ const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${Str
 // ---- 「今日」は必ず日本時間で決める ----
 // APIへは timezone=Asia/Tokyo を投げているのに start_date/end_date や表の日付を端末ローカルの
 // 日付で作ると、TZ が JST でない端末(海外遠征・UTC固定・時計ずれ)で丸ごと1日ずれる。
-// ずれると「直近の実況(過去3日)」に JST の今日=予報値が実況として混ざり、11日間の見通しも
-// 末日が d.time に無くなって10日ぶんしか出ない。数値は正しいまま日付ラベルだけがずれるので、
+// ずれると「直近の実況(過去3日)」に JST の今日=予報値が実況として混ざり、10日間の見通しも
+// 末日が d.time に無くなって9日ぶんしか出ない。数値は正しいまま日付ラベルだけがずれるので、
 // 利用者からは気づけないタイプの誤表示になる。
 const JST_YMD=new Intl.DateTimeFormat("en-CA",
   {timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"});
@@ -912,7 +918,12 @@ function interpWind(pts,elev){
   }
   return pts.at(-1)[1];
 }
-// i時刻の [稜線風速(m/s), 風向] を6気圧面から求める。材料が1つも無ければ [null,null]。
+// 900hPa・800hPa は MSM 期間(0〜4日目)にしか配信されない(GSM 期間はこの2面が丸ごと欠測)。
+// この2面が両方欠測の時刻は、内挿点が4面→2面に減り稜線風が実測で北ア級-1.2m/s程度弱く出る
+// (埋め合わせは却下済み。上のコメント参照)。ridgeWind の戻り値に degraded として持たせ、
+// 表示側で `*` 印を出す判断材料にする(埋め合わせず開示で倒す)。
+const DEGRADED_LEVELS=[900,800];
+// i時刻の [稜線風速(m/s), 風向, degraded] を6気圧面から求める。材料が1つも無ければ [null,null,false]。
 // 風速は値のある面だけで線形補間。風向は角度なので同じ式では補間できず、
 // 「値のある面のうち標高的に一番近い面の値をそのまま採用」する(固定2面時代の t<0.5 の一般化)。
 // 標高 LOW_ELEV 未満は気圧面補間をせず地上10m風をそのまま返す(平地で上空760mの風が出るのを
@@ -931,11 +942,12 @@ function ridgeWind(h,i,elev){
   // 気圧面が1つも無い時刻は「稜線風は判定不能」に倒す。ここで地上10m風だけの pts を通すと、
   // interpWind が最下点の生値(=地上風)を返し、稜線20m/s相当の日が地上4m/sとして通ってしまう。
   // 「データが無い→好条件」は安全と逆方向なので、欠測は欠測のまま出す。
-  if(!lv)return[null,null];
+  if(!lv)return[null,null,false];
+  const degraded=DEGRADED_LEVELS.every(p=>h[`wind_speed_${p}hPa`]?.[i]==null);
   const dir=dirs.length
     ?dirs.reduce((a,b)=>Math.abs(b[0]-elev)<Math.abs(a[0]-elev)?b:a)[1]
     :null;
-  return[interpWind(pts,elev),dir];
+  return[interpWind(pts,elev),dir,degraded];
 }
 // 夏冬モードの判定に使う気温 (行動時間帯 5〜17時の最高・最低)。
 // 1日全体の最低気温を使ってはいけない。3000m級では真夏でも明け方に -3℃ を下回ることがあり
@@ -1376,7 +1388,7 @@ async function run(mt){
   // Web側は画面に出していなかった。気象庁モデルは1日に複数回更新されるので、「いつ発表された
   // 予報を見ているのか」が分からないと「さっき見た値と違う」を利用者が説明できない。
   const initAll=initTxt(inits);
-  const srcNote=`<li>データ: 気象庁モデル(0〜4日目=MSM 約5km / 5〜${JMA_DAYS}日目=GSM。自動切替)`
+  const srcNote=`<li>データ: 気象庁モデル(0〜4日目=MSM 約5km / 5〜11日目=GSM。自動切替。表示は${JMA_DAYS}日目まで)`
     +`${initAll?` / <b>発表(初期時刻) ${initAll} JST</b>`:""} / 出典: Open-Meteo</li>`;
   let htmlOut=`${backToFind}<h2>${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""} の山岳気象予報</h2><ul class="meta">
     <li>地点: 北緯${mt.lat.toFixed(4)} 東経${mt.lon.toFixed(4)} / 標高 ${Math.round(mt.elev)}m
@@ -1405,17 +1417,18 @@ async function run(mt){
     // ws が null のとき find(x=>x[0]===ws) は「風速が欠測の時刻」に一致してしまい、
     // 風速は「-」なのに風向だけ出る(欠測は判定不能に倒す方針からの逸脱)。
     // 風速が取れた時だけ風向を出す。
-    const wd2=ws==null?null:(rw.find(x=>x[0]===ws)?.[1]??null);
+    const rwHit=ws==null?null:rw.find(x=>x[0]===ws);
+    const wd2=rwHit?.[1]??null,degraded=rwHit?.[2]??false;
     const dep=idxs.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
     pastRows.push({d:new Date(dt2),code:wxByDate.get(ds)?.code??d.weather_code[di],notes:wxByDate.get(ds)?.notes||[],phrase:wxByDate.get(ds)?.phrase,tmin:d.temperature_2m_min[di],tmax:d.temperature_2m_max[di],
-      ws,wd:wd2,pr:d.precipitation_sum[di],sf:d.snowfall_sum?.[di],
+      ws,wd:wd2,degraded,pr:d.precipitation_sum[di],sf:d.snowfall_sum?.[di],
       depth:dep.length?Math.max(...dep):null});
   }
   if(pastRows.length){
     htmlOut+=`<h2>直近の実況(モデル解析値・過去${pastRows.length}日)</h2>${cap}<div class="tbl"><table>
       <tr><th>日付</th><th>天気</th><th>山頂気温</th><th>${windLbl}max(5-17時)</th><th>降水量</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
     for(const r of pastRows)htmlOut+=`<tr><td>${md(r.d)}${wj(r.d)}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
-      <td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws)}</td>
+      <td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws,r.degraded)}</td>
       <td>${u1(r.pr,"mm")}</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
     htmlOut+=`</table></div><ul class="meta"><li>※モデル解析値であり観測所の実測ではありません。現地の最新情報を優先してください</li></ul>`;
   }
@@ -1446,12 +1459,14 @@ async function run(mt){
     };
     // 判定できたブロックだけを集め、その最悪値を日の指数にする。
     // 1つも判定できなければ dayIdxV は null (判定不能) のままにする
-    const verdicts=[];let wsMax=null,wdMax=null;
+    const verdicts=[];let wsMax=null,wdMax=null,wDegraded=false;
     for(let sh=3;sh<18;sh+=3){
       const blk=act.filter(i=>Math.floor(+times[i].slice(11,13)/3)*3===sh);
       if(!blk.length)continue;
       const[bi,rs,ws,rw]=blkVerdict(blk);
-      if(ws!=null&&(wsMax==null||ws>wsMax)){wsMax=ws;wdMax=rw.find(x=>x[0]===ws)?.[1]}
+      if(ws!=null&&(wsMax==null||ws>wsMax)){
+        wsMax=ws;const m=rw.find(x=>x[0]===ws);wdMax=m?.[1];wDegraded=m?.[2]??false;
+      }
       if(bi!=null)verdicts.push([bi,rs]);
     }
     const dayIdxV=["C","B","A"].find(v=>verdicts.some(x=>x[0]===v))??null;
@@ -1500,18 +1515,13 @@ async function run(mt){
       if(best==null||order[v[0]]<order[best[0]]){best=v;bestVis=vi}
     }
     const dep=idxs.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
-    // 最終日(11日目)は GSM が昼過ぎで切れるため daily の集計値が丸ごと null で返る。
-    // その日の hourly が部分的にでも残っていれば、そこから同じ値を作り直して行を埋める
-    // (CLI版 daily_summary_rows のフォールバックと同じ)。
-    const hvals=k=>idxs.map(i=>h[k]?.[i]).filter(v=>v!=null);
-    const hAgg=(k,fn)=>{const v=hvals(k);return v.length?fn(v):null};
     rows.push({d:new Date(dt2),idx:dayIdxV,eve:evening,code:wxByDate.get(ds)?.code??d.weather_code[di],notes:wxByDate.get(ds)?.notes||[],phrase:wxByDate.get(ds)?.phrase,
-      tmin:d.temperature_2m_min[di]??hAgg("temperature_2m",v=>Math.min(...v)),
-      tmax:d.temperature_2m_max[di]??hAgg("temperature_2m",v=>Math.max(...v)),
-      ws:wsMax,wd:wdMax,
-      pr:d.precipitation_sum[di]??hAgg("precipitation",v=>v.reduce((a,b)=>a+b,0)),
+      tmin:d.temperature_2m_min[di],
+      tmax:d.temperature_2m_max[di],
+      ws:wsMax,wd:wdMax,degraded:wDegraded,
+      pr:d.precipitation_sum[di],
       prob:d.precipitation_probability_max[di],
-      sf:d.snowfall_sum?.[di]??hAgg("snowfall",v=>v.reduce((a,b)=>a+b,0)),
+      sf:d.snowfall_sum?.[di],
       depth:dep.length?Math.max(...dep):null,
       reason:dayReason,night:nightBad,mode:th.mode,
       view:best?vhtml(best,bestVis):"-"});
@@ -1526,16 +1536,17 @@ async function run(mt){
     const more=i>=WK_HEAD;
     const cls=["wk-row"];if(more)cls.push("wk-more");
     htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}" tabindex="0" role="button"><td>${md(r.d)}${wj(r.d)}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"><span class="ewi">⚠</span>夕方</span>':""}${r.night?'<span class="ew"><span class="ewi">⚠</span>夜間</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
-    <td>${r.view}</td><td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws)}</td>
+    <td>${r.view}</td><td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws,r.degraded)}</td>
     <td>${u1(r.pr,"mm")}</td><td>${u0(r.prob,"%")}</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
   });
   htmlOut+=`</table></div>`;
-  // 残り日数は rows.length から作る(end_date クランプ等で11日に満たないことがあるため決め打ちしない)
+  // 残り日数は rows.length から作る(end_date クランプ等で10日に満たないことがあるため決め打ちしない)
   if(rows.length>WK_HEAD)
     htmlOut+=`<button type="button" class="wk-toggle" aria-controls="wk-tbl" aria-expanded="${wkOpen}">`+
       `${wkOpen?"折りたたむ":`残り${rows.length-WK_HEAD}日を表示`}</button>`;
   if(rows.some(r=>r.eve))htmlOut+=`<p class="ewnote">⚠夕方: 17〜20時に天候の急変(C相当)、または発雷リスク「注意」以上が予想されます。日中の指数には含めていませんが、下山遅れ・テント泊・ご来光待ちの際は特に注意してください。</p>`;
   if(rows.some(r=>r.night))htmlOut+=`<p class="ewnote">⚠夜間: 21時〜翌朝5時にC相当の荒天が予想されます。日中の指数には含めていませんが、テント泊・小屋泊・早発ち(アルパインスタート)の際は特に注意してください。</p>`;
+  if(rows.some(r=>r.degraded))htmlOut+=`<p class="ewnote">${windLbl}の <b>*</b> 印は、その日が<b>900hPa/800hPaのデータが無い期間</b>(GSM期間・5日目以降)のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。強めに見積もって判断してください。</p>`;
   // 降格理由の凡例。出た日だけ出す(理由の付かない表に説明だけ残らないように)
   {
     const rset=new Set(rows.map(r=>r.reason).filter(Boolean));
@@ -1562,6 +1573,7 @@ async function run(mt){
     htmlOut+=`<section id="detail-${ds}" class="detail-day">
     <h2>${ds} ${wj(dt2)} ${step===1?"1時間ごと":"3時間ごと"}詳細${sun}</h2>${cap}<div class="tbl"><table>
       <tr><th>時刻</th><th>指数</th><th>天気</th><th>🏔 景色(眺望)</th><th>気温</th><th>体感</th><th>${windLbl}</th><th>突風</th><th>降水</th><th>降水%(参考)</th><th>⚡ 発雷リスク</th><th>雲(下/中/上)</th>${hasSnow?"<th>積雪(新雪)</th>":""}</tr>`;
+    let dayDegraded=false;
     for(let sh=0;sh<24;sh+=step){
       const blk=idxs.filter(i=>Math.floor(+times[i].slice(11,13)/step)*step===sh);
       if(!blk.length)continue;
@@ -1570,7 +1582,9 @@ async function run(mt){
       const wsArr=rw.map(x=>x[0]).filter(v=>v!=null);
       const ws=wsArr.length?Math.max(...wsArr):null;
       // 風速が取れた時だけ風向を出す(null と一致させると欠測時刻の風向を拾ってしまう)
-      const wd2=ws==null?null:(rw.find(x=>x[0]===ws)?.[1]??null);
+      const rwHit=ws==null?null:rw.find(x=>x[0]===ws);
+      const wd2=rwHit?.[1]??null,degraded2=rwHit?.[2]??false;
+      if(degraded2)dayDegraded=true;
       const gustArr=blk.map(i=>h.wind_gusts_10m?.[i]).filter(v=>v!=null);
       const gust=gustArr.length?Math.max(...gustArr):null;
       const pr=sumOrNull(blk.map(i=>h.precipitation[i]));
@@ -1614,11 +1628,13 @@ async function run(mt){
       const depArr=blk.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
       const sfBlk=blk.reduce((s,i)=>s+(h.snowfall?.[i]||0),0);
       htmlOut+=`<tr><td>${String(sh).padStart(2,"0")}時</td><td>${idxCell(bi,biReason)}</td><td>${wxCodeIcon(h.weather_code[i0])}</td><td>${view}</td>
-        <td>${u1(temp,"℃")}</td><td>${u1(feel,"℃")}${wet}</td><td>${windCell(wd2,ws)}</td>
+        <td>${u1(temp,"℃")}</td><td>${u1(feel,"℃")}${wet}</td><td>${windCell(wd2,ws,degraded2)}</td>
         <td>${u0(gust,"m/s")}</td><td>${prTxt}</td><td>${u0(prob,"%")}</td><td>${ltCell(lt,cape,cin)}</td>
         <td>${cl}</td>${hasSnow?`<td>${snowCell(depArr.length?Math.max(...depArr):null,sfBlk)}</td>`:""}</tr>`;
     }
-    htmlOut+=`</table></div></section>`;
+    htmlOut+=`</table></div>`;
+    if(dayDegraded)htmlOut+=`<p class="ewnote">${windLbl}の <b>*</b> 印は、900hPa/800hPaのデータが無い時間帯(GSM期間・5日目以降)のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。強めに見積もって判断してください。</p>`;
+    htmlOut+=`</section>`;
   }
 
   // モデル比較 (常時表示。ただし補助情報なので、失敗しても主要な予報表は必ず描画する)
@@ -1629,7 +1645,7 @@ async function run(mt){
     const labels={jma_seamless:"気象庁JMA",ecmwf_ifs025:"欧州ECMWF",gfs_seamless:"米国GFS"};
     // 3モデル同時取得はこのページで最も重いリクエストで、混雑時に最初に落ちる。
     // これは「モデルが一致するか」を見るための補助情報であって登山可否の判断材料ではない。
-    // 一方この時点で主要な予報表(直近実況・11日見通し・時間別詳細)は既に組み上がっており、
+    // 一方この時点で主要な予報表(直近実況・10日見通し・時間別詳細)は既に組み上がっており、
     // 描画は最後の out.innerHTML まで行われない。ここで throw させると、完成済みの
     // 稜線風・気温・降水・登山指数を丸ごと捨てることになるので、失敗はここで閉じ込める。
     let cd=null;
@@ -1990,6 +2006,9 @@ function applyHash(){
 // その下に従来どおりの履歴(3日・最大8件)を出す。ピンを入れた理由は、常連の山ほど
 // 3日TTLで消えたり他の検索に押し出されたりして、この機能の当初目的から外れていたため。
 const RECENT_KEY="pw-recent-v2",RECENT_MAX=8,PIN_MAX=4,RECENT_TTL=3*24*3600*1000; // 3日
+// 旧キー(pw-recent-v1)の掃除。保存形を変えて v2 に上げた際、旧キーは読まずに放置していたため
+// 残り続けていた。次に保存形を変える時は、この行にも旧キー名を追記すること
+pwDrop("pw-recent-v1");
 function recentLoad(){
   let a;
   try{a=JSON.parse(pwLoad(RECENT_KEY)||"[]")}catch(e){return []}
@@ -2065,7 +2084,7 @@ function recentRemove(name){
       // ピン群と履歴群の境目に区切り線を入れる(ピンが先頭に固まっている前提。recentLoad 参照)
       const pinLast=pinned&&recents[i+1]&&recents[i+1].pin!==true;
       return `<div data-n="${esc(r.n)}" class="rc${pinned?" pinned":""}`
-      +`${pinLast?" rcpinlast":""}${i===recents.length-1?" rclast":""}">`
+      +`${pinLast?" rcpinlast":""}${i===recents.length-1?" rclast":""}" tabindex="0" role="option">`
       +`<span>${esc(r.n)}</span><small>${esc(r.p)}${r.e==null?"":" "+esc(r.e)+"m"}</small>`
       // 📌は未ピンの行にも出す(CSSで淡くする)。ピン済みの行にしか出さないと機能に気づけない
       +`<button type="button" class="rcp" data-p="${esc(r.n)}" aria-pressed="${pinned}" `
@@ -2073,7 +2092,7 @@ function recentRemove(name){
       +`<button type="button" class="rcx" data-x="${esc(r.n)}" `
       +`aria-label="${esc(r.n)}を履歴から削除">×</button></div>`}).join(""):"";
     sugg.innerHTML=head+list.map(m=>
-      `<div data-n="${esc(m[0])}"><span>${esc(m[0])}</span><small>${esc(m[2])} ${m[5]}m</small></div>`).join("");
+      `<div data-n="${esc(m[0])}" tabindex="0" role="option"><span>${esc(m[0])}</span><small>${esc(m[2])} ${m[5]}m</small></div>`).join("");
     sugg.hidden=false;sugg.scrollTop=0;
   }
   function update(){
@@ -2086,7 +2105,26 @@ function recentRemove(name){
   }
   inp.addEventListener("input",update);
   inp.addEventListener("focus",update);
-  inp.addEventListener("blur",()=>setTimeout(()=>{sugg.hidden=true},150));
+  // フォーカスが sugg 内(候補行・📌・×)へ Tab移動した場合は閉じない。閉じるかどうかは
+  // 「フォーカスが今どこにあるか」を少し待って確認する(blur/focusin の発火順序に依存しないため)
+  const wrap=inp.closest("label")||inp.parentElement;
+  wrap.addEventListener("focusout",()=>{
+    setTimeout(()=>{if(!wrap.contains(document.activeElement))sugg.hidden=true},150);
+  });
+  // 行の選択・📌切替・×削除を1箇所で行う共通処理(ポインタ操作とキーボード操作の両方から呼ぶ)
+  function activate(el){
+    const p=el.closest("[data-p]");
+    if(p){
+      const nm=p.dataset.p;
+      (p.getAttribute("aria-pressed")==="true"?recentUnpin:recentPin)(nm);
+      update();return;
+    }
+    const x=el.closest("[data-x]");
+    if(x){recentRemove(x.dataset.x);update();return}
+    const d=el.closest("div[data-n]");if(!d)return;
+    inp.value=d.dataset.n;sugg.hidden=true;sugg.innerHTML="";
+    inp.blur(); // スマホのキーボードを閉じる
+  }
   // タップとスクロールを区別する: 指を押した位置を覚え、ほぼ動かず離した時だけ選択
   let downX=0,downY=0;
   sugg.addEventListener("pointerdown",e=>{
@@ -2095,18 +2133,14 @@ function recentRemove(name){
   });
   sugg.addEventListener("pointerup",e=>{
     if(Math.hypot(e.clientX-downX,e.clientY-downY)>10)return; // スクロール操作
-    // 📌(ピン留め切替)と×(履歴削除)は行の選択より先に見る。操作後もサジェストは開いたままにする
-    const p=e.target.closest("[data-p]");
-    if(p){
-      const nm=p.dataset.p;
-      (p.getAttribute("aria-pressed")==="true"?recentUnpin:recentPin)(nm);
-      update();return;
-    }
-    const x=e.target.closest("[data-x]");
-    if(x){recentRemove(x.dataset.x);update();return}
-    const d=e.target.closest("div[data-n]");if(!d)return;
-    inp.value=d.dataset.n;sugg.hidden=true;sugg.innerHTML="";
-    inp.blur(); // スマホのキーボードを閉じる
+    activate(e.target);
+  });
+  // キーボード操作: Tab で候補行・📌・×へフォーカス移動し、Enter/Space で選択・切替・削除する
+  sugg.addEventListener("keydown",e=>{
+    if(e.key!=="Enter"&&e.key!==" ")return;
+    if(!e.target.closest("div[data-n],[data-x],[data-p]"))return;
+    e.preventDefault(); // Space でのスクロールを抑止
+    activate(e.target);
   });
 }
 
@@ -2121,7 +2155,7 @@ function recentRemove(name){
   },{passive:true});
 }
 
-// 11日間の見通しの開閉。#out は検索のたびに innerHTML ごと差し替わるので、
+// 10日間の見通しの開閉。#out は検索のたびに innerHTML ごと差し替わるので、
 // ボタン本体ではなく #out に一度だけ委譲で張る(直接張ると次の検索で消える)。
 document.getElementById("out").addEventListener("click",e=>{
   const btn=e.target.closest(".wk-toggle");if(!btn)return;
@@ -2172,7 +2206,7 @@ document.querySelector(".hero-cta").addEventListener("click",e=>{
   document.getElementById("start").scrollIntoView({behavior:"smooth"});
 });
 
-// 初期化: 開始日の選択肢(今日〜10日先・曜日つき)を生成、URLハッシュ復元
+// 初期化: 開始日の選択肢(今日〜9日先・曜日つき)を生成、URLハッシュ復元
 {
   // 選択肢も JST の今日から並べる(run() の today と必ず同じ基準にすること)
   const today=jstToday(),di=document.getElementById("mdate");

@@ -38,8 +38,10 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 
 # 気象庁モデルの予報長。forecast_days=16 等を投げてもAPIはエラーを返さず黙って null を並べるので、
-# 期間は必ずこちらで 11日 (today+10) に制限する。
-JMA_DAYS = 11
+# 期間は必ずこちらで 10日 (today+9) に制限する。
+# 11日目は昼過ぎでGSMが切れdaily集計が丸ごとnullになるため対象から外している(hourlyからの
+# 作り直しでは埋めきれない部分日になるため、完全にデータが揃う10日目までに統一)。
+JMA_DAYS = 10
 MOUNTAINS_CSV = Path(__file__).resolve().parent.parent / "references" / "mountains.csv"
 
 # 気圧面と標準高度 (m)。その時刻に値がある面から山頂標高に線形補間して稜線風を出す (interp_wind)
@@ -109,6 +111,14 @@ def wcode(code):
     if code is None:
         return "-"
     return WMO_CODES.get(int(code), f"code{int(code)}")
+
+
+def wind_cell(wd, ws, degraded=False):
+    """風向 風速の表示文字列。degraded(900hPa/800hPa両欠測)なら末尾に `*` を付け、
+    やや弱めに出ている可能性を示す(index.html の windCell と同じ扱い)。"""
+    if ws is None:
+        return "-"
+    return f"{wdir(wd)} {ws:.1f}m/s" + ("*" if degraded else "")
 
 
 # ---- 日代表天気 (index.html の summarizeDailyWeather と同一ロジック) ----
@@ -373,10 +383,15 @@ def interp_wind(pts, elev):
     return pts[-1][1]
 
 
+DEGRADED_LEVELS = (900, 800)  # MSM期間(0〜4日目)にしか配信されない2面。両方欠測ならGSM期間
+
+
 def ridge_wind(h, i, elev):
-    """i時刻の稜線風速(m/s)・風向を6気圧面から求める。材料が1つも無ければ (None, None)。
+    """i時刻の稜線風速(m/s)・風向・degradedを6気圧面から求める。材料が1つも無ければ (None, None, False)。
     風速は値のある面だけで線形補間。風向は角度なので同じ式では補間できず、
-    「値のある面のうち標高的に一番近い面の値をそのまま採用」する(固定2面時代の t<0.5 の一般化)。"""
+    「値のある面のうち標高的に一番近い面の値をそのまま採用」する(固定2面時代の t<0.5 の一般化)。
+    degraded は 900hPa・800hPa が両方欠測(=GSM期間)で、稜線風が実測でやや弱めに出る
+    (北ア級-1.2m/s程度)ことを示す。埋め合わせず開示で倒す方針(interp_wind の docstring 参照)。"""
     def val(key):
         a = h.get(key)
         return a[i] if a and i < len(a) else None
@@ -402,9 +417,10 @@ def ridge_wind(h, i, elev):
     # interp_wind が最下点の生値(=地上風)を返し、稜線20m/s相当の日が地上4m/sとして通ってしまう。
     # 「データが無い→好条件」は安全と逆方向なので、欠測は欠測のまま出す。
     if not levels:
-        return None, None
+        return None, None, False
+    degraded = all(val(f"wind_speed_{p}hPa") is None for p in DEGRADED_LEVELS)
     direction = min(dirs, key=lambda zd: abs(zd[0] - elev))[1] if dirs else None
-    return interp_wind(pts, elev), direction
+    return interp_wind(pts, elev), direction, degraded
 
 
 # ---------------------------------------------------------------- 登山指数
@@ -889,17 +905,19 @@ def past_summary_rows(data, dates, elev):
         idxs = day_indices(times, date)
         act = [i for i in idxs if 5 <= int(times[i][11:13]) <= 17]
         rws = [ridge_wind(h, i, elev) for i in act]
-        ws = max((s for s, _ in rws if s is not None), default=None)
-        # 風速が取れた時だけ風向を出す(ws is None と一致させると欠測時刻の風向を拾ってしまい、
-        # 風速は「-」なのに風向だけ出る)。index.html の wd2 と同じ扱い
-        wd = next((dd for s, dd in rws if s == ws), None) if ws is not None else None
+        ws = max((s for s, _, _ in rws if s is not None), default=None)
+        # 風速が取れた時だけ風向・degradedを出す(ws is None と一致させると欠測時刻の風向を
+        # 拾ってしまい、風速は「-」なのに風向だけ出る)。index.html の wd2 と同じ扱い
+        hit = next(((dd, dg) for s, dd, dg in rws if s == ws), None) if ws is not None else None
+        wd, degraded = hit if hit else (None, False)
         depth = max((depth_all[i] for i in idxs if i < len(depth_all) and depth_all[i] is not None),
                     default=None)
         wxd = wx.get(date.isoformat(), {})
         rows.append({"date": date, "code": wxd.get("code", d["weather_code"][di]),
                      "notes": wxd.get("notes", []),
                      "tmin": d["temperature_2m_min"][di], "tmax": d["temperature_2m_max"][di],
-                     "ws": ws, "wd": wd, "pr": d["precipitation_sum"][di], "sf": sf_all[di],
+                     "ws": ws, "wd": wd, "degraded": degraded,
+                     "pr": d["precipitation_sum"][di], "sf": sf_all[di],
                      "depth": depth})
     return rows
 
@@ -917,7 +935,7 @@ def print_past_summary(rows, has_snow, elev):
         snow_c = f" {snow_cell(r['depth'], r['sf'])} |" if has_snow else ""
         print(f"| {r['date'].strftime('%m/%d')}({wj}) | {wcode(r['code'])}{wx_note_text(r.get('notes'))} "
               f"| {fnum(r['tmin'], '{:.0f}')}〜{fnum(r['tmax'], '{:.0f}')}℃ "
-              f"| {wdir(r['wd'])} {fnum(r['ws'], '{:.1f}')}m/s "
+              f"| {wind_cell(r['wd'], r['ws'], r.get('degraded'))} "
               f"| {fnum(r['pr'], '{:.1f}')}mm |{snow_c}")
     print("- ※モデル解析値であり観測所の実測ではありません。現地の最新情報を優先してください")
 
@@ -959,7 +977,7 @@ def print_detail_day(data, date, elev, has_snow=False, step=3):
         if not blk3:
             return None, "", False
         rws3 = [ridge_wind(h, i, elev) for i in blk3]
-        ws3 = max((s for s, _ in rws3 if s is not None), default=None)
+        ws3 = max((s for s, _, _ in rws3 if s is not None), default=None)
         pr3 = sum_or_none(h["precipitation"][i] for i in blk3)
         t3 = min((h["temperature_2m"][i] for i in blk3
                   if h["temperature_2m"][i] is not None), default=None)
@@ -975,6 +993,7 @@ def print_detail_day(data, date, elev, has_snow=False, step=3):
           f"{'1時間ごと' if step == 1 else '3時間ごと'}詳細{suntxt}")
     print(f"| 時刻 | 指数 | 天気 | 🏔 景色(眺望) | 気温 | 体感 | {wind_label(elev)} | 突風 | 降水 | 降水%(参考) | ⚡発雷リスク | 雲(下/中/上) |{snow_h}")
     print(f"|---|---|---|---|---|---|---|---|---|---|---|---|{snow_sep}")
+    day_degraded = False
     for start_h in range(0, 24, step):
         block = [i for i in idxs if int(times[i][11:13]) // step * step == start_h]
         if not block:
@@ -982,9 +1001,12 @@ def print_detail_day(data, date, elev, has_snow=False, step=3):
         i0 = block[0]
         temp = h["temperature_2m"][i0]
         rws = [ridge_wind(h, i, elev) for i in block]
-        ws = max((s for s, _ in rws if s is not None), default=None)
-        # 風速が取れた時だけ風向を出す(上の past_summary_rows と同じ理由)
-        wd = next((d for s, d in rws if s == ws), None) if ws is not None else None
+        ws = max((s for s, _, _ in rws if s is not None), default=None)
+        # 風速が取れた時だけ風向・degradedを出す(上の past_summary_rows と同じ理由)
+        wd_hit = next(((d, dg) for s, d, dg in rws if s == ws), None) if ws is not None else None
+        wd, degraded = wd_hit if wd_hit else (None, False)
+        if degraded:
+            day_degraded = True
         gust = max((h["wind_gusts_10m"][i] for i in block if h["wind_gusts_10m"][i] is not None), default=None)
         pr = sum_or_none(h["precipitation"][i] for i in block)
         prob = max((h["precipitation_probability"][i] for i in block
@@ -1018,8 +1040,12 @@ def print_detail_day(data, date, elev, has_snow=False, step=3):
             sf_blk = sum(sfh_all[i] or 0 for i in block if i < len(sfh_all))
             snow_c = f" {snow_cell(depth, sf_blk)} |"
         print(f"| {start_h:02d}時 | {idx_cell(bi, reason)} | {wcode(h['weather_code'][i0])} | {vw_txt} | {fnum(temp, '{:.1f}')}℃ "
-              f"| {feel_c} | {wdir(wd)} {fnum(ws, '{:.1f}')}m/s | {fnum(gust, '{:.0f}')}m/s "
+              f"| {feel_c} | {wind_cell(wd, ws, degraded)} | {fnum(gust, '{:.0f}')}m/s "
               f"| {pr_c} | {fnum(prob)}% | {lightning_cell(cape, cin)} | {cl} |{snow_c}")
+    if day_degraded:
+        print(f"- {wind_label(elev)}の `*` は、900hPa/800hPaのデータが無い時間帯(GSM期間・5日目以降)"
+              "のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。"
+              "強めに見積もって判断してください。")
 
 
 def morning_view(h, times, idxs, elev):
@@ -1069,7 +1095,7 @@ def daily_summary_rows(data, dates, elev):
             """ブロックの指数と降格理由。降格条件の材料は安全側に取る
             (気温=最小・風=最大・降水=合計・視程=最小)"""
             rws = [ridge_wind(h, i, elev) for i in block]
-            ws = max((s for s, _ in rws if s is not None), default=None)
+            ws = max((s for s, _, _ in rws if s is not None), default=None)
             pr = sum_or_none(h["precipitation"][i] for i in block)
             tmn = min((h["temperature_2m"][i] for i in block
                        if h["temperature_2m"][i] is not None), default=None)
@@ -1088,7 +1114,7 @@ def daily_summary_rows(data, dates, elev):
         # 判定できたブロックだけを集め、その最悪値を日の指数にする。
         # 1つも判定できなければ day_idx は None (判定不能) のままにする
         verdicts = []
-        ws_max, wd_max = None, None
+        ws_max, wd_max, w_degraded = None, None, False
         for start_h in range(3, 18, 3):
             block = [i for i in act if int(times[i][11:13]) // 3 * 3 == start_h]
             if not block:
@@ -1096,7 +1122,8 @@ def daily_summary_rows(data, dates, elev):
             bi, rs, ws, rws = blk_verdict(block, th)
             if ws is not None and (ws_max is None or ws > ws_max):
                 ws_max = ws
-                wd_max = next((dd for s, dd in rws if s == ws), None)
+                hit = next(((dd, dg) for s, dd, dg in rws if s == ws), (None, False))
+                wd_max, w_degraded = hit
             if bi is not None:
                 verdicts.append((bi, rs))
         day_idx = next((v for v in ("C", "B", "A") if v in [b for b, _ in verdicts]), None)
@@ -1131,35 +1158,17 @@ def daily_summary_rows(data, dates, elev):
             night_bad = blk_verdict(night, th)[0] == "C"
         depth = max((depth_all[i] for i in idxs if i < len(depth_all) and depth_all[i] is not None),
                     default=None)
-        # 最終日(11日目)は GSM が昼過ぎで切れるため daily の集計値が丸ごと null で返る。
-        # その日の hourly が部分的にでも残っていれば、そこから同じ値を作り直して行を埋める。
-        def hmax(key, fn=max):
-            vs = [h[key][i] for i in idxs if h.get(key) and h[key][i] is not None]
-            return fn(vs) if vs else None
-
-        def hsum(key):
-            vs = [h[key][i] for i in idxs if h.get(key) and h[key][i] is not None]
-            return sum(vs) if vs else None
-
         tmax = d["temperature_2m_max"][di]
         tmin = d["temperature_2m_min"][di]
         pr_d = d["precipitation_sum"][di]
         sf_d = sf_all[di]
-        if tmax is None:
-            tmax = hmax("temperature_2m")
-        if tmin is None:
-            tmin = hmax("temperature_2m", min)
-        if pr_d is None:
-            pr_d = hsum("precipitation")
-        if sf_d is None:
-            sf_d = hsum("snowfall")
         wxd = wx.get(date.isoformat(), {})
         rows.append({
             "date": date, "idx": day_idx, "reason": day_reason,
             "evening": evening, "night": night_bad, "mode": th["mode"],
             "code": wxd.get("code", d["weather_code"][di]), "notes": wxd.get("notes", []),
             "tmin": tmin, "tmax": tmax,
-            "ws": ws_max, "wd": wd_max,
+            "ws": ws_max, "wd": wd_max, "degraded": w_degraded,
             "pr": pr_d, "prob": d["precipitation_probability_max"][di],
             "sf": sf_d, "depth": depth,
             "view": morning_view(h, times, idxs, elev),
@@ -1181,8 +1190,12 @@ def print_daily_summary(rows, title, has_snow=False, elev=None):
         snow_c = f" {snow_cell(r.get('depth'), r.get('sf'))} |" if has_snow else ""
         print(f"| {r['date'].strftime('%m/%d')}({wj}) | {mark} | {wcode(r['code'])}{wx_note_text(r.get('notes'))} "
               f"| {r['view']} | {fnum(r['tmin'], '{:.0f}')}〜{fnum(r['tmax'], '{:.0f}')}℃ "
-              f"| {wdir(r['wd'])} {fnum(r['ws'], '{:.1f}')}m/s "
+              f"| {wind_cell(r['wd'], r['ws'], r.get('degraded'))} "
               f"| {fnum(r['pr'], '{:.1f}')}mm | {fnum(r['prob'])}% |{snow_c}")
+    if any(r.get("degraded") for r in rows):
+        print(f"- {wind_label(elev)}の `*` は、900hPa/800hPaのデータが無い日(GSM期間・5日目以降)"
+              "のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。"
+              "強めに見積もって判断してください。")
     if any(r.get("evening") for r in rows):
         print("- ⚠夕方: 17〜20時に天候の急変(C相当)、または発雷リスク「注意」以上が予想されます。"
               "日中の指数には含めていませんが、"
@@ -1442,7 +1455,7 @@ def main():
     ap.add_argument("--interval", type=int, choices=[1, 3], default=3,
                     help="詳細の表示間隔 (時間)。既定3、1で1時間ごと")
     # 旧オプション。互換のため受け付けるが動作には影響しない
-    # (常に4日詳細・11日見通し・モデル比較を表示)
+    # (常に4日詳細・10日見通し・モデル比較を表示)
     ap.add_argument("--days", type=int, default=None, help=argparse.SUPPRESS)
     ap.add_argument("--weekly", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--compare-models", action="store_true", help=argparse.SUPPRESS)
@@ -1473,7 +1486,7 @@ def main():
         start = today
     detail_end = min(start + dt.timedelta(days=3), horizon)  # 詳細は固定4日間
     fetch_start = today - dt.timedelta(days=PAST_DAYS)  # 直近実況ぶんを遡って取得
-    fetch_end = horizon  # 常に11日見通しを表示
+    fetch_end = horizon  # 常に10日見通しを表示
 
     # 気圧面は常に6面すべて取得する。どの面が配信されるかはリクエスト前には分からず
     # (無い面は 400 ではなく全 null で返る)、標高から2面に絞ると GSM 期間に補間できなくなる
@@ -1515,7 +1528,7 @@ def main():
               "(「濡れ注意」の印が付く時間帯は特に)")
         print("- 突風は地上10mの値です。稜線風(山頂標高の気圧面)とは高度が違うため、"
               "稜線での実際の突風はこの値より強いことがあります")
-        print(f"- データ: 気象庁モデル (0〜4日目=MSM 約5km / 5〜{JMA_DAYS}日目=GSM。自動切替)。"
+        print(f"- データ: 気象庁モデル (0〜4日目=MSM 約5km / 5〜11日目=GSM。自動切替。表示は{JMA_DAYS}日目まで)。"
               f"降水確率・突風・CAPE/CIN・視程・積雪深・0℃高度は気象庁モデルに無いため別モデルで補完"
               f" / 取得: {dt.datetime.now():%Y-%m-%d %H:%M} / 出典: Open-Meteo")
         print("- ⚠ 気象庁の警報・注意報も必ず確認してください: https://www.jma.go.jp/bosai/warning/")
