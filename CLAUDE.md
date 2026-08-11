@@ -24,6 +24,7 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | パス | 役割 |
 |---|---|
 | `index.html` | Webアプリ本体（CSS/JS内包。CLIと同じ判定ロジックをJSで実装。ゲートのみ `gate.js` に外出し） |
+| `sw.js` | Service Worker。**画面(HTML/CSS/JS/アイコン)だけ**をネットワーク優先でキャッシュし、圏外でもアプリが開くようにする。気象データは扱わない（予報の保存は index.html の localStorage スナップショット側） |
 | `gate.js` | 規約同意＋認証コードの共通ゲート。**認証定数(AUTH_VER/SALT/HASH)はここが唯一の置き場**。`index.html`・`docs/find.html`・`docs/point.html` が読み込む |
 | `scripts/mountain_weather.py` | CLI本体。`--name`/`--lat --lon --elev` で予報を出力（`--html`でレポート保存） |
 | `references/mountains.csv` | 内蔵山岳DB（**BOM付きUTF-8・CRLF**）。列: name,yomi,pref,lat,lon,elev |
@@ -98,6 +99,12 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
    （複製すると年次更新の漏れで「認証済みなのに弾かれる」事故になる）。
    新しく操作系ページを足すときは `<script src="…/gate.js">` を読み、
    本体スクリプトの先頭で `if(!pwGuardPage())return;` を入れること。
+8. **リリースのたびに `sw.js` の `CACHE` の版を上げる。** 上げないと `activate` の掃除が走らず、
+   前版のシェルがキャッシュに残る。ネットワーク優先なのでオンラインでは表面化せず、
+   **完全オフラインで開いたときだけ古い画面が出る**という再現困難な状態になる。
+   併せて、**API 応答を `sw.js` でキャッシュしてはいけない**（気象データの保存は
+   index.html の `pw-snap-v1` 側に限る）。SW に入れると「古い予報を、いま取れた予報として」
+   描いてしまい、画面上は完全に正常に見える＝気づけない誤表示になる。
 
 ## 山岳DB拡張パイプライン
 

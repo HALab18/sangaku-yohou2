@@ -217,6 +217,8 @@ button:disabled{background:#9aa7bd;cursor:wait}
    削るようにする(山名が読めないと候補として選べないため、山名の省略は最後の手段) */
 #sugg .rc>span{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #sugg .rc small{margin-left:auto;flex:0 999 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* 圏外でも開ける山の印。山名のすぐ後ろに小さく添えるだけ(押せるものではない) */
+#sugg .rcoff{margin-left:5px;font-size:11px;opacity:.85}
 #sugg .rc.pinned{background:#f7faff}
 #sugg .rc.pinned:hover{background:#e8eef7}
 /* ×・📌は指で押せる大きさを確保する。行タップとの誤爆を避けるため履歴行にだけ出す。
@@ -296,6 +298,18 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
 .vwnum{display:block;font-size:.76em;color:#6b7280;margin-top:2px;line-height:1.3}
 .ewnote{background:#f9d9cf;border-left:5px solid #a03415;padding:8px 12px;
   border-radius:0 6px 6px 0;margin:6px 0 14px;font-size:.9em}
+/* オフライン(保存済み予報)であることの明示。数字は取得時のままなので、
+   予報表のどれよりも先に目に入る強さにしておく */
+.offnote{background:#fdeec2;border-left:5px solid #b8791a;color:#5c4310;padding:10px 12px;
+  border-radius:0 6px 6px 0;margin:0 0 14px;font-size:.92em;line-height:1.6}
+/* 端末内への保存と「圏外用に固定」 */
+.snaprow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  margin:0 0 14px;font-size:.85em;color:#555}
+.snaprow em{font-style:normal;color:#a03415}
+.snapkeep{padding:6px 12px;font-size:.95em;border-radius:8px;
+  background:#fff;color:var(--link);border:1.5px solid var(--field)}
+.snapkeep:hover{background:#eef2f8}
+.snapkeep[aria-pressed="true"]{background:var(--sel);border-color:var(--sky)}
 /* 10日間の見通し: 8日目以降の行と開閉ボタン。
    tr に display を指定する作者スタイルは無いが、意図を残すため [hidden] を明示する */
 .wk-more[hidden]{display:none}
@@ -566,7 +580,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.26β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.27β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -1160,6 +1174,18 @@ function apiError(e){
   return new Error("気象データを取得できませんでした。通信状況をご確認のうえ再度お試しください");
 }
 
+// 圏外で、その山の保存済み予報も無かったときの文面。
+// 「通信状況をご確認ください」だけだと、圏外では**どうすれば見られるのか**が分からない。
+// 保存済みの山名を挙げて、いま何が見られるのかをその場で示す。
+function offlineErr(e){
+  if(navigator.onLine)return e;
+  const names=snapIndex().map(x=>x.n);
+  return new Error(names.length
+    ?`オフラインです。圏外でも表示できる保存済みの予報: ${names.join(" / ")}`
+    :"オフラインです。保存済みの予報はまだありません。電波の届く場所で一度予報を開くと、"
+     +"その予報は圏外でも見られるようになります");
+}
+
 // 予報モデルの更新時刻によっては end_date が予報長ぶん受け付けられず HTTP 400 になるため、
 // その場合は応答の reason から許容最終日をパースして end_date を縮め、1回だけ再試行する
 async function apiJson(url,params,retries=3){
@@ -1283,75 +1309,112 @@ async function run(mt){
   const detailEnd=new Date(Math.min(addDays(start,days-1),horizon));
   const fetchEnd=horizon;
 
-  // 気圧面は常に6面すべて取得する。どの面が配信されるかはリクエスト前には分からず
-  // (無い面は 400 ではなく全 null で返る)、標高から2面に絞ると GSM 期間に補間できなくなる。
-  // 1山1リクエストなのでペイロード増は軽微。
-  const hourly=["temperature_2m","relative_humidity_2m","precipitation","weather_code",
-    "cloud_cover_low","cloud_cover_mid","cloud_cover_high",
-    "wind_speed_10m","wind_direction_10m","snowfall",
-    // 上空の寒気。実測で気象庁モデルは 850/700/500hPa とも全期間そろう
-    // (気圧面「風」が MSM 6面 / GSM 4面と違うのとは別扱い)
-    "temperature_850hPa","temperature_700hPa","temperature_500hPa",
-    ...LEVELS.flatMap(p=>[`wind_speed_${p[0]}hPa`,`wind_direction_${p[0]}hPa`])];
-  status.className="";status.textContent="予報を取得中…";
-  const common={
-    latitude:mt.lat,longitude:mt.lon,elevation:mt.elev,
-    timezone:"Asia/Tokyo",wind_speed_unit:"ms",
-    start_date:iso(addDays(today,-PAST_DAYS)),end_date:iso(fetchEnd)};
-  // 基本は気象庁モデル、そこに無い項目だけ別モデルから補完する(CLI版 fetch_forecast と同じ)。
-  //
-  // 補完API(/v1/forecast)が返すのは降水確率・突風・CAPE・視程・積雪深で、どれも欠測時は
-  // 「-」表示で成立する補助項目。ここが落ちても稜線風・気温・降水という**安全判断の主要材料**は
-  // 気象庁モデル側に揃っているので、補完だけ諦めて予報は出す。
-  // Promise.all のままだと補完の失敗で主要データごと捨てることになり、判断に必要な情報まで
-  // 見せられなくなる = 安全と逆方向。
-  // 周辺4方位の CAPE/CIN。山岳雷の源は谷や麓の湿った下層気塊で、山頂格子の CAPE はそれを
-  // 表さない(実測: 槍ヶ岳で山頂 1340 に対し周辺 3050、264時刻中172時刻で周辺が上回る)。
-  // Open-Meteo はカンマ区切りのマルチ地点に対応し1リクエストで配列が返るので本数は増えない。
-  // elevation は外す(CAPEは気柱の量で標高指定に依存せず、1つの値を4地点に渡すと食い違う)。
-  const nb=CAPE_NEIGHBOR_DEG;
-  const{elevation:_omitElev,latitude:_omitLat,longitude:_omitLon,...areaCommon}=common;
-  // 発表時刻(モデル初期時刻)も同じ束で取る。modelInit は自分で失敗を握って null を返すので、
-  // ここが遅れたり落ちたりしても予報の表示には影響しない(sessionStorage に10分キャッシュ)
-  const[dataR,supR,areaR,msmR,gsmR]=await Promise.allSettled([
-    apiJson(JMA_URL,{...common,hourly:hourly.join(","),
-      daily:"weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,sunrise,sunset"}),
-    apiJson(FORECAST_URL,{...common,hourly:SUPPLEMENT_HOURLY.join(","),daily:SUPPLEMENT_DAILY.join(",")}),
-    apiJson(FORECAST_URL,{...areaCommon,
-      latitude:[mt.lat+nb,mt.lat-nb,mt.lat,mt.lat].map(v=>v.toFixed(4)).join(","),
-      longitude:[mt.lon,mt.lon,mt.lon+nb,mt.lon-nb].map(v=>v.toFixed(4)).join(","),
-      hourly:"cape,convective_inhibition"}),
-    modelInit("jma_msm"),modelInit("jma_gsm")
-  ]);
-  if(dataR.status==="rejected")throw dataR.reason;   // 主要データの失敗だけが致命
-  const data=dataR.value;
-  const sup=supR.status==="fulfilled"?supR.value:{};
-  const supFailed=supR.status==="rejected";
-  const areaRes=areaR.status==="fulfilled"&&Array.isArray(areaR.value)?areaR.value:null;
-  const inits={jma_msm:msmR.status==="fulfilled"?msmR.value:null,
-               jma_gsm:gsmR.status==="fulfilled"?gsmR.value:null};
-  const fetchedAt=new Date();   // APIレスポンス受信時刻(詳細表のキャプションに出す)
-  // 補完を貼る前に形状を整える(mergeSeries は base.time があることを前提にするため)
-  normalizeSeries(data,hourly,DAILY_KEYS);
-  mergeSeries(data.hourly,sup.hourly||{},SUPPLEMENT_HOURLY);
-  mergeSeries(data.daily,sup.daily||{},SUPPLEMENT_DAILY);
-  // 周辺CAPE は cape_area / cin_area に入れ、山頂の cape は上書きしない。
-  // ⚠夕方フラグの雷条件(lv>=2)にこの値を入れると、夏は周辺のどこかが必ず1000 J/kgを超えるため
-  // フラグがほぼ毎日立ち、日を区別できなくなる(実測: 槍ヶ岳で11日中1日 → 10日)。
-  // 毎日出る警告は無視されるので安全と逆方向に働く。表示だけ周辺最大を使う。
-  if(areaRes){
-    const n=data.hourly.time.length;
-    const ca=(data.hourly.cape||new Array(n).fill(null)).slice();
-    const ci=(data.hourly.convective_inhibition||new Array(n).fill(null)).slice();
-    for(const loc of areaRes){
-      const lh=loc.hourly||{};const pos=new Map((lh.time||[]).map((t,k)=>[t,k]));
-      for(let i=0;i<n;i++){
-        const k=pos.get(data.hourly.time[i]);
-        if(k==null||lh.cape?.[k]==null)continue;
-        if(ca[i]==null||lh.cape[k]>ca[i]){ca[i]=lh.cape[k];ci[i]=lh.convective_inhibition?.[k]??null}
+  // ---- データの入手: 通信して取るか、端末に保存したスナップショットを描き直すか ----
+  // 圏外・通信失敗のときは、以前この山を見たときに保存した予報をそのまま再生する。
+  // 保存してあるのは「補完APIのマージと cape_area 注入まで済ませた後」の形なので、
+  // 再生側ではその加工を通さない(通すと二重に貼ることになる)。
+  const sid=snapId(mt);
+  // 圏外だと分かっているなら通信は試さない。試すと apiJson の3回リトライで
+  // 約4.5秒待たされたうえで、結局スナップショットに落ちることになる。
+  let snap=(sid&&!navigator.onLine)?snapLoad(sid):null;
+  let data,supFailed=false,fetchedAt=null,cmpSnap=null;
+  let inits={jma_msm:null,jma_gsm:null};
+
+  async function fetchAll(){
+    // 気圧面は常に6面すべて取得する。どの面が配信されるかはリクエスト前には分からず
+    // (無い面は 400 ではなく全 null で返る)、標高から2面に絞ると GSM 期間に補間できなくなる。
+    // 1山1リクエストなのでペイロード増は軽微。
+    const hourly=["temperature_2m","relative_humidity_2m","precipitation","weather_code",
+      "cloud_cover_low","cloud_cover_mid","cloud_cover_high",
+      "wind_speed_10m","wind_direction_10m","snowfall",
+      // 上空の寒気。実測で気象庁モデルは 850/700/500hPa とも全期間そろう
+      // (気圧面「風」が MSM 6面 / GSM 4面と違うのとは別扱い)
+      "temperature_850hPa","temperature_700hPa","temperature_500hPa",
+      ...LEVELS.flatMap(p=>[`wind_speed_${p[0]}hPa`,`wind_direction_${p[0]}hPa`])];
+    status.className="";status.textContent="予報を取得中…";
+    const common={
+      latitude:mt.lat,longitude:mt.lon,elevation:mt.elev,
+      timezone:"Asia/Tokyo",wind_speed_unit:"ms",
+      start_date:iso(addDays(today,-PAST_DAYS)),end_date:iso(fetchEnd)};
+    // 基本は気象庁モデル、そこに無い項目だけ別モデルから補完する(CLI版 fetch_forecast と同じ)。
+    //
+    // 補完API(/v1/forecast)が返すのは降水確率・突風・CAPE・視程・積雪深で、どれも欠測時は
+    // 「-」表示で成立する補助項目。ここが落ちても稜線風・気温・降水という**安全判断の主要材料**は
+    // 気象庁モデル側に揃っているので、補完だけ諦めて予報は出す。
+    // Promise.all のままだと補完の失敗で主要データごと捨てることになり、判断に必要な情報まで
+    // 見せられなくなる = 安全と逆方向。
+    // 周辺4方位の CAPE/CIN。山岳雷の源は谷や麓の湿った下層気塊で、山頂格子の CAPE はそれを
+    // 表さない(実測: 槍ヶ岳で山頂 1340 に対し周辺 3050、264時刻中172時刻で周辺が上回る)。
+    // Open-Meteo はカンマ区切りのマルチ地点に対応し1リクエストで配列が返るので本数は増えない。
+    // elevation は外す(CAPEは気柱の量で標高指定に依存せず、1つの値を4地点に渡すと食い違う)。
+    const nb=CAPE_NEIGHBOR_DEG;
+    const{elevation:_omitElev,latitude:_omitLat,longitude:_omitLon,...areaCommon}=common;
+    // 発表時刻(モデル初期時刻)も同じ束で取る。modelInit は自分で失敗を握って null を返すので、
+    // ここが遅れたり落ちたりしても予報の表示には影響しない(sessionStorage に10分キャッシュ)
+    const[dataR,supR,areaR,msmR,gsmR]=await Promise.allSettled([
+      apiJson(JMA_URL,{...common,hourly:hourly.join(","),
+        daily:"weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,sunrise,sunset"}),
+      apiJson(FORECAST_URL,{...common,hourly:SUPPLEMENT_HOURLY.join(","),daily:SUPPLEMENT_DAILY.join(",")}),
+      apiJson(FORECAST_URL,{...areaCommon,
+        latitude:[mt.lat+nb,mt.lat-nb,mt.lat,mt.lat].map(v=>v.toFixed(4)).join(","),
+        longitude:[mt.lon,mt.lon,mt.lon+nb,mt.lon-nb].map(v=>v.toFixed(4)).join(","),
+        hourly:"cape,convective_inhibition"}),
+      modelInit("jma_msm"),modelInit("jma_gsm")
+    ]);
+    if(dataR.status==="rejected")throw dataR.reason;   // 主要データの失敗だけが致命
+    data=dataR.value;
+    const sup=supR.status==="fulfilled"?supR.value:{};
+    supFailed=supR.status==="rejected";
+    const areaRes=areaR.status==="fulfilled"&&Array.isArray(areaR.value)?areaR.value:null;
+    inits={jma_msm:msmR.status==="fulfilled"?msmR.value:null,
+           jma_gsm:gsmR.status==="fulfilled"?gsmR.value:null};
+    fetchedAt=new Date();   // APIレスポンス受信時刻(詳細表のキャプションに出す)
+    // 補完を貼る前に形状を整える(mergeSeries は base.time があることを前提にするため)
+    normalizeSeries(data,hourly,DAILY_KEYS);
+    mergeSeries(data.hourly,sup.hourly||{},SUPPLEMENT_HOURLY);
+    mergeSeries(data.daily,sup.daily||{},SUPPLEMENT_DAILY);
+    // 周辺CAPE は cape_area / cin_area に入れ、山頂の cape は上書きしない。
+    // ⚠夕方フラグの雷条件(lv>=2)にこの値を入れると、夏は周辺のどこかが必ず1000 J/kgを超えるため
+    // フラグがほぼ毎日立ち、日を区別できなくなる(実測: 槍ヶ岳で11日中1日 → 10日)。
+    // 毎日出る警告は無視されるので安全と逆方向に働く。表示だけ周辺最大を使う。
+    if(areaRes){
+      const n=data.hourly.time.length;
+      const ca=(data.hourly.cape||new Array(n).fill(null)).slice();
+      const ci=(data.hourly.convective_inhibition||new Array(n).fill(null)).slice();
+      for(const loc of areaRes){
+        const lh=loc.hourly||{};const pos=new Map((lh.time||[]).map((t,k)=>[t,k]));
+        for(let i=0;i<n;i++){
+          const k=pos.get(data.hourly.time[i]);
+          if(k==null||lh.cape?.[k]==null)continue;
+          if(ca[i]==null||lh.cape[k]>ca[i]){ca[i]=lh.cape[k];ci[i]=lh.convective_inhibition?.[k]??null}
+        }
       }
+      data.hourly.cape_area=ca;data.hourly.cin_area=ci;
     }
-    data.hourly.cape_area=ca;data.hourly.cin_area=ci;
+  }
+
+  // 圏外でその山の保存も無いなら、取りに行っても必ず失敗する。3回リトライ(約4.5秒)ぶん
+  // 「予報を取得中…」を見せてから駄目でしたと言うより、すぐ見られるものを案内する。
+  // (navigator.onLine は false の側だけが信用できる。true でも圏外のことがあるので、
+  //  取得を試みる側は従来どおり失敗してからスナップショットに落ちる)
+  if(!snap&&!navigator.onLine)throw offlineErr(null);
+  if(!snap){
+    try{await fetchAll()}
+    catch(e){
+      // 通信できないだけなら保存済みの予報に落ちる。無ければ従来どおりエラーで抜ける
+      // (offlineErr は圏外のときだけ文面を差し替える)。
+      snap=sid?snapLoad(sid):null;
+      if(!snap)throw offlineErr(e);
+    }
+  }
+  const offline=!!snap;
+  if(offline){
+    data=snap.data;supFailed=!!snap.supFailed;
+    const ini=snap.init||{};
+    inits={jma_msm:typeof ini.msm==="number"?new Date(ini.msm):null,
+           jma_gsm:typeof ini.gsm==="number"?new Date(ini.gsm):null};
+    fetchedAt=new Date(snap.t);   // 各表のキャプションの「取得」も保存時刻に揃う
+    cmpSnap=snap.cmp||null;
   }
   const h=data.hourly,times=h.time,d=data.daily;
   // ブロックの発雷リスク入力 (CAPE=最大, CIN=|最小|)。周辺の取得に失敗すれば山頂格子に落ちる
@@ -1401,9 +1464,21 @@ async function run(mt){
   const initAll=initTxt(inits);
   const srcNote=`<li>データ: 気象庁モデル(0〜4日目=MSM 約5km / 5〜11日目=GSM。自動切替。表示は${JMA_DAYS}日目まで)`
     +`${initAll?` / <b>発表(初期時刻) ${initAll} JST</b>`:""} / 出典: Open-Meteo</li>`;
-  let htmlOut=`${backToFind}<h2>${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""} の山岳気象予報</h2><ul class="meta">
+  // 保存済み予報を再生していることを最初に必ず知らせる。表の数字は取得時のままなので、
+  // これが出ていないと「今の予報」として読まれる = 安全と逆方向。
+  // 検索した日のデータを含まない古い保存の場合、日別・詳細のループは日ごと黙って
+  // 落ちる(d.time.indexOf<0 / !idxs.length で continue)ので、その旨もここで断る。
+  const offBanner=offline
+    ?`<div class="offnote"><b>📴 オフライン表示</b> — ${JST_YMD.format(fetchedAt)} `
+     +`${JST_HM.format(fetchedAt)} JST に取得して端末に保存した予報です。それ以降の更新は`
+     +`反映されていません。電波の届く場所で再読み込みしてください。`
+     +(d.time.includes(iso(start))?""
+       :`<br>保存してから日が進んだため、開始日 ${iso(start)} のデータは残っていません`
+        +`（表は保存に含まれている日から始まります）。`)
+     +`</div>`:"";
+  let htmlOut=`${offBanner}${backToFind}<h2>${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""} の山岳気象予報</h2><ul class="meta">
     <li>地点: 北緯${mt.lat.toFixed(4)} 東経${mt.lon.toFixed(4)} / 標高 ${Math.round(mt.elev)}m
-      (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li>${srcNote}${lowNote}${supNote}${elevNote}</ul>`;
+      (${mt.coord?(mt.elevManual?"座標指定: 標高はご指定の値":"座標指定: 標高は地形モデルによる推定値"):mt.here?"GPS現在地: 標高は地形モデルによる推定値":mt.geo?"地名検索: 標高はグリッド値で山頂より低いことがあります":"内蔵DB"})</li>${srcNote}${lowNote}${supNote}${elevNote}</ul>${SNAP_SLOT}`;
 
   // 表だけをスクショしても山名と取得日時が分かるよう、各表の見出し直下に小さく添える。
   // 予報の日付が JST 基準なので、取得時刻も JST で揃えて明示する(端末ローカル時刻で出すと
@@ -1668,7 +1743,7 @@ async function run(mt){
 
   // モデル比較 (常時表示。ただし補助情報なので、失敗しても主要な予報表は必ず描画する)
   {
-    status.textContent="モデル比較を取得中…";
+    if(!offline)status.textContent="モデル比較を取得中…";
     const cmpEnd=detailEnd;
     const models=["jma_seamless","ecmwf_ifs025","gfs_seamless"];
     const labels={jma_seamless:"気象庁JMA",ecmwf_ifs025:"欧州ECMWF",gfs_seamless:"米国GFS"};
@@ -1678,13 +1753,15 @@ async function run(mt){
     // 描画は最後の out.innerHTML まで行われない。ここで throw させると、完成済みの
     // 稜線風・気温・降水・登山指数を丸ごと捨てることになるので、失敗はここで閉じ込める。
     let cd=null;
-    try{
+    if(offline)cd=cmpSnap;   // 保存時に取れていた分をそのまま使う(通信はしない)
+    else try{
       cd=await apiJson(FORECAST_URL,{
         latitude:mt.lat,longitude:mt.lon,elevation:mt.elev,
         hourly:"temperature_2m,precipitation,wind_speed_10m,cloud_cover",
         timezone:"Asia/Tokyo",wind_speed_unit:"ms",models:models.join(","),
         start_date:iso(start),end_date:iso(cmpEnd)});
     }catch(e){cd=null}
+    cmpSnap=cd;   // 保存用(オフライン時は素通り)
     htmlOut+=`<h2>モデル間比較（各モデルが一致するほど信頼度が高い）</h2>`;
     if(!cd||!cd.hourly||!Array.isArray(cd.hourly.time)){
       htmlOut+=`<p class="notice">モデル比較データを取得できませんでした`
@@ -1741,6 +1818,16 @@ async function run(mt){
     登山指数は目安です。最終判断は最新の予報と現地の状況で行ってください。</div>`;
   // 「天気で山さがし」経由なら、長い予報表を読み終えた末尾にも一覧へ戻る導線を出す(先頭と同じ挙動)。
   if(backToFind)htmlOut+=`<p class="backfind bottom"><a href="docs/find.html" onclick="return pwBackToFind()">← 天気で山さがしの一覧に戻る</a></p>`;
+  // ---- 端末内への保存 (圏外での再表示用) ----
+  // 表を最後まで組み上げてから保存する(途中で throw した回のデータを残さないため)。
+  // 保存できたかどうかで案内の文面が変わるので、保存行だけは印(SNAP_SLOT)を置いておき
+  // ここで差し込む。保存に失敗した回・GPS現在地・座標指定では行ごと出ない
+  // = できない約束をしない。
+  if(!offline&&sid)
+    snapSave(mt,{data,supFailed,cmp:cmpSnap,
+      init:{msm:inits.jma_msm?inits.jma_msm.getTime():null,
+            gsm:inits.jma_gsm?inits.jma_gsm.getTime():null}});
+  htmlOut=htmlOut.replace(SNAP_SLOT,()=>snapRowHtml(sid));
   out.innerHTML=htmlOut;
   status.textContent="";
   const hashKey=mt.here?"gps":mt.coord?`${mt.lat},${mt.lon}${mt.elevManual?","+mt.elev:""}`:encodeURIComponent(mt.name);
@@ -1812,6 +1899,12 @@ document.getElementById("f").onsubmit=async e=>{
   let hits=resolveLocal(name).map(m=>({name:m[0],pref:m[2],lat:m[3],lon:m[4],elev:m[5]}));
   if(hits.length===1)return go(hits[0]);
   if(hits.length>1)return showCandidates(hits);
+  // 圏外では地名検索(Open-Meteo)も通らない。内蔵DBに無い山でも、以前見て保存してあれば
+  // そのときの座標で予報を描ける(保存済みの座標を使うのはこの経路だけ)。
+  if(!navigator.onLine){
+    const s=snapLoad("n:"+name);
+    if(s)return go({...s.mt});
+  }
   status.textContent="内蔵DBに無いため地名検索中…";
   try{
     const geo=await resolveGeo(name);
@@ -1822,7 +1915,7 @@ document.getElementById("f").onsubmit=async e=>{
       trackSearch(name,"notfound");return}
     if(ok.length===1)return go(ok[0]);
     showCandidates(ok);status.textContent="";
-  }catch(e){status.className="err";status.textContent=e.message;trackSearch(name,"error")}
+  }catch(e){status.className="err";status.textContent=offlineErr(e).message;trackSearch(name,"error")}
 };
 
 // ---- 日本域の判定 ----
@@ -2029,6 +2122,151 @@ function applyHash(){
   document.getElementById("authform").addEventListener("submit",e=>{e.preventDefault();tryAuth()});
 }
 
+// ---- 予報スナップショット (圏外で「出発前に見た予報」を再表示するための保存) ----
+// 山では電波が無いことが多く、そこでこそ予報を見返したい。表示に成功した予報を端末内に
+// 丸ごと残しておき、通信できないときはそれを描き直す。
+//
+// 保存するのは **描画に使う直前まで加工した気象庁モデルの応答** (補完APIをマージし
+// cape_area を注入した後の data) と、モデル間比較の応答。再生時はマージ処理を通さない。
+//
+// 保存先は localStorage。ただしここだけは gate.js の pwSave/pwLoad を使わない:
+//   - pwSave は例外を握るので **quota 超過を検知できない**(古い分を落として再試行できない)
+//   - pwSave は pwMem にもミラーするため、数十KBのペイロードがメモリにも二重に載る
+// localStorage アクセス自体が例外を投げる環境(Cookieを全ブロックした Safari など)がある
+// 事情は同じなので、読み出し・削除は必ず try で包む。
+//
+// 枠は「自動保存3座 + 手動で固定した3座」。固定(keep)は最近見た山のピン留めと同じ考え方で、
+// 自動枠の上限計算から外し、何座検索しても押し出されないようにする。
+const SNAP_KEY="pw-snap-v1",SNAP_AUTO_MAX=3,SNAP_KEEP_MAX=3;
+// 索引: [{id,n,p,t,l,keep?}] 新しい順 / 本体: SNAP_KEY+":"+id に1件ずつ
+// GPS現在地・座標指定は保存しない。recentAdd() が「個人の居場所に当たるので端末内でも
+// 残さない」として除外しているのと同じ扱いに揃える(圏外では再取得もできないので実害も薄い)。
+const snapId=mt=>(!mt||mt.here||mt.coord||!mt.name)?null:"n:"+mt.name;
+const snapBodyKey=id=>SNAP_KEY+":"+id;
+function snapRead(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function snapDrop(k){try{localStorage.removeItem(k)}catch(e){}}
+// 索引の読み出し。recentLoad() と同じ厳格さで全フィールドの型を見る
+// (halab18.github.io は他プロジェクトとオリジンを共有するため、ここの値は「自分で書いた形」
+//  を前提にできない。読んだ値は山名として画面にも出る)。
+// l = そのスナップショットが持つ最終日。今日を含まなくなったものは表示しても全ての表が
+// 空になるだけなので、読み出し時に本体ごと捨てる(保存時に切るより取りこぼしが無い)。
+function snapIndex(){
+  let a;
+  try{a=JSON.parse(snapRead(SNAP_KEY)||"[]")}catch(e){return[]}
+  if(!Array.isArray(a))return[];
+  const now=Date.now(),today=iso(jstToday());
+  const ok=a.filter(x=>x&&typeof x.id==="string"&&typeof x.n==="string"
+    &&typeof x.p==="string"&&typeof x.t==="number"&&x.t<=now
+    &&typeof x.l==="string"&&(x.keep===undefined||x.keep===true));
+  const live=ok.filter(x=>x.l>=today);
+  ok.filter(x=>x.l<today).forEach(x=>snapDrop(snapBodyKey(x.id)));
+  if(live.length!==a.length)snapIndexSave(live);
+  return live;
+}
+function snapIndexSave(a){
+  try{if(a.length)localStorage.setItem(SNAP_KEY,JSON.stringify(a));else snapDrop(SNAP_KEY)}catch(e){}
+}
+// 上限を超えた分の始末。固定が溢れたら **消さずに自動枠へ戻す**(押した操作を黙って
+// 無効にせず、かつデータも捨てない)。自動枠から溢れた分だけ本体を消す。
+function snapPrune(a){
+  a.filter(x=>x.keep===true).slice(SNAP_KEEP_MAX).forEach(x=>{delete x.keep});
+  const keeps=a.filter(x=>x.keep===true),autos=a.filter(x=>x.keep!==true);
+  autos.slice(SNAP_AUTO_MAX).forEach(x=>snapDrop(snapBodyKey(x.id)));
+  const kept=keeps.concat(autos.slice(0,SNAP_AUTO_MAX));
+  return a.filter(x=>kept.includes(x)); // 並び(新しい順)は保つ
+}
+// 本体の読み出し。ここも型を見る。data の中身までは見きれないが、hourly.time さえ
+// 配列の文字列列であれば下流(normalizeSeries と同じ前提)の欠測ハンドリングが効く。
+function snapLoad(id){
+  if(!id)return null;
+  let o;
+  try{o=JSON.parse(snapRead(snapBodyKey(id))||"null")}catch(e){return null}
+  if(!o||typeof o.t!=="number"||o.t>Date.now())return null;
+  const m=o.mt,d=o.data;
+  if(!m||typeof m.name!=="string"||typeof m.pref!=="string"
+    ||!Number.isFinite(m.lat)||!Number.isFinite(m.lon)||!Number.isFinite(m.elev))return null;
+  if(!d||!d.hourly||!Array.isArray(d.hourly.time)||!d.hourly.time.length
+    ||typeof d.hourly.time[0]!=="string")return null;
+  if(!d.daily||!Array.isArray(d.daily.time))return null;
+  return o;
+}
+const snapHas=name=>snapIndex().some(x=>x.id==="n:"+name);
+const snapEntry=id=>snapIndex().find(x=>x.id===id)||null;
+// 保存。失敗しても予報の表示自体は成功しているので、呼び出し側は false を受けて
+// 「保存しました」の案内を出さないだけにする(エラーにはしない)。
+function snapSave(mt,payload){
+  const id=snapId(mt);
+  if(!id)return false;
+  let a=snapIndex();
+  const prev=a.find(x=>x.id===id);
+  const dl=payload.data.daily.time;
+  const rec={id,n:mt.name,p:mt.pref||"",t:Date.now(),l:dl[dl.length-1]||iso(jstToday())};
+  if(prev&&prev.keep===true)rec.keep=true; // 再検索で固定が外れないようにする
+  a=snapPrune([rec].concat(a.filter(x=>x.id!==id)));
+  const body=JSON.stringify({t:rec.t,
+    mt:{name:mt.name,pref:mt.pref||"",lat:mt.lat,lon:mt.lon,elev:mt.elev,geo:!!mt.geo},
+    ...payload});
+  for(let i=0;i<2;i++){
+    try{localStorage.setItem(snapBodyKey(id),body);snapIndexSave(a);return true}catch(e){
+      // quota 超過。固定していない最古を1件落として1回だけやり直す
+      const victim=a.filter(x=>x.keep!==true&&x.id!==id).pop();
+      if(!victim)break;
+      snapDrop(snapBodyKey(victim.id));a=a.filter(x=>x!==victim);
+    }
+  }
+  snapDrop(snapBodyKey(id)); // 半端な残骸を索引に載せない
+  snapIndexSave(a.filter(x=>x.id!==id));
+  return false;
+}
+// 固定する。押した山を先頭へ移してから上限で切ること。切ってから移すと、既に3件ある
+// 状態では「いま押した山」が最古扱いで真っ先に外れ、押しても何も起きないように見える
+// (recentPin() に同じ注意書きがある)。戻り値は入れ替えで固定が外れた山の名前。
+function snapKeep(id){
+  const a=snapIndex(),i=a.findIndex(x=>x.id===id);
+  if(i<0)return null;
+  const x=a[i];x.keep=true;a.splice(i,1);a.unshift(x);
+  const released=a.filter(y=>y.keep===true).slice(SNAP_KEEP_MAX).map(y=>y.n);
+  snapIndexSave(snapPrune(a));
+  return released;
+}
+function snapUnkeep(id){
+  const a=snapIndex(),x=a.find(y=>y.id===id);
+  if(!x)return;
+  delete x.keep;
+  snapIndexSave(snapPrune(a));
+}
+
+// 予報の冒頭に出す「保存しました / 圏外用に固定」の行。run() は表を組み上げてから
+// 保存するため、この行だけ後から差し込む(印を置いておいて最後に置換する)。
+const SNAP_SLOT="<!--snaprow-->";
+function snapRowHtml(id,msg){
+  const e=id?snapEntry(id):null;
+  if(!e)return ""; // 保存できていない回は何も出さない
+  const t=new Date(e.t),pinned=e.keep===true;
+  const n=snapIndex().filter(x=>x.keep===true).length;
+  return `<p class="snaprow"><span>📴 `
+    +(pinned?`<b>圏外用に固定中</b>`:`この予報を端末に保存しました`)
+    +`（${JST_MD.format(t)} ${JST_HM.format(t)} 取得`
+    +(pinned?"":` / 自動保存は直近${SNAP_AUTO_MAX}座まで`)+`）`
+    +(msg?`<em>${esc(msg)}</em>`:"")+`</span>`
+    +`<button type="button" class="snapkeep" data-snap="${esc(id)}" aria-pressed="${pinned}">`
+    +(pinned?"固定を解除":`圏外用に固定（${n}/${SNAP_KEEP_MAX}）`)+`</button></p>`;
+}
+// #out は検索のたびに innerHTML ごと差し替わるので、ボタン本体ではなく #out に委譲で張る
+// (.wk-toggle と同じ理由)。押しても予報は取り直さない = 圏外でも操作できる。
+document.getElementById("out").addEventListener("click",e=>{
+  const b=e.target.closest(".snapkeep");if(!b)return;
+  const id=b.dataset.snap,row=b.closest(".snaprow");
+  let msg="";
+  if(b.getAttribute("aria-pressed")==="true")snapUnkeep(id);
+  else{
+    const rel=snapKeep(id)||[];
+    // 上限に達していたら古い固定が自動枠へ戻る。黙って入れ替えると気づけない
+    if(rel.length)msg=`（${rel.join("・")}の固定を解除しました）`;
+  }
+  row.outerHTML=snapRowHtml(id,msg);
+});
+
 // ---- 最近見た山 / ピン留め (端末内にだけ残す検索履歴) ----
 // 同じ山を何度も打ち直す手間を省くためのもの。保存先は localStorage だが、
 // アクセス自体が例外を投げる環境があるので必ず gate.js のラッパ(pwLoad/pwSave/pwDrop)を通す。
@@ -2116,9 +2354,13 @@ function recentRemove(name){
       const pinned=r.pin===true;
       // ピン群と履歴群の境目に区切り線を入れる(ピンが先頭に固まっている前提。recentLoad 参照)
       const pinLast=pinned&&recents[i+1]&&recents[i+1].pin!==true;
+      // 圏外でも開ける山に印を付ける。電波が無い場所でアプリを開いたとき、どれが
+      // 見られるのかがここで分かる。📌 は同じ一覧で「履歴のピン留め」に使っている別機能
+      // なので流用しない(同じ記号を2つの意味に使うと混同する)
+      const off=snapHas(r.n)?`<span class="rcoff" title="保存済み: 圏外でも表示できます" aria-label="圏外でも表示できます">📴</span>`:"";
       return `<div data-n="${esc(r.n)}" class="rc${pinned?" pinned":""}`
       +`${pinLast?" rcpinlast":""}${i===recents.length-1?" rclast":""}" tabindex="0" role="option">`
-      +`<span>${esc(r.n)}</span><small>${esc(r.p)}${r.e==null?"":" "+esc(r.e)+"m"}</small>`
+      +`<span>${esc(r.n)}${off}</span><small>${esc(r.p)}${r.e==null?"":" "+esc(r.e)+"m"}</small>`
       // 📌は未ピンの行にも出す(CSSで淡くする)。ピン済みの行にしか出さないと機能に気づけない
       +`<button type="button" class="rcp" data-p="${esc(r.n)}" aria-pressed="${pinned}" `
       +`aria-label="${esc(r.n)}のピン留めを${pinned?"解除":"する"}">📌</button>`
@@ -2256,6 +2498,13 @@ document.querySelector(".hero-cta").addEventListener("click",e=>{
   }
   applyHash(); // ゲート未通過なら applyHash() 側で弾かれる
 }
+
+// ---- Service Worker の登録 (圏外でもアプリの画面が開けるようにする) ----
+// 予報データは扱わない。詳細は sw.js の冒頭コメント。
+// file:// では登録できず例外になる(gate.js が file:// を弾くので通常は来ないが多重防御)。
+// 登録の成否は表示に一切影響しないので、失敗は握って何も出さない。
+if("serviceWorker" in navigator&&location.protocol!=="file:")
+  addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{})});
 </script>
 </main></body>
 </html>
