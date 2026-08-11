@@ -1924,15 +1924,17 @@ async function locateCoordAndGo(lat,lon,elevManual){
 function applyHash(){
   // inert 非対応ブラウザや直接呼び出しに備え、実行入口すべてでゲートを再確認する(多重防御)
   if(!pwGateOk())return;
+  const rawHash=location.hash.slice(1);
+  if(!rawHash)return;
+  // 山名に"/"を含む場合(encodeURIComponentで%2Fになる)と区切りの"/"を区別するため、
+  // 先にsplitしてから断片ごとにdecodeURIComponentする(先にデコードすると%2Fが"/"に戻り
+  // 区切りと衝突して山名が誤分割される)。
   // 共有URLが途中で切れると "#%E7%87%95%E5%B2" のような不正エスケープになり、
   // decodeURIComponent が URIError を投げる(LINE・メールでのURL共有で現実に起きる)。
   // ここは初期化ブロックと同意チェックから try 無しで呼ばれるので、落とさず生文字列に倒す。
-  let hash;
-  try{hash=decodeURIComponent(location.hash.slice(1))}
-  catch(e){hash=location.hash.slice(1)}
-  if(!hash)return;
+  const safeDecode=s=>{try{return decodeURIComponent(s)}catch(e){return s}};
   // 形式: 山名/日付[/1h] (旧形式 山名/日付/日数/フラグ の余分なセグメントは無視)
-  const[nm,dt2,seg3]=hash.split("/");
+  const[nm,dt2,seg3]=rawHash.split("/").map(safeDecode);
   if(!nm||nm==="start")return; // "#start"はページ内アンカー(CTA)であり山名ではない
   const di=document.getElementById("mdate");
   if(nm==="gps"){ // GPS現在地の予報(開く人の位置で再測位する)
