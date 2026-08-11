@@ -484,7 +484,8 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
       <span class="btnface">天気の良い山をさがす</span>
     </a>
     <!-- data-gatelink を付けないのは意図的。ゲートは Open-Meteo の無料枠を守るためのもので、
-         このリンク先(docs/weather-links.html)は気象庁への外部リンク集でAPIを叩かない -->
+         このリンク先(docs/weather-links.html)は気象庁・ウェザーニュースへの外部リンク集で
+         Open-Meteo を叩かない(現在地の反映で国土地理院の逆ジオコーダだけ1回叩く) -->
     <a class="hero-weather" href="docs/weather-links.html">
       <span class="btnface">気象情報リンク</span>
     </a>
@@ -565,7 +566,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.25β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.26β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
