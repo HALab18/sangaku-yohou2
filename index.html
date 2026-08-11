@@ -147,9 +147,14 @@ form{display:flex;flex-direction:column;gap:14px}
 input,select{font-size:16px;padding:11px 12px;border:1.5px solid var(--field);border-radius:10px;
   background:#fff;width:100%;font-family:inherit}
 input:focus,select:focus{outline:2px solid var(--night);outline-offset:1px}
-/* 山名入力欄: 左脇に小さな山アイコン */
-#mname{padding-left:41px;
+/* 山名入力欄: 左脇に小さな山アイコン、右に消去(×)ボタンぶんの余白 */
+#mname{padding-left:41px;padding-right:34px;
   background:#fff url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2076%2052'%3E%3Cpath%20d='M4%2048L28%208%2040%2027%2050%2014%2072%2048Z'%20fill='none'%20stroke='%23a9b6cc'%20stroke-width='7'%20stroke-linejoin='round'/%3E%3Cpath%20d='M21.5%2019L28%208l6.5%2011-3.3-3.4-3.2%204-3.2-4Z'%20fill='%23a9b6cc'/%3E%3Cpath%20d='M45.8%2020.5L50%2014l4.2%206.5-2.2-2.3-2%202.6-2-2.6Z'%20fill='%23a9b6cc'/%3E%3C/svg%3E") no-repeat 13px 50%/19px 13px}
+/* 消去(×)ボタン。目立たせすぎない: 最近見た山の .rcx と同じ配色・ホバー挙動 */
+.mname-wrap{position:relative}
+.mclear{position:absolute;right:4px;top:50%;transform:translateY(-50%);
+  padding:9px 8px;border:0;background:none;color:#aab2c0;font-size:16px;line-height:1;cursor:pointer}
+.mclear:hover{color:#a03415}
 .frow{display:flex;gap:12px}
 .frow>.f{flex:1;min-width:0}
 /* 開始日selectと表示間隔segは横並びなので同一の固定高さで揃える(selectのネイティブ描画差を吸収) */
@@ -527,7 +532,10 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
       <a class="listlink" href="docs/mountains.html"><svg class="mk" aria-hidden="true"><use href="#mkico"/></svg>対応山リスト ▸</a>
       <a class="listlink" href="docs/point.html">座標を指定 ▸</a>
     </span>
-    <input id="mname" placeholder="例: 燕岳" required autocomplete="off">
+    <span class="mname-wrap">
+      <input id="mname" placeholder="例: 燕岳" required autocomplete="off">
+      <button type="button" id="mnameClear" class="mclear" aria-label="山名を消去" hidden>×</button>
+    </span>
     <div id="sugg" hidden></div>
   </label>
   <div class="frow">
@@ -1939,6 +1947,7 @@ function applyHash(){
     if(seg3==="1h")document.querySelector('input[name="mstep"][value="1"]').checked=true;
     locateCoordAndGo(+latS,+lonS,elevS!=null?+elevS:null);return}
   document.getElementById("mname").value=nm;
+  document.getElementById("mnameClear").hidden=!nm;
   if(dt2)di.value=dt2; // 範囲外(過去日など)で該当optionが無い場合は空になり、今日扱いになる
   if(seg3==="1h")document.querySelector('input[name="mstep"][value="1"]').checked=true;
   const f=document.getElementById("f");
@@ -2074,7 +2083,8 @@ function recentRemove(name){
 
 // 山名サジェスト (datalistはスマホの多くのブラウザで候補が出ないため独自実装)
 {
-  const inp=document.getElementById("mname"),sugg=document.getElementById("sugg");
+  const inp=document.getElementById("mname"),sugg=document.getElementById("sugg"),
+        mclear=document.getElementById("mnameClear");
   function render(list,recents){
     if(!list.length&&!recents.length){sugg.hidden=true;sugg.innerHTML="";return}
     // 見出しは1本のまま。ドロップダウンは max-height:min(280px,45vh) しかないので、
@@ -2096,6 +2106,7 @@ function recentRemove(name){
     sugg.hidden=false;sugg.scrollTop=0;
   }
   function update(){
+    mclear.hidden=!inp.value;
     const q=inp.value.trim();
     // 入力中は従来どおり全一致のみ。未入力時だけ履歴を先頭に固定し、
     // その下は先頭50件(全件は対応山リストページへ)。履歴と同名は50件側から除いて重複を避ける
@@ -2122,9 +2133,13 @@ function recentRemove(name){
     const x=el.closest("[data-x]");
     if(x){recentRemove(x.dataset.x);update();return}
     const d=el.closest("div[data-n]");if(!d)return;
-    inp.value=d.dataset.n;sugg.hidden=true;sugg.innerHTML="";
+    inp.value=d.dataset.n;mclear.hidden=!inp.value;sugg.hidden=true;sugg.innerHTML="";
     inp.blur(); // スマホのキーボードを閉じる
   }
+  // 消去ボタン: 空にして候補欄を「最近見た山」に戻す(未入力時の挙動と同じ)
+  mclear.addEventListener("click",()=>{
+    inp.value="";mclear.hidden=true;inp.focus();update();
+  });
   // タップとスクロールを区別する: 指を押した位置を覚え、ほぼ動かず離した時だけ選択
   let downX=0,downY=0;
   sugg.addEventListener("pointerdown",e=>{
