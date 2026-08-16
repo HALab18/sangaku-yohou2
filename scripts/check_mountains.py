@@ -7,7 +7,11 @@
   3. 自動生成ページ(docs/find.html・docs/mountains.html)が生成元と一致しているか
      - 生成物を直接編集すると、次に生成スクリプトを流した時点で修正が消える。
        実際に find.html の z-index 修正がこの経路で失われた前例があるため検査する
-  4. Open-Meteo Elevation API による標高の照合
+  4. 判定ロジックの等価性 (references/logic_cases.json の入出力表)
+     - CLI(scripts/mountain_weather.py) と Web(logic.js) が同じ入力で同じ A/B/C を
+       返すかを機械的に確かめる。片方だけ直すと静かにズレるため(CLAUDE.md 規約3)
+     - JS 側は Node が必要。無い環境ではスキップし「未検証」と明示する
+  5. Open-Meteo Elevation API による標高の照合
      - 座標が山頂から外れていると、その地点のDEM標高がCSVの山頂標高より
        大幅に低くなることを利用して座標ミスを検出する
      - DEMはCopernicus GLO-90 (90m格子) のため、尖った岩峰(槍ヶ岳・剱岳・権現岳等)は
@@ -21,6 +25,7 @@
 import csv
 import json
 import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -40,6 +45,7 @@ DIFF_OK = 80       # ここまでは正常とみなす
 DIFF_WARN = 150    # ここまでは「要確認」(急峻な地形ならありうる)。超えたら座標ミスの疑い
 
 CHUNK_WAIT = 2     # チャンク間の待機(秒)。無料APIのレート制限(429)を避ける
+CRLF_INDENT = "\n      "   # 複数行のエラー出力をぶら下げるためのインデント
 RETRY_WAITS = [10, 30, 60]  # 429/5xx を受けたときの再試行間隔(秒)
 
 
@@ -111,6 +117,32 @@ def check_generated():
     return errors
 
 
+def check_logic():
+    """判定ロジックが CLI と Web で一致するか (scripts/test_logic.py / test_logic.js)
+
+    ロジックの二重実装は「片方だけ直して気づかない」で壊れる。ここを通ることが、
+    CLI・logic.js・references/criteria.md を揃えて直したことの証拠になる。
+    """
+    errors, notes = [], []
+    py = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_logic.py')],
+                        capture_output=True, text=True, encoding='utf-8')
+    if py.returncode:
+        errors.append('CLI側(test_logic.py)が不一致:' + CRLF_INDENT
+                      + (py.stdout or py.stderr).strip().replace('\n', CRLF_INDENT))
+    try:
+        js = subprocess.run(['node', str(ROOT / 'scripts' / 'test_logic.js')],
+                            capture_output=True, text=True, encoding='utf-8')
+    except (FileNotFoundError, OSError):
+        # Node はこのチェックのためだけの依存。無くても CLI 本体は動くので落とさない
+        notes.append('Node が無いため JS 側(logic.js)は未検証です'
+                     ' (node scripts/test_logic.js を実行できる環境で確認してください)')
+        return errors, notes
+    if js.returncode:
+        errors.append('Web側(test_logic.js)が不一致:' + CRLF_INDENT
+                      + (js.stdout or js.stderr).strip().replace('\n', CRLF_INDENT))
+    return errors, notes
+
+
 def fetch_elevations(chunk):
     """1チャンク分のDEM標高を取得。429/5xx は RETRY_WAITS の間隔で再試行する"""
     q = urllib.parse.urlencode({
@@ -160,25 +192,34 @@ def main():
     ng = False
 
     fmt = check_format(rows)
-    print(f"\n[1/4] CSV形式: {'OK' if not fmt else f'{len(fmt)}件のエラー'}")
+    print(f"\n[1/5] CSV形式: {'OK' if not fmt else f'{len(fmt)}件のエラー'}")
     for e in fmt:
         print(f"  ✕ {e}")
     ng = ng or bool(fmt)
 
     sync = check_sync(rows)
-    print(f"[2/4] index.html との同期: {'OK' if not sync else f'{len(sync)}件のずれ'}")
+    print(f"[2/5] index.html との同期: {'OK' if not sync else f'{len(sync)}件のずれ'}")
     for e in sync:
         print(f"  ✕ {e}")
     ng = ng or bool(sync)
 
     gen = check_generated()
-    print(f"[3/4] 自動生成ページの同期: {'OK' if not gen else f'{len(gen)}件のずれ'}")
+    print(f"[3/5] 自動生成ページの同期: {'OK' if not gen else f'{len(gen)}件のずれ'}")
     for e in gen:
         print(f"  ✕ {e}")
     ng = ng or bool(gen)
 
+    logic, logic_notes = check_logic()
+    print(f"[4/5] 判定ロジックの等価性 (CLI と logic.js): "
+          f"{'OK' if not logic else f'{len(logic)}件の不一致'}")
+    for e in logic:
+        print(f"  ✕ {e}")
+    for e in logic_notes:
+        print(f"  ⚠ {e}")
+    ng = ng or bool(logic)
+
     suspects, warns = check_elevation(rows)
-    print(f"[4/4] DEM標高照合 (Open-Meteo Elevation API): "
+    print(f"[5/5] DEM標高照合 (Open-Meteo Elevation API): "
           f"{'OK' if not suspects and not warns else f'疑い{len(suspects)}件 / 要確認{len(warns)}件'}")
     for e in suspects:
         print(f"  ✕ {e}")

@@ -25,6 +25,7 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 |---|---|
 | `index.html` | Webアプリ本体（CSS/JS内包。CLIと同じ判定ロジックをJSで実装。ゲートのみ `gate.js` に外出し） |
 | `sw.js` | Service Worker。**画面(HTML/CSS/JS/アイコン)だけ**をネットワーク優先でキャッシュし、圏外でもアプリが開くようにする。気象データは扱わない（予報の保存は index.html の localStorage スナップショット側） |
+| `logic.js` | 登山指数 A/B/C の判定ロジック（`blockIndex`/`seasonTh`/`feelsLike`/`viewScore`/`interpWind`/`sumOrNull` と各しきい値）。**JS側の判定はここが唯一の置き場**。`index.html`・`docs/find.html` が `<script src>` で読む |
 | `gate.js` | 規約同意＋認証コードの共通ゲート。**認証定数(AUTH_VER/SALT/HASH)はここが唯一の置き場**。`index.html`・`docs/find.html`・`docs/point.html` が読み込む |
 | `scripts/mountain_weather.py` | CLI本体。`--name`/`--lat --lon --elev` で予報を出力（`--html`でレポート保存） |
 | `references/mountains.csv` | 内蔵山岳DB（**BOM付きUTF-8・CRLF**）。列: name,yomi,pref,lat,lon,elev |
@@ -33,6 +34,7 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `icons/` `manifest.json` | PWAアイコンとマニフェスト |
 | `skill/SKILL.md` | Claude Code スキル定義（「◯◯岳の予報を調べて」で自動実行） |
 | `skill/auth-renew/SKILL.md` | 認証コード更新スキル（「認証コードを更新して」で年次ローテーションを自動実行） |
+| `references/logic_cases.json` `scripts/test_logic.py` `scripts/test_logic.js` | 判定ロジックの等価性テスト。同じ入出力表を CLI(Python) と `logic.js`(Node) で回す |
 | `scripts/db_*.py gen_*.py check_*.py` | DB保守ツール群（下記パイプライン） |
 
 **公開URL**: https://halab18.github.io/sangaku-yohou2/
@@ -86,20 +88,31 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
    name に依存しており、改名すると共有済みリンクが壊れる。同名別峰を足すときは
    **新規側だけ**「山名(県名)」等の区別名にする。
 2. **mountains.csv は BOM付きUTF-8・CRLF を維持。** Excelでの文字化け防止。`check_mountains.py` が形式を検証する。
-3. **CLIとWebの判定ロジックは同一に保つ。** 片方だけ閾値やロジックを変えない。基準変更は
-   `references/criteria.md`・CLI・index.html・図解ページを揃える。
+3. **CLIとWebの判定ロジックは同一に保つ。** 判定の実装は **`scripts/mountain_weather.py`(CLI) と `logic.js`(Web) の2箇所だけ**。
+   片方だけ閾値やロジックを変えない。基準変更は `references/criteria.md`・CLI・`logic.js`・
+   `references/logic_cases.json`・図解ページを揃え、下記を通すこと（`check_mountains.py` の `[4/5]` も同じ2本を呼ぶ）:
+
+   ```bash
+   python scripts/test_logic.py && node scripts/test_logic.js
+   ```
+
+   `logic.js` の関数を index.html / docs/find.html 側に再定義しないこと（後勝ちで上書きされ、
+   `logic.js` を直しても反映されないという壊れ方をする。`test_logic.js` が検出する）。
 4. **CLI本体に第三者パッケージを足さない**（依存ゼロを維持）。保守スクリプト側はOK。
 5. **座標変更・DB編集をしたら必ず `python scripts/check_mountains.py` を通す**
-   （形式・CLI/Web同期・自動生成ページの同期・DEM照合）。
+   （形式・CLI/Web同期・自動生成ページの同期・判定ロジックの等価性・DEM照合）。
 6. **`docs/find.html` と `docs/mountains.html` は自動生成物。直接編集しない。**
    修正は `scripts/gen_find.py` / `scripts/gen_mountain_list.py` に入れて再生成する。
    生成物だけ直すと次の再生成で消える（実際に find.html の z-index 修正がこれで失われた）。
-   `check_mountains.py` の「[3/4] 自動生成ページの同期」がこのずれを検出する。
+   `check_mountains.py` の「[3/5] 自動生成ページの同期」がこのずれを検出する。
 7. **認証コードの定数は `gate.js` にのみ置く。** index.html や各ページに複製しない
    （複製すると年次更新の漏れで「認証済みなのに弾かれる」事故になる）。
    新しく操作系ページを足すときは `<script src="…/gate.js">` を読み、
    本体スクリプトの先頭で `if(!pwGuardPage())return;` を入れること。
-8. **リリースのたびに `sw.js` の `CACHE` の版を上げる。** 上げないと `activate` の掃除が走らず、
+8. **`logic.js` を変えたら `PW_LOGIC_VER` と、index.html・`gen_find.py` の `?v=` を同時に上げる。**
+   上げないと古い `logic.js` がキャッシュに残り、「画面は新しいのに判定だけ旧版」という
+   気づけない状態になる（一致は `test_logic.js` が機械的に見ている）。
+9. **リリースのたびに `sw.js` の `CACHE` の版を上げる。** 上げないと `activate` の掃除が走らず、
    前版のシェルがキャッシュに残る。ネットワーク優先なのでオンラインでは表面化せず、
    **完全オフラインで開いたときだけ古い画面が出る**という再現困難な状態になる。
    併せて、**API 応答を `sw.js` でキャッシュしてはいけない**（気象データの保存は

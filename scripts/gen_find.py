@@ -61,6 +61,10 @@ TEMPLATE = r"""<!doctype html>
 <!-- このファイルは scripts/gen_find.py により index.html から自動生成されます。直接編集しないでください
      (直接編集すると次回の再生成で消えます。修正は必ず scripts/gen_find.py 側に入れること) -->
 <script src="../gate.js?v=2026b"></script>
+<!-- 登山指数 A/B/C の判定ロジック。index.html と共有する唯一の実装。
+     ?v= は logic.js の PW_LOGIC_VER と同じ値にする(古い版がキャッシュに残ると
+     「画面は新しいのに判定だけ旧版」という気づけない状態になる)。 -->
+<script src="../logic.js?v=230"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -339,7 +343,9 @@ footer a{color:var(--link)}
   // gate.js 自体が読めなかった場合(404・通信断・ブロッカー)も素通しさせない。
   // ここで止めないと、検索カードのHTMLだけが残って「認証なしで開けた」ように見えてしまう。
   // 認証定数は複製せず「判定できない = 通さない」で倒す(定数の置き場は gate.js のみ)。
-  if(typeof pwGuardPage!=="function"){
+  // 判定ロジック(logic.js)が読めていない場合も同じ扱いにする。正式指数もスコアも
+  // 計算できないので、無言で「指数の列だけ空の表」を出させない。
+  if(typeof pwGuardPage!=="function"||typeof blockIndex!=="function"){
     document.querySelector("main").innerHTML=
       '<div style="max-width:560px;margin:26px auto;padding:22px 18px;background:#fff;'+
       'border:1px solid #dee4ee;border-radius:12px;text-align:center;line-height:1.8">'+
@@ -658,54 +664,11 @@ footer a{color:var(--link)}
   elPref.addEventListener("change",updateHint);
   elElev.addEventListener("change",updateHint);
 
-  // ---- 稜線風速の補間 (index.html / mountain_weather.py と同じ LEVELS・同じ線形補間) ----
-  // 山頂標高を挟む上下2気圧面の風速を線形補間して「稜線風速」を推定する。
-  // LEVELS[i]=[気圧面hPa, 標準高度m]。 500m台の里山から3800m級までを 6面でカバー。
-  var LEVELS=[[925,760],[900,990],[850,1460],[800,1950],[700,3010],[600,4200]];
-  // 気圧面の最下端は 925hPa = 標準高度760m。ここに地上10m風を「高度10mの面」として足し、
-  // 標高760m未満は地上風と925hPaの間で内挿する。こうしないと 760m 未満がすべて 925hPa の
-  // 生値にクランプされ、低山で上空760mの風がそのまま稜線風として出る
-  // (実測: 衣張山122m で最大 13.3 → 5.9 m/s)。内蔵DBでは標高100〜760mに76座ある。
-  // index.html の SURFACE_WIND_M / mountain_weather.py の SURFACE_WIND_M と同一。
-  var SURFACE_WIND_M=10;
-  // ---- 夏冬モード (index.html の seasonTh / mountain_weather.py の season_thresholds と同一) ----
-  // 月ベース(6〜10月=夏)を基本に、寒い日だけ冬モードへ倒す。安全側にのみ効かせる。
-  var WINTER_TMAX=0, WINTER_TMIN=-3;
-  // ---- 降格条件のしきい値 ----
-  // find は視程を取得しないため D4(視界不良)は計算できない。D1・D2 までを併記する。
-  var WET_HYPO_TEMP=10, WET_HYPO_PRECIP=1.0, WET_HYPO_WIND_B=8, WET_HYPO_WIND_C=12;
-  var FEELS_B=-20, FEELS_C=-30;
-  // 「その時刻に実際に値がある気圧面」だけで山頂標高の風速を補間する。
-  // pts=[[標準高度m, 風速], ...] を高度の昇順で渡す。範囲外は最寄りの面の値をそのまま使う。
-  //
-  // 標高から気圧面ペアを1回だけ決め打ちにしてはいけない。気圧面のラインナップはモデルで違い、
-  // MSM(おおむね1〜3日目)は6面すべて配信するが GSM(4日目以降)は 900hPa と 800hPa を
-  // 配信しない(実測)。決め打ちだと GSM 期間の標高 760〜3010m の山 ── つまりDBの大半
-  // (604座中509座) ── が丸ごと「稜線風なし」になり、最大の減点である③(-32)が消えて
-  // スコアが不当に高く出る。「データが無い→好条件」は安全と逆方向なので、面の欠落は必ず埋める。
-  // (CLI/index.html は取得する2面のうち片方が欠測ならもう片方をそのまま使う実装。find は
-  //  6面すべて取得しているので、残った面どうしで補間できるぶん一段細かく出せる。)
-  //
-  // ★ 欠けた 900/800hPa を「日照と同じように別モデルから借りて埋める」のは**やってはいけない**。
-  //   実測で検証済み: MSM が6面そろう日に 900/800 を意図的に伏せて復元精度を比べたところ、
-  //     この実装(4面で内挿)      平均誤差 0.76 m/s (③の減点ズレ 1.8点)
-  //     icon_seamless で穴埋め   平均誤差 1.24 m/s (2.5点)
-  //     gfs_seamless  で穴埋め   平均誤差 1.32 m/s (2.6点)
-  //   借りた値は別モデルなので JMA の 925/850/700 との間に段差ができる。モデル間の風速差は
-  //   4〜7日目で平均 1.74 m/s あり、埋めたい内挿誤差 0.76 m/s より大きい。穴より段差の方が痛い。
-  //   日照を借りているのは「気象庁モデルに代わりが無い」から。風は自分の隣の面から内挿できるので
-  //   前提が違う。同一モデル内での代替も不可(GSM の配信面は 1000/925/850/700/600/500 のみ)。
-  //   残る副作用として 4日目以降は風をやや弱めに見積もる(北アルプス級で平均 -1.2m/s)。
-  //   これは補正せず、日付の「参考」表示と find-score.html で開示する方針。詳細は DEVLOG。
-  function interpWind(pts,elev){
-    if(!pts.length)return null;
-    if(elev<=pts[0][0])return pts[0][1];
-    for(var i=0;i<pts.length-1;i++){
-      var lo=pts[i], hi=pts[i+1];
-      if(elev>=lo[0]&&elev<=hi[0])return lo[1]+(hi[1]-lo[1])*((elev-lo[0])/(hi[0]-lo[0]));
-    }
-    return pts[pts.length-1][1];
-  }
+  // ---- 稜線風速の補間・判定のしきい値 ----
+  // interpWind と定数 (LEVELS / SURFACE_WIND_M / WINTER_TMAX / WINTER_TMIN / WET_HYPO_* /
+  // FEELS_* / RANK) は logic.js にある。index.html と共有する唯一の実装なので、
+  // ここに複製しないこと(片方だけ直すと詳細ページと山さがしで判定がズレる)。
+  // 900/800hPa を別モデルで埋めてはいけない理由も logic.js のコメントに書いてある。
   // 900hPa・800hPa は MSM 期間にしか配信されない(GSM 期間はこの2面が丸ごと欠測)。この2面が
   // 両方欠測の時刻は内挿点が減り、稜線風が実測で北ア級-1.2m/s程度弱く出る(埋め合わせは却下済み。
   // 上のコメント参照)。degraded として持ち回り、score()/formalIndex() の表示側で `*` を出す。
@@ -983,9 +946,8 @@ footer a{color:var(--link)}
     // これを入れないと、冬・快晴・稜線風12m/s が「80点=ランクA」で最上位に出るのに、
     // 詳細ページの正式判定では C(冬モードは12m/sでC)になる ── 入口が安全と逆を向く。
     var mon=parseInt((times[0]||"").slice(5,7),10)||1;
-    var winter=!(mon>=6&&mon<=10);
-    var actMax=actTemp("max"), actMin=actTemp("min");
-    if(!winter&&((actMax!=null&&actMax<WINTER_TMAX)||(actMin!=null&&actMin<WINTER_TMIN)))winter=true;
+    var th=seasonTh(mon, actTemp("max"), actTemp("min"));
+    var winter=th.mode!=="夏山";
     var s=100;
     // 減点は控えながら引く(内訳を表に出すため)。★ 引く順序と式は変えないこと。
     // まとめて計算してから一度に引くと浮動小数の丸めが変わり、最後の Math.round が
@@ -1013,7 +975,7 @@ footer a{color:var(--link)}
     if(snow!=null&&snow>0){var dS=Math.min(snow,5)/5*5;dCold+=dS;s-=dS}
     if(tmin!=null&&tmin<-5){var dT=Math.min((-5-tmin),15)/15*5;dCold+=dT;s-=dT}
     return {v:Math.round(Math.max(0,Math.min(100,s))),sunFrac:sunFrac,sunAlt:sunAlt,
-      code:code,wxRep:wxRep,winter:winter,abc:formalIndex(d,mt,winter),
+      code:code,wxRep:wxRep,winter:winter,abc:formalIndex(d,mt,th),
       psum:psum,pprob:pprob,ridgeWmax:ridgeWmax,ridgeDegraded:ridgeDegraded,tmax:tmax,tmin:tmin,
       brk:{sun:dSun,pre:dPre,wind:dWind,cold:dCold}};
   }
@@ -1021,47 +983,33 @@ footer a{color:var(--link)}
   // スコア(相対比較のふるい)とは別物なので、両方を並べて食い違いに気づけるようにする。
   // 行動時間帯 5〜16時を3時間ブロックに割り、最悪値を採る(index.html の日別指数と同じ)。
   // ★ find は視程を取得しないため D4(視界不良)は判定できない。主判定+D1+D2 までを出す。
-  function formalIndex(d,mt,winter){
+  function formalIndex(d,mt,th){
     var hr=d.hourly, times=(hr&&hr.time)||[], N=times.length;
-    var th=winter?{wind:[8,12],precip:[1,3]}:{wind:[10,15],precip:[1,5]};
     var lvArrs=LEVELS.map(function(L){return hr&&hr["wind_speed_"+L[0]+"hPa"]});
     var w10=hr&&hr["wind_speed_10m"];
     function windAt(i){var w=ridgeAt(lvArrs,w10,i,mt.el);return w?w.v:null}
-    var worst=null, worstReason="", RANKV={A:0,B:1,C:2};
+    var worst=null, worstReason="";
     for(var sh=3;sh<18;sh+=3){
-      var ws=null, pr=null, prN=0, tmn=null, rhx=null;
+      // 材料は安全側に寄せる(風=最大 / 降水=合計 / 気温=最小 / 湿度=最大)。
+      // index.html の blkVerdict と同じ集計。ここを変えると詳細ページと食い違う。
+      var ws=null, pr=null, tmn=null, rhx=null;
       for(var i=0;i<N;i++){
         var h2=parseInt(times[i].slice(11,13),10);
         if(h2<5||h2>16||Math.floor(h2/3)*3!==sh)continue;
         var w=windAt(i); if(w!=null&&(ws==null||w>ws))ws=w;
         var p=hr.precipitation?hr.precipitation[i]:null;
-        if(p!=null){pr=(pr==null?0:pr)+p;prN++}
+        if(p!=null)pr=(pr==null?0:pr)+p;
         var t=hr.temperature_2m?hr.temperature_2m[i]:null;
         if(t!=null&&(tmn==null||t<tmn))tmn=t;
         // 湿度は最大値(最も熱が逃げにくい = 安全側)
         var rv=hr.relative_humidity_2m?hr.relative_humidity_2m[i]:null;
         if(rv!=null&&(rhx==null||rv>rhx))rhx=rv;
       }
-      if(ws==null&&pr==null)continue;
-      var idx="A";
-      var worseF=function(v){if(v==="C"||idx==="C")idx="C";else if(v==="B")idx="B"};
-      if(ws!=null){if(ws>=th.wind[1])worseF("C");else if(ws>=th.wind[0])worseF("B")}
-      if(pr!=null){if(pr>=th.precip[1])worseF("C");else if(pr>=th.precip[0])worseF("B")}
-      var base=idx, reason="";
-      // D1 湿潤低体温
-      if(tmn!=null&&pr!=null&&ws!=null&&tmn<=WET_HYPO_TEMP&&pr>=WET_HYPO_PRECIP){
-        var g=ws>=WET_HYPO_WIND_C?"C":(ws>=WET_HYPO_WIND_B?"B":null);
-        if(g&&RANKV[g]>RANKV[idx]){idx=g;reason="低体温"}
-      }
-      // D2 体感温度。豪州気象局の Apparent Temperature (index.html の feelsLike と同一)。
-      // 風冷指数(JAG/TI)は10℃超で適用外になり冷却を表さないため置き換えた。
-      var fl=(tmn==null||ws==null||rhx==null)?null:
-        (tmn+0.33*((rhx/100)*6.105*Math.exp(17.27*tmn/(237.7+tmn)))-0.70*ws-4.00);
-      if(fl!=null){
-        var g2=fl<=FEELS_C?"C":(fl<=FEELS_B?"B":null);
-        if(g2&&RANKV[g2]>RANKV[idx]){idx=g2;reason="体感"}
-      }
-      if(worst==null||RANKV[idx]>RANKV[worst]){worst=idx;worstReason=reason}
+      // 視程に null を渡すので D4(視界不良)は自動でスキップされる。
+      // find は視程を取得しないため、主判定 + D1 + D2 までを出す。
+      var r=blockIndex(ws,pr,th,tmn,feelsLike(tmn,ws,rhx),null);
+      if(r[0]==null)continue;   // そのブロックは判定材料なし
+      if(worst==null||RANK[r[0]]>RANK[worst]){worst=r[0];worstReason=r[1]}
     }
     return worst==null?null:{v:worst,reason:worstReason};
   }

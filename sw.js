@@ -9,7 +9,7 @@
  * ★ CACHE の版はリリースごとに上げる。上げないと activate の掃除が走らず、
  *   前版のシェルがキャッシュに残り続ける(ネットワーク優先なので実害は出にくいが、
  *   完全オフラインで開いたときだけ古い画面が出るという再現困難な状態になる)。 */
-const CACHE = "pw-shell-2.29";
+const CACHE = "pw-shell-2.30";
 
 /* 初回インストール時に先読みするシェル一式。ここに載っているものだけが
  * 「一度も開いたことがなくてもオフラインで出る」。docs/ 配下を入れていないのは、
@@ -19,7 +19,7 @@ const CACHE = "pw-shell-2.29";
  * gate.js は index.html からは `gate.js?v=2026b` として読まれるが、ここでは
  * クエリ無しで入れておき、照合側で ignoreSearch:true にして拾う。認証コードの
  * 年次更新で ?v= が変わってもオフライン時に前回の gate.js に当たるようにするため。 */
-const SHELL = ["./", "index.html", "gate.js", "manifest.json",
+const SHELL = ["./", "index.html", "gate.js", "logic.js", "manifest.json",
   "icons/icon-192.png", "icons/icon-512.png",
   "icons/favicon-32.png", "icons/apple-touch-icon.png"];
 
