@@ -963,6 +963,36 @@ def day_indices(times, date):
     return [i for i, t in enumerate(times) if t.startswith(pre)]
 
 
+def day_model(h, times, date):
+    """その日の主要な予報が MSM(約5km)由来か GSM(粗い)由来かを、データそのものから判定する。
+    900hPa・800hPa は MSM 期間にしか配信されないので、その2面の有無が判別材料になる。
+    「今日から4日目までが MSM」の決め打ちにしないのは、切替の境界がモデルの更新時刻で動くため
+    (実測: 今日+3日の時点で既に GSM に切り替わっている日がある)。
+    ★ all で見る(any ではない)。切替日は1日の中に MSM の時間と GSM の時間が混在するので、
+      any だと「1時刻でも MSM があれば MSM」となり、実際より細かいモデルを名乗ってしまう。
+      粗い側に倒しておけば過信が起きない(稜線風の `*` 印とも整合する)。
+    index.html の dayModel と同じ判定。ここは A/B/C の判定ではなく表示の分類なので logic.js
+    には置いていない(共有すべき定数 DEGRADED_LEVELS は両側とも1箇所に単一化されている)。"""
+    ii = day_indices(times, date)
+    if not ii:
+        return None
+    arrs = [h.get(f"wind_speed_{lv}hPa") or [] for lv in DEGRADED_LEVELS]
+    return "MSM" if all(any(i < len(a) and a[i] is not None for a in arrs)
+                        for i in ii) else "GSM"
+
+
+def model_switch(h, times, dates):
+    """表示する日のうち、MSM の最終日と GSM の初日(=精度が粗くなる境目)。
+    片側しか無い期間(全部MSM / 最初から全部GSM)は None を返し、呼び出し側は境界を名乗らない
+    (存在しない境目を書かないため)。index.html の modelSwitch と同じ。"""
+    ms = [(dd, day_model(h, times, dd)) for dd in dates]
+    ms = [x for x in ms if x[1]]
+    gi = next((i for i, x in enumerate(ms) if x[1] == "GSM"), -1)
+    if gi <= 0:
+        return None
+    return ms[gi - 1][0], ms[gi][0]
+
+
 def fnum(v, fmt="{:.0f}", none="-"):
     return none if v is None else fmt.format(v)
 
@@ -1144,7 +1174,7 @@ def print_detail_day(data, date, elev, has_snow=False, step=3):
               f"| {feel_c} | {wind_cell(wd, ws, degraded)} | {fnum(gust, '{:.0f}')}m/s "
               f"| {pr_c} | {fnum(prob)}% | {lightning_cell(cape, cin)} | {cl} |{snow_c}")
     if day_degraded:
-        print(f"- {wind_label(elev)}の `*` は、900hPa/800hPaのデータが無い時間帯(GSM期間・5日目以降)"
+        print(f"- {wind_label(elev)}の `*` は、900hPa/800hPaのデータが無い時間帯(粗いモデル=GSM の時間帯)"
               "のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。"
               "強めに見積もって判断してください。")
 
@@ -1267,6 +1297,7 @@ def daily_summary_rows(data, dates, elev):
         rows.append({
             "date": date, "idx": day_idx, "reason": day_reason,
             "evening": evening, "night": night_bad, "mode": th["mode"],
+            "model": day_model(h, times, date),
             "code": wxd.get("code", d["weather_code"][di]), "notes": wxd.get("notes", []),
             "phrase": wxd.get("phrase"),
             "tmin": tmin, "tmax": tmax,
@@ -1291,12 +1322,23 @@ def print_daily_summary(rows, title, has_snow=False, elev=None):
                 + (" ⚠夜間" if r.get("night") else ""))
         snow_c = f" {snow_cell(r.get('depth'), r.get('sf'))} |" if has_snow else ""
         wx_txt = phrase_text(r.get("phrase")) or wcode(r["code"])
-        print(f"| {r['date'].strftime('%m/%d')}({wj}) | {mark} | {wx_txt}{wx_note_text(r.get('notes'))} "
+        # 粗いモデル(GSM)由来の日に印を付ける。markdown の表なので Web のような区切り線は
+        # 引けないぶん、下の注記で「MM/DD 以降」と境目の日付を必ず書く。
+        coarse = " 粗" if r.get("model") == "GSM" else ""
+        print(f"| {r['date'].strftime('%m/%d')}({wj}){coarse} | {mark} | {wx_txt}{wx_note_text(r.get('notes'))} "
               f"| {r['view']} | {fnum(r['tmin'], '{:.0f}')}〜{fnum(r['tmax'], '{:.0f}')}℃ "
               f"| {wind_cell(r['wd'], r['ws'], r.get('degraded'))} "
               f"| {fnum(r['pr'], '{:.1f}')}mm | {fnum(r['prob'])}% |{snow_c}")
+    gsm = [r for r in rows if r.get("model") == "GSM"]
+    if gsm:
+        # 境目の日付は行そのものから出す(「N日目から」の決め打ちは切替がモデルのラン時刻で
+        # 動くため事実と食い違う)。全日GSMのときは「以降」と言えないので日付を書かない。
+        head = (f"{gsm[0]['date']:%m/%d} 以降の" if len(gsm) < len(rows) else "")
+        print(f"- 日付の「粗」は、{head}予報が粗いモデル(GSM)由来であることを示します"
+              "(それ以前は日本域に細かい MSM 約5km)。"
+              "切替日はモデルの更新時刻で動くため、日によって前後します。")
     if any(r.get("degraded") for r in rows):
-        print(f"- {wind_label(elev)}の `*` は、900hPa/800hPaのデータが無い日(GSM期間・5日目以降)"
+        print(f"- {wind_label(elev)}の `*` は、900hPa/800hPaのデータが無い日(粗いモデル=GSM の日)"
               "のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。"
               "強めに見積もって判断してください。")
     if any(r.get("evening") for r in rows):
@@ -1596,6 +1638,13 @@ def main():
     data = fetch_forecast(lat, lon, elev, fetch_start, fetch_end, PRESSURE_LEVELS)
 
     def emit():
+        # MSM→GSM の切替日は「N日目」と決め打ちにせず、取れたデータから出す
+        # (切替はモデルのラン時刻で動く)。境目が無い期間は日付を名乗らない。
+        # 対象日は下の見通し表と同じ作り方にする(fetch_end のクランプで10日に満たない
+        # ことがあるため、JMA_DAYS の決め打ちでは表と境目がずれうる)。
+        sw = model_switch(data["hourly"], data["hourly"]["time"],
+                          [today + dt.timedelta(days=i)
+                           for i in range((fetch_end - today).days + 1)])
         print(f"## {label} の山岳気象予報")
         print(f"- 地点: 北緯{lat:.4f} 東経{lon:.4f} / 標高 {elev:.0f}m ({src})")
         if elev < LOW_ELEV_M:
@@ -1607,7 +1656,8 @@ def main():
         else:
             print(f"- 稜線風: 気象庁モデルの気圧面風(925〜600hPa)と地上10m風のうち、その時刻に値が"
                   f"ある高度から山頂標高に線形補間して算出 / 気温は標高{elev:.0f}m面の値")
-        print("- ⚠ 4日目以降は気圧面が2面(900/800hPa)減るため、稜線風をやや弱めに見積もる傾向が"
+        gsm_from = f"{sw[1]:%m/%d}以降" if sw else "GSM期間"
+        print(f"- ⚠ {gsm_from}は気圧面が2面(900/800hPa)減るため、稜線風をやや弱めに見積もる傾向が"
               "あります(実測: 標高1950〜3010mで平均 -1.2m/s)。指数の風閾値の刻みに対して"
               "1段階ぶんに相当するため、後半の日は強めに読んでください")
         wind_src = '地上風(10m)の風速' if elev < LOW_ELEV_M else '稜線風速'
@@ -1632,7 +1682,10 @@ def main():
               "(「濡れ注意」の印が付く時間帯は特に)")
         print("- 突風は地上10mの値です。稜線風(山頂標高の気圧面)とは高度が違うため、"
               "稜線での実際の突風はこの値より強いことがあります")
-        print(f"- データ: 気象庁モデル (0〜4日目=MSM 約5km / 5〜11日目=GSM。自動切替。表示は{JMA_DAYS}日目まで)。"
+        model_txt = (f"〜{sw[0]:%m/%d}=MSM 約5km / {sw[1]:%m/%d}〜=GSM(粗い)。"
+                     "切替日はモデルの更新時刻で動きます" if sw else
+                     "MSM 約5km → GSM(粗い) と自動で切替わります")
+        print(f"- データ: 気象庁モデル ({model_txt}。表示は{JMA_DAYS}日目まで)。"
               f"降水確率・突風・CAPE/CIN・視程・積雪深・0℃高度は気象庁モデルに無いため別モデルで補完"
               f" / 取得: {dt.datetime.now():%Y-%m-%d %H:%M} / 出典: Open-Meteo")
         print("- ⚠ 気象庁の警報・注意報も必ず確認してください: https://www.jma.go.jp/bosai/warning/")

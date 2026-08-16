@@ -286,6 +286,13 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
   color:#23477a;font-size:.76em;font-weight:700;vertical-align:middle;white-space:nowrap}
 /* 稜線風の degraded 印(900hPa/800hPa欠測)。find の .altm と同じ「控えめだが見える」トーン */
 .dgd{color:#8a94a8;font-weight:700;margin-left:1px}
+/* その日の予報が粗いモデル(GSM)由来であることを示す印。判定の印(.wmode の青)とは別物なので
+   .dgd と同じグレー系に寄せ、「データの素性」の側だと分かるトーンにする */
+.mdlm{display:inline-block;margin-left:4px;padding:0 4px;border-radius:8px;background:#eceff4;
+  color:#6b7280;font-size:.74em;font-weight:700;vertical-align:middle;white-space:nowrap}
+/* 週間表の中で「ここから予報が粗くなる」ことを示す区切り行。行そのものは押せない */
+.wk-sep td{border-top:2px solid #b9c2d0;background:#f6f8fb;color:#5b6472;
+  font-size:.78em;font-weight:700;padding:3px 8px;letter-spacing:.02em}
 .wxnote{display:block;font-size:.78em;color:#6b7280;margin-top:2px;line-height:1.3}
 /* 詳細表の見出し直下に出す控えめなキャプション(山名とデータ取得日時)。スクショを切り取っても
    どの山のいつの取得か分かるようにするため。目立たせない */
@@ -589,7 +596,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.30β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.31β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -1342,6 +1349,31 @@ async function run(mt,opts){
     cmpSnap=snap.cmp||null;
   }
   const h=data.hourly,times=h.time,d=data.daily;
+  // その日の主要な予報が MSM(約5km)由来か GSM(粗い)由来かを、データそのものから判定する。
+  // 900hPa・800hPa は MSM 期間にしか配信されないので、その2面の有無が判別材料になる。
+  // 「今日から4日目までが MSM」の決め打ちにしないのは、切替の境界がモデルの更新時刻で動くため
+  // (実測: 今日+3日の時点で既に GSM に切り替わっている日がある)。
+  // ★ every で見る(some ではない)。切替日は1日の中に MSM の時間と GSM の時間が混在するので、
+  //   some だと「1時刻でも MSM があれば MSM」となり、実際より細かいモデルを名乗ってしまう。
+  //   粗い側に倒しておけば過信が起きない(稜線風の `*` 印とも整合する)。
+  const dayModel=ds=>{
+    const ii=dayIdx(times,ds);
+    if(!ii.length)return null;
+    return ii.every(i=>DEGRADED_LEVELS.some(p=>h[`wind_speed_${p}hPa`]?.[i]!=null))?"MSM":"GSM";
+  };
+  // 表示する日のうち、MSM の最終日と GSM の初日(=精度が粗くなる境目)を求める。
+  // 「N日目から」という決め打ちの文言は事実と食い違う(切替はモデルのラン時刻で動く)ので、
+  // 画面に出す日付はここで実データから作る。片側しか無い期間は null を返し、呼び出し側は
+  // 境界を名乗らない(存在しない境目を描かないため)。
+  const modelSwitch=dsList=>{
+    const ms=dsList.map(ds=>[ds,dayModel(ds)]).filter(x=>x[1]);
+    const gi=ms.findIndex(x=>x[1]==="GSM");
+    if(gi<=0)return null;   // GSM が無い(gi<0) / 最初から全部GSM(gi===0) なら境目は無い
+    return{lastMsm:ms[gi-1][0],firstGsm:ms[gi][0]};
+  };
+  // 日付文字列(YYYY-MM-DD)をそのまま MM/DD にする。new Date(ds) を経由すると UTC 解釈になり、
+  // JST 以外の端末で1日ずれる(表の日付は JST 基準なので文字列のまま切る)。
+  const mdIso=ds=>ds.slice(5).replace("-","/");
   // ブロックの発雷リスク入力 (CAPE=最大, CIN=|最小|)。周辺の取得に失敗すれば山頂格子に落ちる
   const areaCape=blk=>{
     const ca=h.cape_area||h.cape||[],ci=h.cin_area||h.convective_inhibition||[];
@@ -1387,7 +1419,14 @@ async function run(mt,opts){
   // Web側は画面に出していなかった。気象庁モデルは1日に複数回更新されるので、「いつ発表された
   // 予報を見ているのか」が分からないと「さっき見た値と違う」を利用者が説明できない。
   const initAll=initTxt(inits);
-  const srcNote=`<li>データ: 気象庁モデル(0〜4日目=MSM 約5km / 5〜11日目=GSM。自動切替。表示は${JMA_DAYS}日目まで)`
+  // MSM/GSM の別は「N日目から」と決め打ちにせず、取れたデータから境目の日付を出す
+  // (切替はモデルのラン時刻で動くため。境目が無い期間は日付を名乗らない)。
+  const swAll=modelSwitch(d.time);
+  const modelTxt=swAll
+    ?`〜${mdIso(swAll.lastMsm)}=MSM 約5km / ${mdIso(swAll.firstGsm)}〜=GSM(粗い)。`
+     +`切替日はモデルの更新時刻で動きます`
+    :"MSM 約5km → GSM(粗い) と自動で切替わります";
+  const srcNote=`<li>データ: 気象庁モデル(${modelTxt}。表示は${JMA_DAYS}日目まで)`
     +`${initAll?` / <b>発表(初期時刻) ${initAll} JST</b>`:""} / 出典: Open-Meteo</li>`;
   // 保存済み予報を再生していることを最初に必ず知らせる。表の数字は取得時のままなので、
   // これが出ていないと「今の予報」として読まれる = 安全と逆方向。
@@ -1419,18 +1458,6 @@ async function run(mt,opts){
     ?` / 発表 ${JST_MD.format(inits.jma_msm)} ${JST_HM.format(inits.jma_msm)}`:"";
   const capMeta=`${esc(mt.name)}${mt.pref?`(${esc(mt.pref)})`:""}`
     +` / 取得 ${JST_YMD.format(fetchedAt)} ${JST_HM.format(fetchedAt)}${capInit} JST`;
-  // その日の主要な予報が MSM(約5km)由来か GSM(粗い)由来かを、データそのものから判定する。
-  // 900hPa・800hPa は MSM 期間にしか配信されないので、その2面の有無が判別材料になる。
-  // 「今日から4日目までが MSM」の決め打ちにしないのは、切替の境界がモデルの更新時刻で動くため
-  // (実測: 今日+3日の時点で既に GSM に切り替わっている日がある)。
-  // ★ every で見る(some ではない)。切替日は1日の中に MSM の時間と GSM の時間が混在するので、
-  //   some だと「1時刻でも MSM があれば MSM」となり、実際より細かいモデルを名乗ってしまう。
-  //   粗い側に倒しておけば過信が起きない(稜線風の `*` 印とも整合する)。
-  const dayModel=ds=>{
-    const ii=dayIdx(times,ds);
-    if(!ii.length)return null;
-    return ii.every(i=>DEGRADED_LEVELS.some(p=>h[`wind_speed_${p}hPa`]?.[i]!=null))?"MSM":"GSM";
-  };
   // 表ごとに、その表が実際に載せている日のモデル名だけを添える。
   // 期間をまたぐ表(見通し・上空の寒気)は "MSM+GSM" になる。
   const capFor=dsList=>{
@@ -1557,7 +1584,7 @@ async function run(mt,opts){
       prob:d.precipitation_probability_max[di],
       sf:d.snowfall_sum?.[di],
       depth:dep.length?Math.max(...dep):null,
-      reason:dayReason,night:nightBad,mode:th.mode,
+      reason:dayReason,night:nightBad,mode:th.mode,model:dayModel(ds),
       view:best?vhtml(best,bestVis):"-"});
   }
   // 既定は先頭7日だけ出し、8日目以降は hidden で畳む(スマホで表が長くなりすぎるため)。
@@ -1566,10 +1593,19 @@ async function run(mt,opts){
   const wkOpen=rows.length<=WK_HEAD||start>addDays(today,WK_HEAD-1);
   htmlOut+=`<h2>${JMA_DAYS}日間の見通し</h2>${capFor(rows.map(r=>iso(r.d)))}<div class="tbl" id="wk-tbl"><table>
     <tr><th>日付</th><th>指数</th><th>天気</th><th>🏔 景色(朝)</th><th>山頂気温</th><th>${windLbl}max(5-16時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
+  // 精度が粗くなる境目に区切り行を1本だけ挟む。行の並びは崩さず、境界の前後がひと目で分かる
+  // ようにするのが目的(列は増やさない)。境目が無い期間(全部MSM/全部GSM)では何も挟まない。
+  const wkSw=modelSwitch(rows.map(r=>iso(r.d)));
+  const sepCols=8+(hasSnow?1:0);
   rows.forEach((r,i)=>{
     const more=i>=WK_HEAD;
+    // 区切り行にも wk-more を付けて一緒に畳む。ただし「残りN日」の件数には数えない
+    // (.wk-sep を除いて数えている。開閉ボタン側と対になっているので片方だけ直さないこと)
+    if(wkSw&&iso(r.d)===wkSw.firstGsm)
+      htmlOut+=`<tr class="wk-sep${more?" wk-more":""}"${more&&!wkOpen?" hidden":""}>`
+        +`<td colspan="${sepCols}">▼ ここから粗いモデル(GSM)の予報です</td></tr>`;
     const cls=["wk-row"];if(more)cls.push("wk-more");
-    htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}" tabindex="0" role="button"><td>${md(r.d)}${wj(r.d)}${r.mode==="冬山・残雪期"?'<span class="wmode" title="冬山・残雪期の基準(稜線風8/12m/s・3h降水1/3mm)で判定した日">冬</span>':""}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"><span class="ewi">⚠</span>夕方</span>':""}${r.night?'<span class="ew"><span class="ewi">⚠</span>夜間</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
+    htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}" tabindex="0" role="button"><td>${md(r.d)}${wj(r.d)}${r.mode==="冬山・残雪期"?'<span class="wmode" title="冬山・残雪期の基準(稜線風8/12m/s・3h降水1/3mm)で判定した日">冬</span>':""}${r.model==="GSM"?'<span class="mdlm" title="粗いモデル(GSM)の予報。MSM(約5km)より格子が粗く、稜線風はやや弱めに出ます">粗</span>':""}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"><span class="ewi">⚠</span>夕方</span>':""}${r.night?'<span class="ew"><span class="ewi">⚠</span>夜間</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
     <td>${r.view}</td><td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws,r.degraded)}</td>
     <td>${u1(r.pr,"mm")}</td><td>${u0(r.prob,"%")}</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
   });
@@ -1580,7 +1616,8 @@ async function run(mt,opts){
       `${wkOpen?"折りたたむ":`残り${rows.length-WK_HEAD}日を表示`}</button>`;
   if(rows.some(r=>r.eve))htmlOut+=`<p class="ewnote">⚠夕方: 17〜20時に天候の急変(C相当)、または発雷リスク「注意」以上が予想されます。日中の指数には含めていませんが、下山遅れ・テント泊・ご来光待ちの際は特に注意してください。</p>`;
   if(rows.some(r=>r.night))htmlOut+=`<p class="ewnote">⚠夜間: 21時〜翌朝5時にC相当の荒天が予想されます。日中の指数には含めていませんが、テント泊・小屋泊・早発ち(アルパインスタート)の際は特に注意してください。</p>`;
-  if(rows.some(r=>r.degraded))htmlOut+=`<p class="ewnote">${windLbl}の <b>*</b> 印は、その日が<b>900hPa/800hPaのデータが無い期間</b>(GSM期間・5日目以降)のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。強めに見積もって判断してください。</p>`;
+  if(rows.some(r=>r.model==="GSM"))htmlOut+=`<p class="ewnote">日付に付く <b>粗</b> 印${wkSw?`(${mdIso(wkSw.firstGsm)}以降)`:""}は、その日の予報が<b>粗いモデル(GSM)</b>由来であることを示します。それ以前は日本域に細かい MSM(約5km)です。切替日はモデルの更新時刻で動くため、日によって前後します。</p>`;
+  if(rows.some(r=>r.degraded))htmlOut+=`<p class="ewnote">${windLbl}の <b>*</b> 印は、その日が<b>900hPa/800hPaのデータが無い期間</b>(${wkSw?`${mdIso(wkSw.firstGsm)}以降の`:""}GSM期間)のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。強めに見積もって判断してください。</p>`;
   // 降格理由の凡例。出た日だけ出す(理由の付かない表に説明だけ残らないように)
   {
     const rset=new Set(rows.map(r=>r.reason).filter(Boolean));
@@ -1668,7 +1705,7 @@ async function run(mt,opts){
         <td>${cl}</td>${hasSnow?`<td>${snowCell(depArr.length?Math.max(...depArr):null,sfBlk)}</td>`:""}</tr>`;
     }
     htmlOut+=`</table></div>`;
-    if(dayDegraded)htmlOut+=`<p class="ewnote">${windLbl}の <b>*</b> 印は、900hPa/800hPaのデータが無い時間帯(GSM期間・5日目以降)のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。強めに見積もって判断してください。</p>`;
+    if(dayDegraded)htmlOut+=`<p class="ewnote">${windLbl}の <b>*</b> 印は、900hPa/800hPaのデータが無い時間帯(粗いモデル=GSM の時間帯)のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。強めに見積もって判断してください。</p>`;
     htmlOut+=`</section>`;
   }
 
@@ -2416,7 +2453,10 @@ document.getElementById("out").addEventListener("click",e=>{
   const more=document.querySelectorAll("#wk-tbl tr.wk-more");
   more.forEach(tr=>{tr.hidden=!open});
   btn.setAttribute("aria-expanded",open);
-  btn.textContent=open?"折りたたむ":`残り${more.length}日を表示`;
+  // 件数は日の行だけ数える。モデルの区切り行(.wk-sep)も一緒に畳むが日数ではない
+  // (畳む側と数える側で対象が違う。片方だけ直すと「残り4日」で3日しか出ない状態になる)
+  const days=document.querySelectorAll("#wk-tbl tr.wk-more:not(.wk-sep)").length;
+  btn.textContent=open?"折りたたむ":`残り${days}日を表示`;
 });
 
 // 見通し表の行→詳細予報へのジャンプ。
