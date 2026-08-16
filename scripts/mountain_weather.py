@@ -171,22 +171,109 @@ def _timing_label(hours):
     return labels[0]
 
 
-def _add_precip_notes(win, rep_cat, notes, skip_hours):
+def _add_precip_notes(win, rep_cat, notes, skip_hours, exclude_cats=frozenset()):
+    """代表天気でない降水系を「昼過ぎに雨」の形の注記に降格する。
+    exclude_cats には日内変化フレーズ(day_weather_phrase)に既に出したカテゴリを渡す。
+    渡さないと「晴れのち雨」と出したうえで注記にも「昼過ぎに雨」が並び、同じことを二度言う。"""
     seen = {}
     for e in win:
         if e["hour"] in skip_hours:
             continue
         cat = _wcat(e["code"])
-        if cat == rep_cat or cat not in PRECIP_CATS:
+        if cat == rep_cat or cat not in PRECIP_CATS or cat in exclude_cats:
             continue
         seen.setdefault(cat, []).append(e["hour"])
     for cat, hours in seen.items():
         notes.append(f"{_timing_label(hours)}に{CAT_LABEL[cat]}")
 
 
+# ---- 日内変化フレーズ (のち/時々/一時。index.html の dayWeatherPhrase と同一ロジック) ----
+# 気象庁 予報用語準拠: 前半後半で優勢が入れ替わる=のち / 断続的<1/2=時々 / 連続的<1/4=一時。
+# カテゴリ→表示ラベル。partly は晴れに畳む(真の曇天は cloudy が拾う)。
+# 詳細表は wcode の弱/強を別に出すので、ここは基本ラベルだけでよい。
+WBASE = {"clear": "晴れ", "partly": "晴れ", "cloudy": "曇り", "fog": "霧",
+         "drizzle": "霧雨", "rain": "雨", "showers": "にわか雨",
+         "snow": "雪", "snowshowers": "にわか雪", "thunder": "雷雨"}
+WLABEL2CAT = {l: c for c, l in CAT_LABEL.items()}  # 逆引き(注記の重複防止用)
+
+
+def _wbase_label(code):
+    return WBASE.get(_wcat(code))
+
+
+def _dominant(sub):
+    """最多ラベル(同数なら重症度が高い方)"""
+    cnt, sv = {}, {}
+    for e in sub:
+        cnt[e["label"]] = cnt.get(e["label"], 0) + 1
+        sv[e["label"]] = max(sv.get(e["label"], -1), e["sev"])
+    best, bc, bs = None, -1, -1
+    for label, c in cnt.items():
+        s = sv[label]
+        if c > bc or (c == bc and s > bs):
+            best, bc, bs = label, c, s
+    return best
+
+
+def day_weather_phrase(win):
+    """win=[{"hour","code"}] → 表示ラベルの列 ["晴れ", "のち", "曇り"]。窓が空なら None。
+    接続語は必ず奇数番目に来る(呼び出し側は phrase_text で連結するだけでよい)。"""
+    seq = sorted(({"hour": e["hour"], "label": _wbase_label(e["code"]),
+                   "sev": _wsev(e["code"]), "code": e["code"]}
+                  for e in win if _wbase_label(e["code"]) is not None),
+                 key=lambda e: e["hour"])
+    n = len(seq)
+    if not n:
+        return None
+    if len({e["label"] for e in seq}) == 1:  # 単一天気
+        return [seq[0]["label"]]
+    # 安全側: 窓内の悪天(最悪)は必ずフレーズに残す
+    sev_hours = [e for e in seq if e["code"] in SAFETY_OVERRIDE]
+    severe_label = max(sev_hours, key=lambda e: e["sev"])["label"] if sev_hours else None
+    # 第1優先: 前半/後半で優勢が入れ替われば「のち」
+    half = -(-n // 2)  # ceil
+    dom_a, dom_b = _dominant(seq[:half]), _dominant(seq[half:])
+    if dom_a != dom_b and (severe_label is None or severe_label in (dom_a, dom_b)):
+        return [dom_a, "のち", dom_b]
+    # 第2: 主天気P + 副次S を「一時/時々」で連結
+    p = _dominant(seq)
+    s = None
+    if severe_label is not None and severe_label != p:
+        s = severe_label  # 悪天は最優先で副次に採用
+    else:
+        rest = [e for e in seq if e["label"] != p]
+        if rest:
+            s = _dominant(rest)
+    if s is None:
+        return [p]
+    share = sum(1 for e in seq if e["label"] == s) / n
+    runs, prev = 0, False   # S の連続塊数
+    for e in seq:
+        is_s = e["label"] == s
+        if is_s and not prev:
+            runs += 1
+        prev = is_s
+    return [p, "一時" if (runs == 1 and share < 0.25) else "時々", s]
+
+
+def single_code_phrase(code):
+    """単一天気の日の表示フレーズ。従来の詳細ラベル(快晴/弱/強)を維持する。
+    code=2(晴れ時々曇り)だけは WMO のラベル自体が複合なので分解する。"""
+    if code == 2:
+        return ["晴れ", "時々", "曇り"]
+    return [wcode(code)]
+
+
+def phrase_text(phrase):
+    """フレーズ列を天気セルの文字列にする。CLI は markdown なのでアイコンは付けない
+    (Web の wxPhraseHtml に相当)。phrase が無ければ None を返し、呼び出し側で wcode に落とす。"""
+    return "".join(phrase) if phrase else None
+
+
 def summarize_daily_weather(times, codes):
     """hourly.time / hourly.weather_code から日ごとの代表天気を決める。
-    戻り値: {date_iso: {"code": int, "notes": [str, ...]}}。表示ラベルは既存 wcode を使う。"""
+    戻り値: {date_iso: {"code": int, "notes": [str,...], "phrase": [str,...]|None}}。
+    phrase は「晴れのち曇り」等の日内変化フレーズ(無ければ表示側が wcode に落とす)。"""
     by_date = {}
     for i, t in enumerate(times):
         # 予報末端(GSM打ち切り後)の時刻は code が None で返る。混ぜると重症度比較が壊れるので落とす
@@ -197,6 +284,10 @@ def summarize_daily_weather(times, codes):
     for date, entries in by_date.items():
         win = [e for e in entries if WX_WINDOW[0] <= e["hour"] <= WX_WINDOW[1]] or entries
         notes = []
+        # フレーズを先に決め、フレーズに出す降水カテゴリは注記から除外(重複防止)。
+        # 3つ目以降の降水系だけ注記に残る。
+        phrase = day_weather_phrase(win)
+        phrase_cats = {WLABEL2CAT[s] for s in (phrase or []) if s in WLABEL2CAT}
         # 第1層: 安全オーバーライド(悪天は無条件で日代表)
         overrides = [e for e in win if e["code"] in SAFETY_OVERRIDE]
         if overrides:
@@ -204,8 +295,11 @@ def summarize_daily_weather(times, codes):
             rep = overrides[0]["code"]
             rep_cat = _wcat(rep)
             # 代表(悪天)自身の時間注記は付けない: 天気列に既に出るため冗長。他の降水系のみ注記に残す。
-            _add_precip_notes(win, rep_cat, notes, {e["hour"] for e in overrides})
-            result[date] = {"code": rep, "notes": notes}
+            _add_precip_notes(win, rep_cat, notes, {e["hour"] for e in overrides}, phrase_cats)
+            # 単一天気の日は従来の詳細ラベル(強い雨など)を維持する
+            if phrase and len(phrase) == 1:
+                phrase = single_code_phrase(rep)
+            result[date] = {"code": rep, "notes": notes, "phrase": phrase}
             continue
         # 第2層: 日中の時間帯多数決(同数なら重症度が高い方)
         cat_hours = {}
@@ -228,8 +322,11 @@ def summarize_daily_weather(times, codes):
             if cnt > best or (cnt == best and sev > best_sev):
                 rep_code, best, best_sev = code, cnt, sev
         # 第3層: 代表でない降水系は注記に降格
-        _add_precip_notes(win, rep_cat, notes, set())
-        result[date] = {"code": rep_code, "notes": notes}
+        _add_precip_notes(win, rep_cat, notes, set(), phrase_cats)
+        # 単一天気の日は従来の詳細ラベル(快晴/晴れ時々曇り/弱/強等)を維持する
+        if phrase and len(phrase) == 1:
+            phrase = single_code_phrase(rep_code)
+        result[date] = {"code": rep_code, "notes": notes, "phrase": phrase}
     return result
 
 
@@ -917,7 +1014,7 @@ def past_summary_rows(data, dates, elev):
                     default=None)
         wxd = wx.get(date.isoformat(), {})
         rows.append({"date": date, "code": wxd.get("code", d["weather_code"][di]),
-                     "notes": wxd.get("notes", []),
+                     "notes": wxd.get("notes", []), "phrase": wxd.get("phrase"),
                      "tmin": d["temperature_2m_min"][di], "tmax": d["temperature_2m_max"][di],
                      "ws": ws, "wd": wd, "degraded": degraded,
                      "pr": d["precipitation_sum"][di], "sf": sf_all[di],
@@ -936,7 +1033,8 @@ def print_past_summary(rows, has_snow, elev):
     for r in rows:
         wj = "月火水木金土日"[r["date"].weekday()]
         snow_c = f" {snow_cell(r['depth'], r['sf'])} |" if has_snow else ""
-        print(f"| {r['date'].strftime('%m/%d')}({wj}) | {wcode(r['code'])}{wx_note_text(r.get('notes'))} "
+        wx_txt = phrase_text(r.get("phrase")) or wcode(r["code"])
+        print(f"| {r['date'].strftime('%m/%d')}({wj}) | {wx_txt}{wx_note_text(r.get('notes'))} "
               f"| {fnum(r['tmin'], '{:.0f}')}〜{fnum(r['tmax'], '{:.0f}')}℃ "
               f"| {wind_cell(r['wd'], r['ws'], r.get('degraded'))} "
               f"| {fnum(r['pr'], '{:.1f}')}mm |{snow_c}")
@@ -1170,6 +1268,7 @@ def daily_summary_rows(data, dates, elev):
             "date": date, "idx": day_idx, "reason": day_reason,
             "evening": evening, "night": night_bad, "mode": th["mode"],
             "code": wxd.get("code", d["weather_code"][di]), "notes": wxd.get("notes", []),
+            "phrase": wxd.get("phrase"),
             "tmin": tmin, "tmax": tmax,
             "ws": ws_max, "wd": wd_max, "degraded": w_degraded,
             "pr": pr_d, "prob": d["precipitation_probability_max"][di],
@@ -1191,7 +1290,8 @@ def print_daily_summary(rows, title, has_snow=False, elev=None):
                 + (" ⚠夕方" if r.get("evening") else "")
                 + (" ⚠夜間" if r.get("night") else ""))
         snow_c = f" {snow_cell(r.get('depth'), r.get('sf'))} |" if has_snow else ""
-        print(f"| {r['date'].strftime('%m/%d')}({wj}) | {mark} | {wcode(r['code'])}{wx_note_text(r.get('notes'))} "
+        wx_txt = phrase_text(r.get("phrase")) or wcode(r["code"])
+        print(f"| {r['date'].strftime('%m/%d')}({wj}) | {mark} | {wx_txt}{wx_note_text(r.get('notes'))} "
               f"| {r['view']} | {fnum(r['tmin'], '{:.0f}')}〜{fnum(r['tmax'], '{:.0f}')}℃ "
               f"| {wind_cell(r['wd'], r['ws'], r.get('degraded'))} "
               f"| {fnum(r['pr'], '{:.1f}')}mm | {fnum(r['prob'])}% |{snow_c}")

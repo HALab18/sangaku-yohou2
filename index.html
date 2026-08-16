@@ -580,7 +580,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.27β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.28β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -811,6 +811,7 @@ function summarizeDailyWeather(times,codes){
   return result;
 }
 // ---- 日内変化フレーズ (のち/時々/一時。scripts/mountain_weather.py の day_weather_phrase と同一ロジック) ----
+// CLI は markdown なのでラベルと接続語だけを連結する(phrase_text)。分岐は両者で揃えること。
 // 気象庁 予報用語準拠: 前半後半で優勢が入れ替わる=のち / 断続的<1/2=時々 / 連続的<1/4=一時。
 // カテゴリ→[表示ラベル, アイコンID]。partly は晴れに畳む(真の曇天は cloudy が拾う)。詳細表は弱/強を wcode で別表示。
 const WBASE={clear:["晴れ","wx-sun"],partly:["晴れ","wx-sun"],cloudy:["曇り","wx-cloud"],
@@ -951,8 +952,10 @@ const DEGRADED_LEVELS=[900,800];
 // i時刻の [稜線風速(m/s), 風向, degraded] を6気圧面から求める。材料が1つも無ければ [null,null,false]。
 // 風速は値のある面だけで線形補間。風向は角度なので同じ式では補間できず、
 // 「値のある面のうち標高的に一番近い面の値をそのまま採用」する(固定2面時代の t<0.5 の一般化)。
-// 標高 LOW_ELEV 未満は気圧面補間をせず地上10m風をそのまま返す(平地で上空760mの風が出るのを
-// 避ける)。突風 wind_gusts_10m と同じ高度なので表の中でも整合する。欠測は現行同様 null に倒す。
+// 標高によらず同じ式で内挿する。地上10m を最下点に入れてあるので、低標高の山では自然に
+// 地上風寄りの値になる(平地で上空760mの風がそのまま出るのを避けるための設計)。
+// LOW_ELEV はここでは使わない ── 列見出しを「地上風(10m)」に変える境界(windLbl)としてのみ
+// 使う値なので、ここに標高分岐があるものと思って読まないこと。欠測は現行同様 null に倒す。
 function ridgeWind(h,i,elev){
   const pts=[],dirs=[];
   // 地上10m風を「高度10mの面」として内挿の最下点に置く。925hPa(760m)より低い標高が
@@ -1231,6 +1234,13 @@ const META_MODELS={jma_msm:"MSM",jma_gsm:"GSM"};
 const META_KEY=m=>`pwmeta1:${m}`;
 const META_TTL_MS=10*60*1000;   // 10分。MSM の更新間隔3時間に対して十分細かく、
                                 // かつ検索のたびにリクエストが増えない(無料枠を守るのが優先)
+// ★ この取得にも必ず時間の上限を置く。modelInit は fetchAll() の Promise.allSettled に
+// 主要データと同じ束で入っているため、ここが永久に pending になると **予報全体が
+// 「予報を取得中…」+ボタン無効のまま固まる**(fetch は既定でタイムアウトせず、モバイル回線の
+// 切り替わり・キャリアのプロキシ・キャプティブポータルで現実に起きる。API_TIMEOUT_MS の
+// コメント参照)。主要データの 20 秒より短くしてあるのは、発表時刻が補助表示で、
+// 落ちても注記からこの項目が消えるだけだから(muniOrNull の MUNI_TIMEOUT_MS と同じ考え方)。
+const META_TIMEOUT_MS=5000;
 async function modelInit(model){
   try{
     const c=JSON.parse(pwSLoad(META_KEY(model))||"null");
@@ -1239,8 +1249,10 @@ async function modelInit(model){
   }catch(e){}
   // 発表時刻は補助表示。ここで落として予報が出なくなるのは本末転倒なので、
   // 失敗は必ず握りつぶして null を返す(注記からこの項目が消えるだけにする)
+  const ac=new AbortController();
+  const timer=setTimeout(()=>ac.abort(),META_TIMEOUT_MS);
   try{
-    const r=await fetch(`https://api.open-meteo.com/data/${model}/static/meta.json`);
+    const r=await fetch(`https://api.open-meteo.com/data/${model}/static/meta.json`,{signal:ac.signal});
     if(!r.ok)return null;
     const j=await r.json();
     const v=j.last_run_initialisation_time;
@@ -1248,6 +1260,7 @@ async function modelInit(model){
     try{pwSSave(META_KEY(model),JSON.stringify({t:Date.now(),v}))}catch(e){}
     return new Date(v*1000);
   }catch(e){return null}
+  finally{clearTimeout(timer)}
 }
 // 「MSM 08/10 18:00 ／ GSM 08/10 15:00」の形にする。取れたモデルだけ並べ、
 // 1つも取れなければ "" を返す(呼び出し側が発表時刻の記載ごと落とす)
@@ -1294,7 +1307,22 @@ function normalizeSeries(data,hourlyKeys,dailyKeys){
   return data;
 }
 
-async function run(mt){
+// ---- 直近の取得結果の使い回し (見通し表の行クリック専用) ----
+// 見通し表は10日ぶんを1回の取得でまかなっているのに、行をクリックして詳細ウィンドウの外の日へ
+// 移ると go() → run() を頭から回していたため、**手元にあるデータを捨てて6リクエスト
+// (JMA本体・補完・周辺CAPE・meta×2・モデル比較) を投げ直していた**。
+// Open-Meteo の無料枠を守るのが認証ゲートを設けた目的そのものなので、ここは使い回す。
+//
+// ★ 使い回すのは opts.reuse を明示的に渡された時だけ = 行クリックだけ。利用者自身の
+//   フォーム送信・GPS・座標指定・共有URLは従来どおり毎回取りに行く(「検索し直したのに
+//   古い数字が出る」を作らない)。使い回した回は fetchedAt が元の取得時刻のまま残るので、
+//   各表のキャプションの「取得 …」が自動的に本当の鮮度を示す(オフライン再生と同じ方針)。
+const REUSE_TTL_MS=10*60*1000;   // MSM の更新間隔3時間に対して十分短い
+const fetchKey=mt=>`${mt.lat},${mt.lon},${mt.elev}`;
+let lastFetch=null;   // {key,t,data,supFailed,inits,fetchedAt,cmp,cmpRange}
+
+async function run(mt,opts){
+  const reuse=!!(opts&&opts.reuse);
   const status=document.getElementById("status"),out=document.getElementById("out");
   const step=+(document.querySelector('input[name="mstep"]:checked')?.value)===1?1:3;
   const days=4;
@@ -1317,6 +1345,10 @@ async function run(mt){
   // 圏外だと分かっているなら通信は試さない。試すと apiJson の3回リトライで
   // 約4.5秒待たされたうえで、結局スナップショットに落ちることになる。
   let snap=(sid&&!navigator.onLine)?snapLoad(sid):null;
+  // 行クリックからの再描画で、同じ地点の取得結果がまだ新しければそれを使う(lastFetch 参照)。
+  // 保存済み予報の再生(snap)が先に決まっている時は触らない。
+  const cached=(reuse&&!snap&&lastFetch&&lastFetch.key===fetchKey(mt)
+    &&Date.now()-lastFetch.t<=REUSE_TTL_MS)?lastFetch:null;
   let data,supFailed=false,fetchedAt=null,cmpSnap=null;
   let inits={jma_msm:null,jma_gsm:null};
 
@@ -1391,14 +1423,17 @@ async function run(mt){
       }
       data.hourly.cape_area=ca;data.hourly.cin_area=ci;
     }
+    // 見通し表の行クリックで同じ地点を描き直すときに使い回す(モデル比較は日付範囲に
+    // 依存するので、下の比較表ブロックで cmp / cmpRange を後から入れる)。
+    lastFetch={key:fetchKey(mt),t:Date.now(),data,supFailed,inits,fetchedAt,cmp:null,cmpRange:null};
   }
 
   // 圏外でその山の保存も無いなら、取りに行っても必ず失敗する。3回リトライ(約4.5秒)ぶん
   // 「予報を取得中…」を見せてから駄目でしたと言うより、すぐ見られるものを案内する。
   // (navigator.onLine は false の側だけが信用できる。true でも圏外のことがあるので、
   //  取得を試みる側は従来どおり失敗してからスナップショットに落ちる)
-  if(!snap&&!navigator.onLine)throw offlineErr(null);
-  if(!snap){
+  if(!snap&&!cached&&!navigator.onLine)throw offlineErr(null);
+  if(!snap&&!cached){
     try{await fetchAll()}
     catch(e){
       // 通信できないだけなら保存済みの予報に落ちる。無ければ従来どおりエラーで抜ける
@@ -1408,6 +1443,13 @@ async function run(mt){
     }
   }
   const offline=!!snap;
+  // 使い回した回。fetchedAt も元の取得時刻のまま引き継ぐので、キャプションの「取得 …」が
+  // 実際の鮮度を示す(ここで Date.now() に差し替えてはいけない = 取れていない時刻を名乗ることになる)
+  const reused=!offline&&!!cached;
+  if(reused){
+    data=cached.data;supFailed=cached.supFailed;
+    inits=cached.inits;fetchedAt=cached.fetchedAt;
+  }
   if(offline){
     data=snap.data;supFailed=!!snap.supFailed;
     const ini=snap.init||{};
@@ -1743,7 +1785,6 @@ async function run(mt){
 
   // モデル比較 (常時表示。ただし補助情報なので、失敗しても主要な予報表は必ず描画する)
   {
-    if(!offline)status.textContent="モデル比較を取得中…";
     const cmpEnd=detailEnd;
     const models=["jma_seamless","ecmwf_ifs025","gfs_seamless"];
     const labels={jma_seamless:"気象庁JMA",ecmwf_ifs025:"欧州ECMWF",gfs_seamless:"米国GFS"};
@@ -1752,15 +1793,23 @@ async function run(mt){
     // 一方この時点で主要な予報表(直近実況・10日見通し・時間別詳細)は既に組み上がっており、
     // 描画は最後の out.innerHTML まで行われない。ここで throw させると、完成済みの
     // 稜線風・気温・降水・登山指数を丸ごと捨てることになるので、失敗はここで閉じ込める。
+    // この表だけは日付範囲(start〜cmpEnd)に依存するので、使い回せるのは範囲が同じ時だけ。
+    // 範囲が変わっていれば、他が使い回しでもこの1本だけ取り直す。
+    const cmpRange=`${iso(start)}..${iso(cmpEnd)}`;
     let cd=null;
     if(offline)cd=cmpSnap;   // 保存時に取れていた分をそのまま使う(通信はしない)
-    else try{
-      cd=await apiJson(FORECAST_URL,{
-        latitude:mt.lat,longitude:mt.lon,elevation:mt.elev,
-        hourly:"temperature_2m,precipitation,wind_speed_10m,cloud_cover",
-        timezone:"Asia/Tokyo",wind_speed_unit:"ms",models:models.join(","),
-        start_date:iso(start),end_date:iso(cmpEnd)});
-    }catch(e){cd=null}
+    else if(reused&&cached.cmpRange===cmpRange)cd=cached.cmp;
+    else{
+      status.textContent="モデル比較を取得中…";
+      try{
+        cd=await apiJson(FORECAST_URL,{
+          latitude:mt.lat,longitude:mt.lon,elevation:mt.elev,
+          hourly:"temperature_2m,precipitation,wind_speed_10m,cloud_cover",
+          timezone:"Asia/Tokyo",wind_speed_unit:"ms",models:models.join(","),
+          start_date:iso(start),end_date:iso(cmpEnd)});
+      }catch(e){cd=null}
+      if(lastFetch&&lastFetch.key===fetchKey(mt)){lastFetch.cmp=cd;lastFetch.cmpRange=cmpRange}
+    }
     cmpSnap=cd;   // 保存用(オフライン時は素通り)
     htmlOut+=`<h2>モデル間比較（各モデルが一致するほど信頼度が高い）</h2>`;
     if(!cd||!cd.hourly||!Array.isArray(cd.hourly.time)){
@@ -1823,7 +1872,9 @@ async function run(mt){
   // 保存できたかどうかで案内の文面が変わるので、保存行だけは印(SNAP_SLOT)を置いておき
   // ここで差し込む。保存に失敗した回・GPS現在地・座標指定では行ごと出ない
   // = できない約束をしない。
-  if(!offline&&sid&&snapSave(mt,{data,supFailed,cmp:cmpSnap,
+  // 使い回した回は保存し直さない(同じ内容を 56KB 書き直すだけになる)。
+  // 索引には前回の保存が残っているので、下の snapRowHtml は従来どおり出る。
+  if(!offline&&!reused&&sid&&snapSave(mt,{data,supFailed,cmp:cmpSnap,
       init:{msm:inits.jma_msm?inits.jma_msm.getTime():null,
             gsm:inits.jma_gsm?inits.jma_gsm.getTime():null}}))
     snapRequestPersist();  // 残す価値のあるデータができた回だけ。await しない(描画を待たせない)
@@ -1872,13 +1923,14 @@ function trackSearch(term,result){
 // 見通し表の行クリックからのジャンプ(jumpToDetail)が、GPS再測位や地名再解決を
 // やり直さずに「同じ地点・別日付」で再検索できるよう、直近の検索条件を覚えておく
 let lastMt=null;
-async function go(mt){
+// opts は run() へ素通しする。今のところ {reuse:true}(見通し表の行クリック)だけが使う。
+async function go(mt,opts){
   if(!pwGateOk())return; // inert 非対応ブラウザ対策の多重防御
   lastMt=mt;
   const status=document.getElementById("status");
   const term=mt.here?"(現在地)":mt.coord?"(座標指定)":mt.name;
   runBtns().forEach(b=>b.disabled=true);
-  try{await run(mt);recentAdd(mt);trackSearch(term,"success")}
+  try{await run(mt,opts);recentAdd(mt);trackSearch(term,"success")}
   catch(e){
     // apiJson が既に利用者向けの文面(対処つき)に変換しているのでそのまま出す
     status.className="err";status.textContent=e.message;
@@ -2190,7 +2242,11 @@ function snapLoad(id){
   if(!d.daily||!Array.isArray(d.daily.time))return null;
   return o;
 }
-const snapHas=name=>snapIndex().some(x=>x.id==="n:"+name);
+// 保存済みの山名の集合。snapIndex() は JSON.parse + 全件の型検査 + 期限切れ本体の削除
+// (書き込みを伴うことがある)まで行うので、**一覧を描くたびに行ごとに呼ばないこと**。
+// 呼び出し側で1回だけ作って行ごとは has() で引く(サジェストは1キーストロークごとに
+// 再描画されるため、行ごとに呼ぶと入力のたびに最大12回 localStorage を触ることになる)。
+const snapNameSet=()=>new Set(snapIndex().map(x=>x.id));
 const snapEntry=id=>snapIndex().find(x=>x.id===id)||null;
 // 保存。失敗しても予報の表示自体は成功しているので、呼び出し側は false を受けて
 // 「保存しました」の案内を出さないだけにする(エラーにはしない)。
@@ -2374,6 +2430,8 @@ function recentRemove(name){
         mclear=document.getElementById("mnameClear");
   function render(list,recents){
     if(!list.length&&!recents.length){sugg.hidden=true;sugg.innerHTML="";return}
+    // 📴印の判定材料。行ごとに引き直すと localStorage を最大12回触るのでここで1回だけ作る
+    const saved=recents.length?snapNameSet():null;
     // 見出しは1本のまま。ドロップダウンは max-height:min(280px,45vh) しかないので、
     // ピン用にもう1本見出しを立てると行数を食いすぎる。文言で📌の所在を示す
     const head=recents.length?`<span class="rchead">最近見た山（📌でピン留め）</span>`+recents.map((r,i)=>{
@@ -2383,7 +2441,7 @@ function recentRemove(name){
       // 圏外でも開ける山に印を付ける。電波が無い場所でアプリを開いたとき、どれが
       // 見られるのかがここで分かる。📌 は同じ一覧で「履歴のピン留め」に使っている別機能
       // なので流用しない(同じ記号を2つの意味に使うと混同する)
-      const off=snapHas(r.n)?`<span class="rcoff" title="保存済み: 圏外でも表示できます" aria-label="圏外でも表示できます">📴</span>`:"";
+      const off=saved.has("n:"+r.n)?`<span class="rcoff" title="保存済み: 圏外でも表示できます" aria-label="圏外でも表示できます">📴</span>`:"";
       return `<div data-n="${esc(r.n)}" class="rc${pinned?" pinned":""}`
       +`${pinLast?" rcpinlast":""}${i===recents.length-1?" rclast":""}" tabindex="0" role="option">`
       +`<span>${esc(r.n)}${off}</span><small>${esc(r.p)}${r.e==null?"":" "+esc(r.e)+"m"}</small>`
@@ -2490,7 +2548,9 @@ async function jumpToDetail(dateStr){
   jumpBusy=true;
   try{
     document.getElementById("mdate").value=dateStr;
-    await go(lastMt);
+    // 表示する日を変えるだけなので、直前に取った10日ぶんのデータをそのまま使い回す
+    // (run() の lastFetch 参照。ここを普通の go() にすると6リクエストを投げ直すことになる)
+    await go(lastMt,{reuse:true});
     const sec=document.getElementById("detail-"+dateStr);
     if(sec)scrollToDetail(sec);
   }finally{jumpBusy=false}
