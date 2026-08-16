@@ -277,6 +277,9 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
 /* 指数の降格理由・濡れ注意・雨雪の別。数値の読み取りを邪魔しないよう小さく下段に置く。
    色は .ew と同系にして「注意を促す情報」であることを揃える。 */
 .dr{display:block;font-size:.76em;color:#a03415;font-weight:700;margin-top:2px;line-height:1.3;white-space:nowrap}
+/* その日を冬山・残雪期の基準で判定したことを示す印。夏側には付けない(全日に付くと区別にならない) */
+.wmode{display:inline-block;margin-left:5px;padding:0 5px;border-radius:8px;background:#dde9f5;
+  color:#23477a;font-size:.76em;font-weight:700;vertical-align:middle;white-space:nowrap}
 /* 稜線風の degraded 印(900hPa/800hPa欠測)。find の .altm と同じ「控えめだが見える」トーン */
 .dgd{color:#8a94a8;font-weight:700;margin-left:1px}
 .wxnote{display:block;font-size:.78em;color:#6b7280;margin-top:2px;line-height:1.3}
@@ -302,6 +305,8 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
    予報表のどれよりも先に目に入る強さにしておく */
 .offnote{background:#fdeec2;border-left:5px solid #b8791a;color:#5c4310;padding:10px 12px;
   border-radius:0 6px 6px 0;margin:0 0 14px;font-size:.92em;line-height:1.6}
+/* 保存から1日以上経った予報。黄色のままだと「少し古い」と同じ強さで読まれるので警告色に上げる */
+.offnote.offstale{background:#f9d9cf;border-left-color:#a03415;color:#5c1e0d}
 /* 端末内への保存と「圏外用に固定」 */
 .snaprow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;
   margin:0 0 14px;font-size:.85em;color:#555}
@@ -580,7 +585,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.28β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.29β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -907,6 +912,16 @@ const JST_HM=new Intl.DateTimeFormat("en-GB",
   {timeZone:"Asia/Tokyo",hour:"2-digit",minute:"2-digit",hour12:false});
 // 発表時刻の併記用(年は省く)。en-GB は dd/mm なので、日本式の MM/DD になるよう明示的に組む
 const JST_MD={format:d=>JST_YMD.format(d).slice(5).replace("-","/")};
+// 保存した予報を再生しているときの「取得からの経過時間」。絶対時刻だけだと、圏外で
+// 何日も同じ画面を見ている状態に気づけない(表の数字はいつまでも正常に見える)。
+function agoTxt(ms){
+  if(!(ms>=0))return"";
+  const mi=Math.round(ms/60000);
+  if(mi<60)return`約${Math.max(1,mi)}分前`;
+  const hr=Math.round(mi/60);
+  if(hr<24)return`約${hr}時間前`;
+  return`約${Math.max(1,Math.round(hr/24))}日前`;
+}
 // JST の今日を「ローカル深夜の Date」として返す。時刻成分を持たないので、
 // 以降の addDays / iso / md / wj は従来どおりそのまま使える。
 function jstToday(){
@@ -1510,9 +1525,14 @@ async function run(mt,opts){
   // これが出ていないと「今の予報」として読まれる = 安全と逆方向。
   // 検索した日のデータを含まない古い保存の場合、日別・詳細のループは日ごと黙って
   // 落ちる(d.time.indexOf<0 / !idxs.length で continue)ので、その旨もここで断る。
+  // 経過時間を併記し、1日以上前なら見出しと色を上げる。絶対時刻だけでは、圏外で何日も
+  // 同じ保存を見ている状態(表の数字はいつまでも正常に見える)に気づく手がかりが無い。
+  const offAge=offline?Date.now()-fetchedAt:0;
+  const offStale=offAge>24*3600*1000;
   const offBanner=offline
-    ?`<div class="offnote"><b>📴 オフライン表示</b> — ${JST_YMD.format(fetchedAt)} `
-     +`${JST_HM.format(fetchedAt)} JST に取得して端末に保存した予報です。それ以降の更新は`
+    ?`<div class="offnote${offStale?" offstale":""}"><b>📴 `
+     +`${offStale?"1日以上前に保存した予報です":"オフライン表示"}</b> — ${JST_YMD.format(fetchedAt)} `
+     +`${JST_HM.format(fetchedAt)} JST（${agoTxt(offAge)}）に取得して端末に保存した予報です。それ以降の更新は`
      +`反映されていません。電波の届く場所で再読み込みしてください。`
      +(d.time.includes(iso(start))?""
        :`<br>保存してから日が進んだため、開始日 ${iso(start)} のデータは残っていません`
@@ -1681,7 +1701,7 @@ async function run(mt,opts){
   rows.forEach((r,i)=>{
     const more=i>=WK_HEAD;
     const cls=["wk-row"];if(more)cls.push("wk-more");
-    htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}" tabindex="0" role="button"><td>${md(r.d)}${wj(r.d)}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"><span class="ewi">⚠</span>夕方</span>':""}${r.night?'<span class="ew"><span class="ewi">⚠</span>夜間</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
+    htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}" tabindex="0" role="button"><td>${md(r.d)}${wj(r.d)}${r.mode==="冬山・残雪期"?'<span class="wmode" title="冬山・残雪期の基準(稜線風8/12m/s・3h降水1/3mm)で判定した日">冬</span>':""}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"><span class="ewi">⚠</span>夕方</span>':""}${r.night?'<span class="ew"><span class="ewi">⚠</span>夜間</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
     <td>${r.view}</td><td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws,r.degraded)}</td>
     <td>${u1(r.pr,"mm")}</td><td>${u0(r.prob,"%")}</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
   });
@@ -1706,7 +1726,8 @@ async function run(mt,opts){
     const thTxt={"夏山":"稜線風10/15m/s・3h降水1/5mm","冬山・残雪期":"稜線風8/12m/s・3h降水1/3mm"};
     if(modes.length)htmlOut+=`<p class="ewnote">判定モード: `
       +modes.map(m=>`${m}(${thTxt[m]})`).join(" / ")
-      +(modes.length>1?"（日ごとに山頂気温を見て切り替わります）":"")+`</p>`;
+      +(modes.length>1?"（日ごとに山頂気温を見て切り替わります）":"")
+      +(rows.some(r=>r.mode==="冬山・残雪期")?"　表の日付に付く<b>冬</b>印がその日です。":"")+`</p>`;
   }
   // 詳細 (表示間隔 step=3 or 1)
   for(let dt2=new Date(start);dt2<=detailEnd;dt2=addDays(dt2,1)){

@@ -170,6 +170,9 @@ th:nth-child(2),td.nm{box-shadow:inset -1px 0 0 var(--line)}
 td.nm a{color:var(--link);font-weight:700;text-decoration:none}
 td.nm a:hover{text-decoration:underline}
 td.nm small{display:block;color:#8a94a8;font-size:.82em;font-weight:400}
+/* スコアの減点内訳。スコアの数字だけでは「何で引かれたか」が分からず、隣の列を突き合わせる
+   必要があった。県・標高の行より一段弱い色にして、山名の読み取りを邪魔しないようにする。 */
+td.nm small.brk{color:#a2708a;font-size:.78em;letter-spacing:.02em}
 /* 行全体をクリック可能に(index.htmlの見通し表の行ジャンプと挙動を統一)。
    tr自体にはtabindexを付けない: 山名の<a>が既にキーボードでフォーカスできる本物のリンクで、
    行にも付けると同じ行でTab停止が2回になってしまう(マウス/タッチだけの利便性強化)。
@@ -287,6 +290,15 @@ footer a{color:var(--link)}
     </label>
     <label>日付
       <select id="date" autocomplete="off"></select>
+    </label>
+    <label>標高
+      <select id="elev" autocomplete="off">
+        <option value="">すべて</option>
+        <option value="-1000">〜1000m</option>
+        <option value="1000-2000">1000〜2000m</option>
+        <option value="2000-2500">2000〜2500m</option>
+        <option value="2500-">2500m〜</option>
+      </select>
     </label>
   </div>
   <button class="go" id="go">この条件でさがす</button>
@@ -510,7 +522,8 @@ footer a{color:var(--link)}
   }
 
   var elRegion=document.getElementById("region"),elPref=document.getElementById("pref"),
-      elDate=document.getElementById("date"),elGo=document.getElementById("go"),
+      elDate=document.getElementById("date"),elElev=document.getElementById("elev"),
+      elGo=document.getElementById("go"),
       elHint=document.getElementById("hint"),elStatus=document.getElementById("status"),
       elResults=document.getElementById("results");
 
@@ -592,9 +605,22 @@ footer a{color:var(--link)}
     });
     updateHint();
   }
+  // 標高帯。未選択("")なら判定を素通りする = 従来どおり全部が対象。
+  // 上限は「未満」で切る(2000m ちょうどの山は 2000〜2500m 側に入る)。
+  var ELEV_BANDS={"-1000":[0,1000],"1000-2000":[1000,2000],"2000-2500":[2000,2500],"2500-":[2500,1e9]};
+  var ELEV_LABEL={"-1000":"〜1000m","1000-2000":"1000〜2000m","2000-2500":"2000〜2500m","2500-":"2500m〜"};
+  function inElevBand(m,e){
+    if(!e)return true;
+    var b=ELEV_BANDS[e];
+    if(!b)return true;   // 未知の値(旧キャッシュ・手改変)は絞り込まない側に倒す
+    return m.el>=b[0]&&m.el<b[1];
+  }
+  // 絞り込みは fetch の手前(ここ)で行う。描画後に間引く形にすると、標高帯を変えるたびに
+  // 対象外の山まで Open-Meteo に問い合わせることになり、認証ゲートで守っている無料枠を削る。
   function targets(){
-    var r=elRegion.value,p=elPref.value;
+    var r=elRegion.value,p=elPref.value,e=elElev.value;
     return MOUNTAINS.filter(function(m){
+      if(!inElevBand(m,e))return false;
       var prefs=prefsOf(m);
       // 県が選択されていれば、その県を含む山を対象にする(県境またぎは各県で拾える)
       if(p)return prefs.indexOf(p)!==-1;
@@ -619,10 +645,18 @@ footer a{color:var(--link)}
     var msg="対象 "+n+"座";
     if(reqs>1)msg+=" / "+reqs+"回に分けて取得します";
     else msg+=" / 1回の取得で完了します";
+    // 標高帯を絞ると対象0座になりうる(エリア・県だけでは起きなかった)。押しても
+    // 「対象の山がありません」で終わるので、押させる前に理由の分かる文言で止める。
+    if(!n){
+      elHint.textContent="この条件に該当する山がありません（標高の条件をゆるめてください）";
+      elGo.disabled=true;
+      return;
+    }
     elHint.textContent=msg;
   }
   elRegion.addEventListener("change",fillPrefs);
   elPref.addEventListener("change",updateHint);
+  elElev.addEventListener("change",updateHint);
 
   // ---- 稜線風速の補間 (index.html / mountain_weather.py と同じ LEVELS・同じ線形補間) ----
   // 山頂標高を挟む上下2気圧面の風速を線形補間して「稜線風速」を推定する。
@@ -953,28 +987,35 @@ footer a{color:var(--link)}
     var actMax=actTemp("max"), actMin=actTemp("min");
     if(!winter&&((actMax!=null&&actMax<WINTER_TMAX)||(actMin!=null&&actMin<WINTER_TMIN)))winter=true;
     var s=100;
+    // 減点は控えながら引く(内訳を表に出すため)。★ 引く順序と式は変えないこと。
+    // まとめて計算してから一度に引くと浮動小数の丸めが変わり、最後の Math.round が
+    // 境界でずれてスコアが1点動く日が出る。あくまで「引いた値を記録する」だけにする。
+    var dSun=0,dPre=0,dWind=0,dCold=0;
     // ① 晴天度 (最大 -28)
-    if(sunFrac!=null)s-=(1-sunFrac)*28;
-    else if(code!=null)s-=code<=1?0:code===2?8:code===3?18:22;
+    if(sunFrac!=null){dSun=(1-sunFrac)*28;s-=dSun}
+    else if(code!=null){dSun=code<=1?0:code===2?8:code===3?18:22;s-=dSun}
     // 天気コードの悪天(雨雪雷)を軽く上乗せ
-    if(code!=null){if(code>=95)s-=8;else if(code>=71&&code<=86)s-=5;else if(code>=51&&code<=82)s-=4}
+    if(code!=null){var dBad=code>=95?8:(code>=71&&code<=86)?5:(code>=51&&code<=82)?4:0;
+      dSun+=dBad;s-=dBad}
     // ② 降水量 (最大 -30) - 行動可否に効くのは実際に降る量。
     // 以前は「確率-10 / 量-20」だったが、気象庁モデルに降水確率が無いため量に一本化した。
     // 降水確率(pprob)は表には出すが、ここには足さない(スコアの意味を変えないため)
-    if(psum!=null)s-=Math.min(psum,10)/10*30;
+    if(psum!=null){dPre=Math.min(psum,10)/10*30;s-=dPre}
     // ③ 稜線風 (最大 -32)
     // 夏: 6m/s以下=0、18m/s以上=最大 / 冬: 4m/s以下=0、12m/s以上=最大。
     // 冬は同じ風速でも危険度が段違いに上がるため、正式判定の閾値(8/12m/s)に合わせて前倒しする。
     if(ridgeWmax!=null){
       var w0=winter?4:6, wSpan=winter?8:12;
-      s-=Math.max(0,Math.min(1,(ridgeWmax-w0)/wSpan))*32;
+      dWind=Math.max(0,Math.min(1,(ridgeWmax-w0)/wSpan))*32;
+      s-=dWind;
     }
     // ④ 雪・寒気 (最大 -10)
-    if(snow!=null&&snow>0)s-=Math.min(snow,5)/5*5;
-    if(tmin!=null&&tmin<-5)s-=Math.min((-5-tmin),15)/15*5;
+    if(snow!=null&&snow>0){var dS=Math.min(snow,5)/5*5;dCold+=dS;s-=dS}
+    if(tmin!=null&&tmin<-5){var dT=Math.min((-5-tmin),15)/15*5;dCold+=dT;s-=dT}
     return {v:Math.round(Math.max(0,Math.min(100,s))),sunFrac:sunFrac,sunAlt:sunAlt,
       code:code,wxRep:wxRep,winter:winter,abc:formalIndex(d,mt,winter),
-      psum:psum,pprob:pprob,ridgeWmax:ridgeWmax,ridgeDegraded:ridgeDegraded,tmax:tmax,tmin:tmin};
+      psum:psum,pprob:pprob,ridgeWmax:ridgeWmax,ridgeDegraded:ridgeDegraded,tmax:tmax,tmin:tmin,
+      brk:{sun:dSun,pre:dPre,wind:dWind,cold:dCold}};
   }
   // 詳細ページと同じ「正式な登山指数 A/B/C」を各行に併記するために計算する。
   // スコア(相対比較のふるい)とは別物なので、両方を並べて食い違いに気づけるようにする。
@@ -1047,6 +1088,20 @@ footer a{color:var(--link)}
   function pmm(v){if(v==null)return "-";if(v<0.05)return "0.0mm";return v.toFixed(1)+"mm"}
   // スコアの A/B/C ランク色分け (find-score.html の閾値と一致: A>=70 / B>=45 / C<45)
   function rankOf(v){return v>=70?"a":v>=45?"b":"c"}
+  // スコアの減点内訳。数字だけでは「何で引かれた山なのか」が分からず、日照・降水・風の列を
+  // 突き合わせないと読めなかった。減点の大きい順に並べ、0.5点未満は省く。
+  // ★ 「100 − 合計」の形にはしないこと。score は最後に 0〜100 へクランプしているので、
+  //   減点合計が100を超える日は表示スコアと一致しない(内訳の方が正しく、表示が下げ止まる)。
+  function brkHtml(b,v){
+    if(!b)return"";
+    var items=[["日照",b.sun],["降水",b.pre],["風",b.wind],["雪寒",b.cold]]
+      .filter(function(x){return x[1]>=0.5})
+      .sort(function(x,y){return y[1]-x[1]});
+    // 0.5点未満だけで構成される日は項目が1つも残らない。ここで「減点なし」と言い切ると
+    // スコアが99なのに減点なし、という食い違いになるので、満点かどうかで文言を分ける
+    if(!items.length)return'<small class="brk">'+(v>=100?"減点なし":"減点1点未満")+'</small>';
+    return'<small class="brk">'+items.map(function(x){return x[0]+"-"+Math.round(x[1])}).join(" / ")+'</small>';
+  }
 
   // ---- 検索実行 ----
   // キー接頭辞の数字は保存形式のバージョン。sc の中身を変えたら必ず上げる
@@ -1068,16 +1123,18 @@ footer a{color:var(--link)}
   //            `*` を出すようにした(sc の形が変わる)
   //  / find13: 夏冬モードの判定窓・正式指数の判定窓を行動時間帯5〜17時→5〜16時に変更
   //            (winter判定・稜線風の減点・abc がこの窓に依存するためスコアが変わりうる)
+  //  / find14: sc に減点内訳 brk を追加(sc の形が変わる)。あわせてキーに標高帯を足した
+  //            (標高帯で対象座数が変わるため、同じエリア・県・日付でも別の結果になる)
   // 上げ忘れると旧キャッシュがそのまま復元され、天気列だけ古い表示になる。
-  function cacheKey(r,p,date){return "find13:"+r+":"+p+":"+date}
+  function cacheKey(r,p,e,date){return "find14:"+r+":"+p+":"+e+":"+date}
   // 直近の検索条件を保存するキー。ページを再訪した時にセレクタと結果を復元する用途
   // (bfcache が効かない iOS 直リンク等のフォールバック。詳細は末尾の restoreLastSearch)。
-  var LAST_KEY="find13:last";
+  var LAST_KEY="find14:last";
   // 旧世代のキャッシュキー掃除。バージョンを上げても古い接頭辞のキーが sessionStorage に
   // 残り続け、quota に達するとキャッシュが黙って無効化される(認証ゲートが守っている
   // 無料枠と逆方向に働く)。既知の旧接頭辞を明示的に消す(localStorageの列挙APIには依存しない)。
   // 次にバージョンを上げる時は、この配列に現行の "find13" を追記すること。
-  var OLD_FIND_PREFIXES=["find2","find3","find4","find5","find6","find7","find8","find9","find10","find11","find12"];
+  var OLD_FIND_PREFIXES=["find2","find3","find4","find5","find6","find7","find8","find9","find10","find11","find12","find13"];
   function cleanupOldCache(){
     try{
       var ks=[];for(var i=0;i<sessionStorage.length;i++)ks.push(sessionStorage.key(i));
@@ -1096,11 +1153,11 @@ footer a{color:var(--link)}
   var CACHE_TTL_MS=30*60*1000;   // 30分
   async function search(fromRestore){
     if(needsPrefSelection()){elStatus.textContent="都道府県を選択してから検索してください";return}
-    var ms=targets(),date=elDate.value,r=elRegion.value,p=elPref.value;
+    var ms=targets(),date=elDate.value,r=elRegion.value,p=elPref.value,e=elElev.value;
     if(!ms.length){elStatus.textContent="対象の山がありません";return}
     elStatus.className="";elResults.innerHTML="";elGo.disabled=true;
     try{
-      var key=cacheKey(r,p,date),cached=null;
+      var key=cacheKey(r,p,e,date),cached=null;
       try{cached=JSON.parse(pwSLoad(key)||"null")}catch(e){}
       // 期限切れ・旧形式(rows が直接入った配列)は使わない。取り直す方が安全側。
       if(cached&&(!cached.t||!cached.rows||(Date.now()-cached.t)>CACHE_TTL_MS))cached=null;
@@ -1128,7 +1185,7 @@ footer a{color:var(--link)}
         pwSSave(key,JSON.stringify({t:gotAt,rows:rows}));
       }
       // 復元用に「最後の検索条件」を保存 (実際の rows は cacheKey 側に既に入っている)
-      pwSSave(LAST_KEY,JSON.stringify({r:r,p:p,date:date}));
+      pwSSave(LAST_KEY,JSON.stringify({r:r,p:p,e:e,date:date}));
       // 発表時刻。失敗しても "" が返るだけで一覧の表示には影響しない
       var initAll=await initTxt();
       render(rows,date,gotAt,initAll);
@@ -1137,7 +1194,7 @@ footer a{color:var(--link)}
       // 足切り分離した内訳をステータスに出す
       var safeN=rows.filter(function(x){return !isDangerous(x.sc)}).length;
       var cautionN=rows.length-safeN;
-      elStatus.textContent=r+(p?" / "+p:"")+" の "+date+" — 登れそう "+safeN+"座"+
+      elStatus.textContent=r+(p?" / "+p:"")+(e?" / "+ELEV_LABEL[e]:"")+" の "+date+" — 登れそう "+safeN+"座"+
         (cautionN?" / 要慎重 "+cautionN+"座":"");
       // アクセス解析: 前回条件の自動復元(fromRestore)は利用者の検索操作ではないので数えない
       if(!fromRestore)pwTrack("find_search",{pw_region:r,pw_result:"success"});
@@ -1168,6 +1225,7 @@ footer a{color:var(--link)}
           '<span class="scb rank-'+rankOf(s.v)+'">'+s.v+'</span>'+
         '</div>'+
         '<small>'+esc(m.pref)+' / '+m.el+'m</small>'+
+        brkHtml(s.brk,s.v)+
       '</td>'+
       reason+
       // 正式指数。スコア(相対比較のふるい)と食い違う日に気づけるよう並べて出す
@@ -1217,6 +1275,9 @@ footer a{color:var(--link)}
       '<span class="rk rk-b">B</span>45〜69 '+
       '<span class="rk rk-c">C</span>0〜44 '+
       '(<a href="find-score.html">計算の詳細</a>)</dd>'+
+    '<dt>減点の内訳</dt><dd>山名の下の小さい文字は、100点から何で引かれたかの内訳です'+
+      '(減点の大きい順。日照・降水・風・雪寒の4項目、1点未満は省略)。'+
+      'スコアは0〜100に収めるため、内訳の合計が100を超える日はスコアが0で下げ止まります。</dd>'+
     // スコアは相対比較の「ふるい」、指数は行動可否の「正式判定」。別物なので両方出し、
     // 食い違い(スコアは高いが指数はC 等)にその場で気づけるようにする。
     '<dt>指数</dt><dd>個別の山のページと同じ<b>正式な登山指数</b>'+
@@ -1378,6 +1439,11 @@ footer a{color:var(--link)}
         elPref.value=last.p;
       }
     }
+    // 標高帯も復元する。ここを飛ばすと、詳細予報から戻ったときだけ「セレクタはすべて」なのに
+    // 一覧は絞り込まれた結果、という食い違いが出る(下の cacheKey も last.e で引くため)
+    if(last.e&&Array.prototype.some.call(elElev.options,function(o){return o.value===last.e})){
+      elElev.value=last.e;
+    }
     if(Array.prototype.some.call(elDate.options,function(o){return o.value===last.date})){
       elDate.value=last.date;
     }else{
@@ -1388,7 +1454,7 @@ footer a{color:var(--link)}
     // cacheKey にヒットする場合だけ自動描画。ヒットしない場合はセレクタだけ復元して手動検索を待つ。
     // キャッシュが TTL 切れなら search() 側が取り直す(一覧は同じ条件で復元されるが中身は最新)。
     // 「戻ったら古い予報が出ていた」より「戻ったら少し待って最新が出た」の方が安全側。
-    var key=cacheKey(last.r,last.p||"",last.date);
+    var key=cacheKey(last.r,last.p||"",last.e||"",last.date);
     if(pwSLoad(key))search(true);
   }
 
@@ -1406,10 +1472,11 @@ footer a{color:var(--link)}
     window.scrollTo(0,0);
     addEventListener("load",function(){requestAnimationFrame(function(){
       window.scrollTo(0,0);
-      if(elPref.selectedIndex!==0||elDate.selectedIndex!==0||
+      if(elPref.selectedIndex!==0||elDate.selectedIndex!==0||elElev.selectedIndex!==0||
          (elRegion.value!=="東北"&&Array.prototype.some.call(elRegion.options,function(o){return o.value==="東北"}))){
         elRegion.value="東北";
         elDate.selectedIndex=0;
+        elElev.selectedIndex=0;   // 標高帯も「すべて」へ戻す(新規に開いた時は毎回初期状態)
         fillPrefs();            // 都道府県を placeholder に戻す(updateHint も走る)
         elPref.selectedIndex=0;
       }
