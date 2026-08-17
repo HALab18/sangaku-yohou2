@@ -33,7 +33,11 @@
   gtag('config', 'G-B4FYN1EJ2S', {page_location: location.origin + location.pathname});
 </script>
 <style>
-:root{--night:#1e2d4a;--night-d:#16223c;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
+/* --muted: 補足文字の共通色。白 6.2:1 / 表の偶数行 #eef1f6 5.5:1 / ページ背景 #f4f6f9 5.7:1 で
+   いずれも WCAG AA(4.5:1) を満たす。以前の #6b7280 は偶数行で 4.27:1、#999 は 2.85:1 で未達だった
+   (CAPE・視程・取得日時など、実データを載せている文字なので薄すぎると読めない) */
+:root{--muted:#5a6270;
+  --night:#1e2d4a;--night-d:#16223c;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
   --btn:#4276b5;--btn-d:#3a68a3;--sel:#dceaf9;
   --bg:#f4f6f9;--line:#dee4ee;--field:#c9d2e0}
 *{box-sizing:border-box}
@@ -107,7 +111,7 @@ main{max-width:1080px;margin:0 auto;padding:26px 14px 8px}
 .terms[open] summary::before{transform:rotate(90deg)}
 .terms .tbody{padding:2px 14px 12px}
 .terms p{margin:0 0 8px}
-.terms a{color:#6b7280}
+.terms a{color:var(--muted)}
 
 /* 同意チェック */
 .gate{background:#fff;border:1.5px solid #b9c5da;border-radius:12px;padding:13px 14px;
@@ -115,7 +119,7 @@ main{max-width:1080px;margin:0 auto;padding:26px 14px 8px}
 .gate label{display:flex;align-items:flex-start;gap:10px;font-size:.88em;font-weight:600;
   color:#444;cursor:pointer;margin:0}
 .gate input[type=checkbox]{width:20px;height:20px;margin-top:1px;flex:none;accent-color:var(--night)}
-.gate small{display:block;font-weight:400;color:#999}
+.gate small{display:block;font-weight:400;color:var(--muted)}
 .gate a{color:var(--link)}
 
 /* 認証コード (コード本体はソースに置かずハッシュ照合。scripts/gen_auth_hash.py 参照) */
@@ -128,7 +132,7 @@ main{max-width:1080px;margin:0 auto;padding:26px 14px 8px}
   padding:0 18px;font-weight:600;font-size:.92em;cursor:pointer;font-family:inherit}
 #authgate button:disabled{opacity:.5;cursor:default}
 #authgate .authmsg{color:#a03415;font-size:.85em;font-weight:600;margin:0 0 5px}
-#authgate small{display:block;font-weight:400;color:#999;line-height:1.6}
+#authgate small{display:block;font-weight:400;color:var(--muted);line-height:1.6}
 
 #appwrap{opacity:.4;pointer-events:none;filter:grayscale(60%);transition:opacity .2s,filter .2s}
 #appwrap.enabled{opacity:1;pointer-events:auto;filter:none}
@@ -193,7 +197,7 @@ button:disabled{background:#9aa7bd;cursor:wait}
   border-radius:999px;font-size:.9em;font-weight:700;text-decoration:none;
   box-shadow:0 2px 6px rgba(30,45,74,.14)}
 .backfind a:hover{background:var(--btn-d)}
-.hint{color:#999;font-size:.8em;text-align:center;margin:12px 0 0}
+.hint{color:var(--muted);font-size:.8em;text-align:center;margin:12px 0 0}
 .hint a{color:var(--link)}
 
 /* 山名サジェスト */
@@ -261,6 +265,15 @@ h2::before{content:"";flex:none;width:20px;height:14px;margin-top:.32em;
   background:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2076%2052'%3E%3Cpath%20d='M4%2048L28%208%2040%2027%2050%2014%2072%2048Z'%20fill='none'%20stroke='%235b87c5'%20stroke-width='7'%20stroke-linejoin='round'/%3E%3Cpath%20d='M21.5%2019L28%208l6.5%2011-3.3-3.4-3.2%204-3.2-4Z'%20fill='%235b87c5'/%3E%3Cpath%20d='M45.8%2020.5L50%2014l4.2%206.5-2.2-2.3-2%202.6-2-2.6Z'%20fill='%235b87c5'/%3E%3C/svg%3E") no-repeat center/contain}
 ul.meta{margin:0 0 8px;padding-left:1.2em;color:#555;font-size:.9em}
 .tbl{max-height:75vh;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin:6px 0 4px}
+/* 横スクロールの手がかり。表は 375px 幅で 768〜941px あり、実測で 55〜63% が画面外に出る
+   (このアプリの要である稜線風・降水量がそこに入る)。「まだ右に続く」が分からないと、
+   そもそもスクロールされない。
+   ★ 背景グラデーション方式(background-attachment:local の定番)はここでは効かない。
+     td が不透明(background:#fff / 偶数行 #eef1f6)なので、コンテナの背景はセルに隠れる。
+     そこで mask で描画結果ごと右端をフェードさせる。付け外しは markScrollables()。 */
+.tbl.xscroll{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);
+  mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent)}
+.tbl.xscroll.at-end{-webkit-mask-image:none;mask-image:none}
 table{border-collapse:collapse;white-space:nowrap;width:100%}
 th{background:var(--slate);color:#fff;padding:6px 9px;font-weight:600;font-size:.9em;position:sticky;top:0;z-index:2}
 td{padding:5px 9px;border-bottom:1px solid var(--line);text-align:center;background:#fff}
@@ -291,7 +304,7 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
    ★ 文言に「粗い」を使わない: 印もこの下の区切り行も、事実(どのモデル由来か)を伝えるもので
      予報の良し悪しではない。「粗い」は精度が低い・当てにならないという印象を余計に与える。 */
 .mdlm{display:inline-block;margin-left:4px;padding:0 4px;border-radius:8px;background:#eceff4;
-  color:#6b7280;font-size:.74em;font-weight:700;vertical-align:middle;white-space:nowrap}
+  color:var(--muted);font-size:.74em;font-weight:700;vertical-align:middle;white-space:nowrap}
 /* 週間表の中で「ここから予報が粗くなる」ことを示す区切り行。行そのものは押せない。
    セレクタに tr と :first-child を足してあるのは詳細度をそろえるため。上の縞
    `tr:nth-child(even) td` / `tr:nth-child(even) td:first-child` に対して `.wk-sep td` だけ
@@ -303,23 +316,23 @@ tr.wk-sep td,tr.wk-sep td:first-child{border-top:2px solid #b9c2d0;background:#f
      中央＝画面の外になり、横スクロールしないと文言が読めない。左端なら初期表示で見える。
      td の text-align:center を上書きするため、詳細度で勝つセレクタで指定している。 */
   text-align:left}
-.wxnote{display:block;font-size:.78em;color:#6b7280;margin-top:2px;line-height:1.3}
+.wxnote{display:block;font-size:.78em;color:var(--muted);margin-top:2px;line-height:1.3}
 /* 詳細表の見出し直下に出す控えめなキャプション(山名とデータ取得日時)。スクショを切り取っても
    どの山のいつの取得か分かるようにするため。目立たせない */
-.tblcap{font-size:.78em;color:#6b7280;margin:-4px 0 6px;line-height:1.3}
+.tblcap{font-size:.78em;color:var(--muted);margin:-4px 0 6px;line-height:1.3}
 .wxico{width:1.15em;height:1.15em;vertical-align:-.22em;margin-right:1px}
-.wxconn{color:#6b7280;font-size:.82em;margin:0 .18em;white-space:nowrap}
+.wxconn{color:var(--muted);font-size:.82em;margin:0 .18em;white-space:nowrap}
 /* 発雷リスク列: アイコン(本数+色)と段階ラベル、下段に CAPE/CIN の実数値を小さく併記。
    文字色はアイコンより濃い同系色にして白/薄灰の行背景でもコントラストを確保する */
 .lt{display:inline-flex;align-items:center;gap:3px;font-weight:600;white-space:nowrap}
 .lt svg{width:1.9em;height:1.15em;flex:none}
 .lt-0{color:#7b6a00}.lt-1{color:#8a5a00}.lt-2{color:#8f4212}.lt-3{color:#a03415}
-.ltnum{display:block;font-size:.76em;color:#6b7280;margin-top:2px;line-height:1.3;cursor:help}
+.ltnum{display:block;font-size:.76em;color:var(--muted);margin-top:2px;line-height:1.3;cursor:help}
 /* 景色(眺望)列: 発雷リスクと同じ2段構成。上段=アイコン+記号+ラベル / 下段=視程を小さく併記。
    視程は単独の列にはせず、景色を読むための補足情報として置く。svg は 1.5em=21px */
 .vw{display:inline-flex;align-items:center;gap:3px;font-weight:600;white-space:nowrap}
 .vw svg{width:1.5em;height:1.5em;flex:none}
-.vwnum{display:block;font-size:.76em;color:#6b7280;margin-top:2px;line-height:1.3}
+.vwnum{display:block;font-size:.76em;color:var(--muted);margin-top:2px;line-height:1.3}
 .ewnote{background:#f9d9cf;border-left:5px solid #a03415;padding:8px 12px;
   border-radius:0 6px 6px 0;margin:6px 0 14px;font-size:.9em}
 /* 凡例末尾の「詳しく」リンク。理由・実測値は解説ページ側に置き、ここは短い事実だけにする */
@@ -327,16 +340,30 @@ tr.wk-sep td,tr.wk-sep td:first-child{border-top:2px solid #b9c2d0;background:#f
 /* 参考情報の凡例(全球印・稜線風*印)。危険側の注意(.ewnote の赤)と区別しつつ、
    凡例として並ぶので余白は .ewnote に合わせる(.notice 既定の 18px だとここだけ空く) */
 .notice.leg{margin:6px 0 14px;padding:8px 12px}
+/* 末尾の免責。ページで最も重要な注意なので、参考情報の凡例と同じ強さで置かない。
+   赤ベタは使わない(指数C・⚠バッジの色と競合させると両方が弱まる) */
+.notice.strong{border-left-width:7px;border-left-color:var(--night);color:#26324a;
+  font-weight:600;background:#e6ecf6}
 /* 予報の確度 ◎/○/△。指数(A/B/C)の隣に置くので、色は付けず記号だけで示す。
    色を付けると「確度が低い=危険」と読まれるが、確度は危険度ではなくモデルの揃い方 */
 .agr{text-align:center;font-weight:600;white-space:nowrap}
-/* 確度の内訳。既定で閉じておく(毎回開いて見るものではない) */
-.agrdet{margin:6px 0 14px}
-.agrdet summary{cursor:pointer;padding:8px 12px;font-weight:600;color:#44506b;
+/* 確度の内訳と「表の見方」。どちらも既定で閉じておく(毎回開いて見るものではない)。
+   ★ 説明を畳むのは見た目の都合ではない。実測(375px)で週間表 442px に対し凡例が 321px あり、
+     データとほぼ同量の説明が常時ぶら下がっていた。危険情報(⚠夕方/⚠夜間)だけは畳まない。 */
+.agrdet,.legend{margin:6px 0 14px}
+.agrdet summary,.legend summary{cursor:pointer;padding:8px 12px;font-weight:600;color:#44506b;
   background:#edf2f9;border-left:5px solid var(--slate);border-radius:0 6px 6px 0;
   font-size:.9em;user-select:none}
 .agrdet[open] summary{border-radius:0 6px 0 0;margin-bottom:6px}
 .agrdet .ewnote{background:#edf2f9;border-left-color:var(--slate);color:#44506b}
+.legend[open] summary{border-radius:0 6px 0 0}
+/* 折りたたみの中は素のテキストにする。開いた時点で「これは説明」と分かっているので、
+   色枠を重ねても視覚ノイズが増えるだけ(赤は危険=指数C・⚠ の意味に限って使う) */
+.legend .tbody{padding:9px 12px 10px;background:#f7f9fc;border-left:5px solid var(--slate);
+  border-radius:0 0 6px 0;font-size:.9em;line-height:1.65}
+.legend .tbody p{margin:0 0 8px}
+.legend .tbody p:last-child{margin:0}
+.legend .tbody a.more{color:var(--link);text-decoration:underline;white-space:nowrap}
 /* オフライン(保存済み予報)であることの明示。数字は取得時のままなので、
    予報表のどれよりも先に目に入る強さにしておく */
 .offnote{background:#fdeec2;border-left:5px solid #b8791a;color:#5c4310;padding:10px 12px;
@@ -621,7 +648,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.37β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.38β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -1284,6 +1311,36 @@ const REUSE_TTL_MS=10*60*1000;   // MSM の更新間隔3時間に対して十分
 const fetchKey=mt=>`${mt.lat},${mt.lon},${mt.elev}`;
 let lastFetch=null;   // {key,t,data,supFailed,inits,fetchedAt,cmp,cmpRange}
 
+/* 表が横にはみ出していることを見た目で示す(.tbl.xscroll → 右端をフェード)。
+ * 実測(375px幅)で週間表は 768px・詳細表は 941px あり、表示できるのは 347px。
+ * つまり **このアプリの要である稜線風と降水量は初期表示では画面外にある**。
+ * 手がかりが無いとそもそも横スクロールされないので、右端のフェードで「まだ続く」を示す。
+ * 右端まで送ったら .at-end でフェードを消す(最後の列が薄いまま残らないように)。
+ *
+ * ★ <details>(表の見方・確度の内訳)の中の表は、開くまで幅が 0 で測れない。
+ *   toggle を購読して開いた時点で測り直すこと。 */
+let xsResizeBound=false;
+function markScrollables(root){
+  const upd=t=>{
+    const over=t.scrollWidth-t.clientWidth>2;   // 端数での誤検出を避けるため 2px の余裕を見る
+    t.classList.toggle("xscroll",over);
+    t.classList.toggle("at-end",over&&t.scrollLeft>=t.scrollWidth-t.clientWidth-2);
+  };
+  const all=()=>root.querySelectorAll(".tbl").forEach(upd);
+  root.querySelectorAll(".tbl").forEach(t=>{
+    upd(t);
+    if(t.dataset.xs)return;
+    t.dataset.xs="1";
+    t.addEventListener("scroll",()=>upd(t),{passive:true});
+  });
+  root.querySelectorAll("details").forEach(d=>{
+    if(d.dataset.xs)return;
+    d.dataset.xs="1";
+    d.addEventListener("toggle",()=>d.querySelectorAll(".tbl").forEach(upd));
+  });
+  if(!xsResizeBound){xsResizeBound=true;addEventListener("resize",all,{passive:true})}
+}
+
 async function run(mt,opts){
   // 判定ロジック(logic.js)が読めていなければ、指数の列だけ空の表を描かせない。
   // 通信断・ブロッカー・キャッシュ不整合で起こりうる。throw すると go() の catch が
@@ -1702,21 +1759,11 @@ async function run(mt,opts){
   if(rows.length>WK_HEAD)
     htmlOut+=`<button type="button" class="wk-toggle" aria-controls="wk-tbl" aria-expanded="${wkOpen}">`+
       `${wkOpen?"折りたたむ":`残り${rows.length-WK_HEAD}日を表示`}</button>`;
-  // 確度の凡例と内訳。内訳は既定で閉じておく(毎回開いて見るものではない)。
-  // 内訳の中身は「モデル別の登山指数」= 確度とまったく同じ材料。旧「モデル間比較」表は
-  // 地上10m風・気温・降水・雲量を並べていたため、確度(稜線風+降水+季節しきい値で決まる)と
-  // 材料が違い、「表は揃って見えるのに確度は△」という食い違いが起きるので作り替えた。
-  if(rows.some(r=>r.agree)){
-    htmlOut+=`<p class="ewnote"><b>確度</b>=3モデル(気象庁/ECMWF/GFS)の指数の一致度。◎=一致 / ○=1段階差 / △=2段階以上差 / -=判定不能。A/B/Cの判定には使いません。 <a class="more" href="docs/how-it-works-web.html#agree">詳しく</a></p>`;
-    htmlOut+=`<details class="agrdet"><summary>確度の内訳（モデル別の登山指数）</summary>
-      <div class="tbl"><table><tr><th>日付</th>${CMP_MODELS.map(m=>`<th>${CMP_LABELS[m]}</th>`).join("")}<th>確度</th></tr>`
-      +rows.map(r=>`<tr><td>${md(r.d)}</td>`
-        +CMP_MODELS.map((m,k)=>`<td>${r.midx?.[k]||"-"}</td>`).join("")
-        +`<td class="agr">${r.agree||"-"}</td></tr>`).join("")
-      +`</table></div><p class="ewnote">気象庁の列は上の表と同じ指数です。 <a class="more" href="docs/how-it-works-web.html#agree">気象庁の列の扱い・ECMWFの制約について</a></p></details>`;
-  }else if(!offline){
-    htmlOut+=`<p class="notice">確度（モデル別の内訳）を取得できませんでした（上の予報表には影響しません。時間をおいて再読み込みすると表示されます）。</p>`;
-  }
+  // 表の下に置くもの。順番は「危険 → 見方(畳む) → 内訳(畳む)」。
+  // ★ 危険情報(⚠夕方/⚠夜間)だけは畳まない。残りは既定で閉じた1つの「表の見方」にまとめる
+  //   (実測で週間表 442px に対し凡例が 321px あり、データとほぼ同量の説明が常時見えていた)。
+  // ★ 赤(.ewnote)はここでは危険にだけ使う。指数C(.b-c)・⚠バッジ(.ew)と同じ色なので、
+  //   ただの説明に使うと一番強い警告であるCの色が薄まる。
   if(rows.some(r=>r.eve)||rows.some(r=>r.night)){
     const ew=[];
     // ★「荒天(C相当)」だけに縮めないこと。eve は C相当 **または** 雷条件(eveThunder)で立つ。
@@ -1725,19 +1772,18 @@ async function run(mt,opts){
     if(rows.some(r=>r.night))ew.push("⚠夜間=21時〜翌5時に荒天(C相当)の見込み");
     htmlOut+=`<p class="ewnote">${ew.join("、")}。日中の指数には含めません。 <a class="more" href="docs/how-it-works-web.html#index-criteria">詳しく</a></p>`;
   }
-  if(rows.some(r=>r.model==="GSM")||rows.some(r=>r.degraded)){
+  // 「表の見方」= 表に出ている記号の意味だけ。根拠・実測値は解説ページ側に置く。
+  {
+    const leg=[];
+    if(rows.some(r=>r.agree))
+      leg.push(`<b>確度</b>=3モデル(気象庁/ECMWF/GFS)の指数の一致度。◎=一致 / ○=1段階差 / △=2段階以上差 / -=判定不能。A/B/Cの判定には使いません。 <a class="more" href="docs/how-it-works-web.html#agree">詳しく</a>`);
     const gw=[];
     if(rows.some(r=>r.model==="GSM"))gw.push(`日付の<b>全球</b>印${wkSw?`(${mdIso(wkSw.firstGsm)}以降)`:""}=全球モデル(GSM)由来の予報`);
     if(rows.some(r=>r.degraded))gw.push(`${windLbl}の<b>*</b>印=稜線風がやや弱めに出ている可能性`);
-    htmlOut+=`<p class="notice leg">${gw.join("、")}。 <a class="more" href="docs/how-it-works-web.html#ridge-wind">詳しく</a></p>`;
-  }
-  // 理由の凡例。出た日だけ出す(理由の付かない表に説明だけ残らないように)。
-  // ★ reason は「風」「降水」(主判定)と「低体温/体感/視界」(降格条件)が混ざる。
-  //   同着の日は「風・降水」のように連結されて来るので、凡例を引くときは必ず分解すること
-  //   (連結文字列をそのままキーにすると leg に無く undefined が凡例に混ざる)。
-  // 「判定モード」と「指数に付く語」は、どちらも “この表の指数の読み方” なので1段落にまとめる。
-  // 各条件の中身(低体温=気温10℃以下+降水+風8m/s以上 …)は解説ページ側に置き、ここは語だけ挙げる。
-  {
+    if(gw.length)leg.push(`${gw.join("、")}。 <a class="more" href="docs/how-it-works-web.html#ridge-wind">詳しく</a>`);
+    // 判定モードと「指数に付く語」は、どちらも “この表の指数の読み方” なので1項目にまとめる。
+    // ★ reason は「風」「降水」(主判定)と「低体温/体感/視界」(降格条件)が混ざる。同着の日は
+    //   「風・降水」と連結されて来るので、必ず分解してから拾うこと(連結のままだと拾えない)。
     const rset=new Set(rows.flatMap(r=>(r.reason||"").split("・")).filter(Boolean));
     // 今どちらの閾値で判定したかを示す。10/31 と 11/1、寒い日と暖かい日で基準が変わるため
     const modes=[...new Set(rows.map(r=>r.mode).filter(Boolean))];
@@ -1749,8 +1795,23 @@ async function run(mt,opts){
     if(rset.size)parts.push(`指数に付く<b>`
       +["風","降水","低体温","体感","視界"].filter(k=>rset.has(k)).join("・")
       +`</b>=その評価を決めた条件`);
-    if(parts.length)htmlOut+=`<p class="ewnote">${parts.join("。")}。`
-      +` <a class="more" href="docs/how-it-works-web.html#index-criteria">詳しく</a></p>`;
+    if(parts.length)leg.push(`${parts.join("。")}。`
+      +` <a class="more" href="docs/how-it-works-web.html#index-criteria">詳しく</a>`);
+    if(leg.length)htmlOut+=`<details class="legend"><summary>表の見方</summary>`
+      +`<div class="tbody">`+leg.map(t=>`<p>${t}</p>`).join("")+`</div></details>`;
+  }
+  // 確度の内訳。中身は「モデル別の登山指数」= 確度とまったく同じ材料。旧「モデル間比較」表は
+  // 地上10m風・気温・降水・雲量を並べていたため、確度(稜線風+降水+季節しきい値で決まる)と
+  // 材料が違い、「表は揃って見えるのに確度は△」という食い違いが起きるので作り替えた。
+  if(rows.some(r=>r.agree)){
+    htmlOut+=`<details class="agrdet"><summary>確度の内訳（モデル別の登山指数）</summary>
+      <div class="tbl"><table><tr><th>日付</th>${CMP_MODELS.map(m=>`<th>${CMP_LABELS[m]}</th>`).join("")}<th>確度</th></tr>`
+      +rows.map(r=>`<tr><td>${md(r.d)}</td>`
+        +CMP_MODELS.map((m,k)=>`<td>${r.midx?.[k]||"-"}</td>`).join("")
+        +`<td class="agr">${r.agree||"-"}</td></tr>`).join("")
+      +`</table></div><p class="ewnote">気象庁の列は上の表と同じ指数です。 <a class="more" href="docs/how-it-works-web.html#agree">気象庁の列の扱い・ECMWFの制約について</a></p></details>`;
+  }else if(!offline){
+    htmlOut+=`<p class="notice">確度（モデル別の内訳）を取得できませんでした（上の予報表には影響しません。時間をおいて再読み込みすると表示されます）。</p>`;
   }
   // 詳細 (表示間隔 step=3 or 1)
   for(let dt2=new Date(start);dt2<=detailEnd;dt2=addDays(dt2,1)){
@@ -1862,7 +1923,9 @@ async function run(mt,opts){
     }
   }
 
-  htmlOut+=`<div class="notice">⚠️ 数値予報は山岳地形では誤差が大きく、局地的な突風・雷雨・視界不良は表現しきれません。
+  // ページで最も重要な注意なので、参考情報の凡例と同じ見た目にしない(.notice.strong で格を上げる)。
+  // 赤ベタにはしない: 赤は指数C・⚠バッジの色で、そこと競合させると両方が弱まる。
+  htmlOut+=`<div class="notice strong">⚠️ 数値予報は山岳地形では誤差が大きく、局地的な突風・雷雨・視界不良は表現しきれません。
     登山指数は目安です。最終判断は最新の予報と現地の状況で行ってください。</div>`;
   // 「天気で山さがし」経由なら、長い予報表を読み終えた末尾にも一覧へ戻る導線を出す(先頭と同じ挙動)。
   if(backToFind)htmlOut+=`<p class="backfind bottom"><a href="docs/find.html" onclick="return pwBackToFind()">← 天気で山さがしの一覧に戻る</a></p>`;
@@ -1883,6 +1946,7 @@ async function run(mt,opts){
     snapRequestPersist();  // 残す価値のあるデータができた回だけ。await しない(描画を待たせない)
   htmlOut=htmlOut.replace(SNAP_SLOT,()=>snapRowHtml(sid));
   out.innerHTML=htmlOut;
+  markScrollables(out);
   status.textContent="";
   const hashKey=mt.here?"gps":mt.coord?`${mt.lat},${mt.lon}${mt.elevManual?","+mt.elev:""}`:encodeURIComponent(mt.name);
   const newHash="#"+hashKey+"/"+iso(start)+(step===1?"/1h":"");
