@@ -329,6 +329,9 @@ tr.wk-sep td{box-shadow:none}
    left は td の左 padding と同じ 8px にする。0 だと送ったときだけ文字が画面端に寄り、
    スクロール位置 0 のときと余白が変わって一瞬カクッと動いて見える。 */
 .wk-sepin{position:sticky;left:8px;display:inline-block;max-width:100%}
+/* 先頭(日本域モデル側)の区切り行だけ上罫線を描かない。すぐ上が固定ヘッダ(th)なので、
+   2px の線がヘッダの一部のように見えて「区切り」として読めなくなる。 */
+tr.wk-sep.wk-sep-top td{border-top:0}
 .wxnote{display:block;font-size:.78em;color:var(--muted);margin-top:2px;line-height:1.3}
 /* 詳細表の見出し直下に出す控えめなキャプション(山名とデータ取得日時)。スクショを切り取っても
    どの山のいつの取得か分かるようにするため。目立たせない */
@@ -661,7 +664,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.41β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.42β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -1755,15 +1758,26 @@ async function run(mt,opts){
   // ようにするのが目的(列は増やさない)。境目が無い期間(全部MSM/全部GSM)では何も挟まない。
   const wkSw=modelSwitch(rows.map(r=>iso(r.d)));
   const sepCols=9+(hasSnow?1:0);
+  let sepMsm=false;   // 上半分(日本域モデル)の区切りは先頭に1本だけ
   rows.forEach((r,i)=>{
     const more=i>=WK_HEAD;
+    // 境目がある表だけ、上半分にも名前を付ける(GSM 側と対で 2本 or 0本)。
+    // 下側だけに名前があると「では上は何なのか」が分からない（キャプションの MSM+GSM まで
+    // 降りないと確かめられない）ため。
+    // ★ i===0 ではなく model で見る。modelSwitch は model が欠測の日を除いて境目を出すので、
+    //   先頭日が欠測のとき「先頭＝MSM」とは限らない。
+    if(wkSw&&!sepMsm&&r.model==="MSM"){
+      sepMsm=true;
+      htmlOut+=`<tr class="wk-sep wk-sep-top"><td colspan="${sepCols}">`
+        +`<span class="wk-sepin">▼ ここから日本域モデル(MSM 約5km)の予報です</span></td></tr>`;
+    }
     // 区切り行にも wk-more を付けて一緒に畳む。ただし「残りN日」の件数には数えない
     // (.wk-sep を除いて数えている。開閉ボタン側と対になっているので片方だけ直さないこと)
     if(wkSw&&iso(r.d)===wkSw.firstGsm)
       htmlOut+=`<tr class="wk-sep${more?" wk-more":""}"${more&&!wkOpen?" hidden":""}>`
         +`<td colspan="${sepCols}"><span class="wk-sepin">▼ ここから全球モデル(GSM)の予報です</span></td></tr>`;
     const cls=["wk-row"];if(more)cls.push("wk-more");
-    htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}" tabindex="0" role="button"><td>${md(r.d)}${wj(r.d)}${r.mode==="冬山・残雪期"?'<span class="wmode" title="冬山・残雪期の基準(稜線風8/12m/s・3h降水1/3mm)で判定した日">冬</span>':""}${r.model==="GSM"?'<span class="mdlm" title="全球モデル(GSM)の予報。日本域向けの MSM(約5km)より格子が広く、稜線風はやや弱めに出ます">全球</span>':""}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"><span class="ewi">⚠</span>夕方</span>':""}${r.night?'<span class="ew"><span class="ewi">⚠</span>夜間</span>':""}</td><td class="agr">${r.agree||"-"}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
+    htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}" tabindex="0" role="button"><td>${md(r.d)}${wj(r.d)}${r.mode==="冬山・残雪期"?'<span class="wmode" title="冬山・残雪期の基準(稜線風8/12m/s・3h降水1/3mm)で判定した日">冬</span>':""}${r.model==="GSM"?'<span class="mdlm" title="全球モデル(GSM)の予報。日本域モデル(MSM 約5km)より格子が広く、稜線風はやや弱めに出ます">全球</span>':""}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"><span class="ewi">⚠</span>夕方</span>':""}${r.night?'<span class="ew"><span class="ewi">⚠</span>夜間</span>':""}</td><td class="agr">${r.agree||"-"}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
     <td>${r.view}</td><td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws,r.degraded)}</td>
     <td>${u1(r.pr,"mm")}</td><td>${u0(r.prob,"%")}</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
   });
