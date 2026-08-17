@@ -322,6 +322,8 @@ tr.wk-sep td,tr.wk-sep td:first-child{border-top:2px solid #b9c2d0;background:#f
 .vwnum{display:block;font-size:.76em;color:#6b7280;margin-top:2px;line-height:1.3}
 .ewnote{background:#f9d9cf;border-left:5px solid #a03415;padding:8px 12px;
   border-radius:0 6px 6px 0;margin:6px 0 14px;font-size:.9em}
+/* 凡例末尾の「詳しく」リンク。理由・実測値は解説ページ側に置き、ここは短い事実だけにする */
+.ewnote a.more,.notice a.more{color:inherit;text-decoration:underline;white-space:nowrap}
 /* 予報の確度 ◎/○/△。指数(A/B/C)の隣に置くので、色は付けず記号だけで示す。
    色を付けると「確度が低い=危険」と読まれるが、確度は危険度ではなくモデルの揃い方 */
 .agr{text-align:center;font-weight:600;white-space:nowrap}
@@ -616,7 +618,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.35β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.36β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -1702,20 +1704,28 @@ async function run(mt,opts){
   // 地上10m風・気温・降水・雲量を並べていたため、確度(稜線風+降水+季節しきい値で決まる)と
   // 材料が違い、「表は揃って見えるのに確度は△」という食い違いが起きるので作り替えた。
   if(rows.some(r=>r.agree)){
-    htmlOut+=`<p class="ewnote"><b>確度</b>は、気象庁・欧州ECMWF・米国GFS の3モデルに<b>同じ判定手順</b>を回して、指数がどれだけ揃うかを示します。◎=3モデルとも同じ / ○=1段階の差 / △=2段階以上の差 / -=判定不能。実測(12山×58日・真値はERA5再解析)では3日前時点の的中率が ◎77% / ○43% / △26% でした。<b>◎でも外れることはあります。</b>△の日は悪い側のモデルも起こりうると考えて、引き返し判断に余裕を持たせてください。A/B/C の判定そのものには使っていません。</p>`;
+    htmlOut+=`<p class="ewnote"><b>確度</b>=3モデル(気象庁/ECMWF/GFS)の指数の一致度。◎=一致 / ○=1段階差 / △=2段階以上差 / -=判定不能。A/B/Cの判定には使いません。 <a class="more" href="docs/how-it-works-web.html#agree">詳しく</a></p>`;
     htmlOut+=`<details class="agrdet"><summary>確度の内訳（モデル別の登山指数）</summary>
       <div class="tbl"><table><tr><th>日付</th>${CMP_MODELS.map(m=>`<th>${CMP_LABELS[m]}</th>`).join("")}<th>確度</th></tr>`
       +rows.map(r=>`<tr><td>${md(r.d)}</td>`
         +CMP_MODELS.map((m,k)=>`<td>${r.midx?.[k]||"-"}</td>`).join("")
         +`<td class="agr">${r.agree||"-"}</td></tr>`).join("")
-      +`</table></div><p class="ewnote">気象庁の列は、上の表に出している指数そのものです（<code>models=jma_seamless</code> から計算し直すと実測で7.5%食い違うため使いません）。ECMWF は 900hPa/800hPa を配信しないため、稜線風の内挿点が2面少なくなります（実測の影響は平均0.29m/s）。</p></details>`;
+      +`</table></div><p class="ewnote">気象庁の列は上の表と同じ指数です。 <a class="more" href="docs/how-it-works-web.html#agree">気象庁の列の扱い・ECMWFの制約について</a></p></details>`;
   }else if(!offline){
     htmlOut+=`<p class="notice">確度（モデル別の内訳）を取得できませんでした（上の予報表には影響しません。時間をおいて再読み込みすると表示されます）。</p>`;
   }
-  if(rows.some(r=>r.eve))htmlOut+=`<p class="ewnote">⚠夕方: 17〜20時に天候の急変(C相当)、または発雷リスクが高く夕方に降水が予想されます(発雷リスク「高い」の日は降水予想が無くても付けます)。日中の指数には含めていませんが、下山遅れ・テント泊・ご来光待ちの際は特に注意してください。</p>`;
-  if(rows.some(r=>r.night))htmlOut+=`<p class="ewnote">⚠夜間: 21時〜翌朝5時にC相当の荒天が予想されます。日中の指数には含めていませんが、テント泊・小屋泊・早発ち(アルパインスタート)の際は特に注意してください。</p>`;
-  if(rows.some(r=>r.model==="GSM"))htmlOut+=`<p class="ewnote">日付に付く <b>全球</b> 印${wkSw?`(${mdIso(wkSw.firstGsm)}以降)`:""}は、その日の予報が<b>全球モデル(GSM)</b>由来であることを示します。それ以前は日本域向けに細かい MSM(約5km)です。切替日はモデルの更新時刻で動くため、日によって前後します。</p>`;
-  if(rows.some(r=>r.degraded))htmlOut+=`<p class="ewnote">${windLbl}の <b>*</b> 印は、その日が<b>900hPa/800hPaのデータが無い期間</b>(${wkSw?`${mdIso(wkSw.firstGsm)}以降の`:""}GSM期間)のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。強めに見積もって判断してください。</p>`;
+  if(rows.some(r=>r.eve)||rows.some(r=>r.night)){
+    const ew=[];
+    if(rows.some(r=>r.eve))ew.push("⚠夕方=17〜20時に荒天(C相当)の見込み");
+    if(rows.some(r=>r.night))ew.push("⚠夜間=21時〜翌5時に荒天(C相当)の見込み");
+    htmlOut+=`<p class="ewnote">${ew.join("、")}。日中の指数には含めません。 <a class="more" href="docs/how-it-works-web.html#index-criteria">詳しく</a></p>`;
+  }
+  if(rows.some(r=>r.model==="GSM")||rows.some(r=>r.degraded)){
+    const gw=[];
+    if(rows.some(r=>r.model==="GSM"))gw.push(`日付の<b>全球</b>印${wkSw?`(${mdIso(wkSw.firstGsm)}以降)`:""}=全球モデル(GSM)由来の予報`);
+    if(rows.some(r=>r.degraded))gw.push(`${windLbl}の<b>*</b>印=稜線風がやや弱めに出ている可能性`);
+    htmlOut+=`<p class="notice">${gw.join("、")}。 <a class="more" href="docs/how-it-works-web.html#ridge-wind">詳しく</a></p>`;
+  }
   // 理由の凡例。出た日だけ出す(理由の付かない表に説明だけ残らないように)。
   // ★ reason は「風」「降水」(主判定)と「低体温/体感/視界」(降格条件)が混ざる。
   //   同着の日は「風・降水」のように連結されて来るので、凡例を引くときは必ず分解すること
