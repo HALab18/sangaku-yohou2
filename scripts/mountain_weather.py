@@ -84,6 +84,13 @@ VIS_LOW_WIND = 10         # D4: かつ稜線風がこれ以上 (地吹雪・ホ�
 # 視程が取れているときは使わない(視程のほうが直接的な材料のため)。
 VIEW_RH_GATE = 95
 
+# ---- 主判定の理由ラベル (block_index が返す reason に使う。logic.js と同一) ----
+# 「雨」ではなく「降水」。降水量は水換算で、冬は同じ数値が雪を意味する。本ツールは雨/雪を
+# 別途 precip_phase で判別表示しているので、判定側が「雨」と名乗ると表示同士が食い違う。
+MAIN_REASON_WIND = "風"
+MAIN_REASON_PRECIP = "降水"
+MAIN_REASON_SEP = "・"
+
 WMO_CODES = {
     0: "快晴", 1: "晴れ", 2: "晴れ時々曇り", 3: "曇り",
     45: "霧", 48: "着氷性の霧",
@@ -571,7 +578,7 @@ RANK = {"A": 0, "B": 1, "C": 2}
 
 
 def block_index(ridge_ws, precip_3h, th, temp_min=None, feels=None, vis_min=None):
-    """3時間ブロックの登山指数。(A/B/C, 降格理由) を返す。判定材料が無ければ (None, "")
+    """3時間ブロックの登山指数。(A/B/C, 理由) を返す。判定材料が無ければ (None, "")
 
     主判定は稜線風と降水量の2項目。降水確率は参考表示のみ。
     雷(CAPE)は局地性が高く「その時間帯に登山行動が適しているか」とは性質が異なるため
@@ -582,34 +589,41 @@ def block_index(ridge_ws, precip_3h, th, temp_min=None, feels=None, vis_min=None
     実際に低体温症・凍傷が起きる条件を「登山適」と表示してしまうため。
     降格は安全側にのみ効かせ、材料が欠測の条件はスキップする。
 
-    降格理由は「主判定より悪い評価を出した条件」の名前。主判定どおりなら空文字。
-    理由を出さずに B が出ると、風も雨も基準内なのに B になる理由が利用者に分からない。"""
+    reason は「その評価を決めた条件」の名前。主判定で決まったなら「風」「降水」
+    (同じ評価で並んだら「風・降水」)、降格条件が主判定より悪ければその条件名。
+    主判定側にも名前を出すのは、同じ B でも「風が強い」と「雨」で取るべき行動が違うため
+    (行程短縮か中止か)。A のときは説明する対象が無いので空文字。"""
     # 主判定の材料が両方とも欠測なら「判定不能」。ここで A を返すと、データが無いだけの
     # 時間帯が「登山適」として表示され、安全と逆方向に誤解させる (Open-Meteo は非対応項目や
     # 予報期間外を 400 ではなく null で返すため、欠測は現実に起こりうる)
     if ridge_ws is None and precip_3h is None:
         return None, ""
-    idx = "A"
 
-    def worse(v):
-        nonlocal idx
-        if v == "C" or idx == "C":
-            idx = "C"
-        elif v == "B":
-            idx = "B"
+    # 風と降水を「畳み込む前に」それぞれ評価する。最悪値だけを足していく書き方だと
+    # どちらの材料が効いたのかが消え、B の理由を利用者に示せない。
+    def grade(v, lo, hi):
+        if v is None:
+            return None
+        return "C" if v >= hi else ("B" if v >= lo else "A")
 
-    w_b, w_c = th["wind"]
-    p_b, p_c = th["precip"]
-    if ridge_ws is not None:
-        if ridge_ws >= w_c:
-            worse("C")
-        elif ridge_ws >= w_b:
-            worse("B")
-    if precip_3h is not None:
-        if precip_3h >= p_c:
-            worse("C")
-        elif precip_3h >= p_b:
-            worse("B")
+    g_w = grade(ridge_ws, *th["wind"])
+    g_p = grade(precip_3h, *th["precip"])
+    if g_w is None:
+        idx = g_p
+    elif g_p is None:
+        idx = g_w
+    else:
+        idx = g_p if RANK[g_p] > RANK[g_w] else g_w
+    # 理由は「idx と同じ評価を出した材料」全部。同着で片方しか書かないと、もう片方は
+    # 基準内だったと誤解される(風12m/s・降水6mm でどちらもC、のような日が実際に出る)。
+    reason = ""
+    if idx != "A":
+        mains = []
+        if g_w == idx:
+            mains.append(MAIN_REASON_WIND)
+        if g_p == idx:
+            mains.append(MAIN_REASON_PRECIP)
+        reason = MAIN_REASON_SEP.join(mains)
 
     # ---- 降格条件。優先度は 低体温 > 体感 > 視界 (先に立ったものが理由になる) ----
     demotions = []
@@ -632,10 +646,11 @@ def block_index(ridge_ws, precip_3h, th, temp_min=None, feels=None, vis_min=None
             and vis_min < VIS_LOW_M and ridge_ws >= VIS_LOW_WIND):
         demotions.append(("C", "視界"))
 
-    reason = ""
-    for grade, label in demotions:
-        if RANK[grade] > RANK[idx]:
-            idx, reason = grade, label
+    # 降格は「厳密に悪い」ときだけ採用する。同着(風でB・低体温もB)なら主判定の理由を残す。
+    # 同着でも上書きすると、しきい値を超えた風という一次的な事実が理由から消える。
+    for dem_grade, label in demotions:
+        if RANK[dem_grade] > RANK[idx]:
+            idx, reason = dem_grade, label
     return idx, reason
 
 
@@ -718,8 +733,8 @@ IDX_MARK = {"A": "A", "B": "B", "C": "C"}
 
 
 def idx_cell(bi, reason=""):
-    """指数セル。降格条件で落ちたときはその理由を併記する。
-    理由が無いと「風も降水も基準内なのに B」になった説明が利用者に付かない。
+    """指数セル。その評価を決めた条件(風/降水、または降格条件)を併記する。
+    理由が無いと、同じ B でも「風が強い」のか「雨」なのかが利用者に分からない。
     index.html の idxCell と同一。"""
     if bi is None:
         return "-"
@@ -1354,16 +1369,21 @@ def print_daily_summary(rows, title, has_snow=False, elev=None):
         print("- ⚠夜間: 21時〜翌朝5時にC相当の荒天が予想されます。"
               "日中の指数には含めていませんが、"
               "テント泊・小屋泊・早発ち(アルパインスタート)の際は特に注意してください。")
-    # 降格理由の凡例。出た日だけ出す(理由の付かない表に説明だけ残らないように)
-    reasons = {r.get("reason") for r in rows if r.get("reason")}
+    # 理由の凡例。出た日だけ出す(理由の付かない表に説明だけ残らないように)。
+    # ★ reason は「風」「降水」(主判定)と「低体温/体感/視界」(降格条件)が混ざる。
+    #   同着の日は「風・降水」と連結されて来るので、凡例を引くときは必ず分解すること。
+    reasons = {p for r in rows for p in (r.get("reason") or "").split(MAIN_REASON_SEP) if p}
     if reasons:
         legend = {
+            "風": "風=稜線風が下記モードのしきい値以上",
+            "降水": "降水=3時間降水量が下記モードのしきい値以上(水換算。冬は雪)",
             "低体温": "低体温=気温10℃以下+降水+風8m/s以上(濡れによる低体温症の条件)",
             "体感": "体感=体感温度-20℃以下(凍傷リスク域)",
             "視界": "視界=視程200m未満+風10m/s以上(地吹雪・ホワイトアウトで行動困難)",
         }
-        print("- 指数に付く語は、風・降水の基準ではなく降格条件で下がったことを示します: "
-              + " / ".join(legend[k] for k in ("低体温", "体感", "視界") if k in reasons))
+        print("- 指数に付く語は、その日の評価を決めた条件です: "
+              + " / ".join(legend[k] for k in ("風", "降水", "低体温", "体感", "視界")
+                           if k in reasons))
     # 今どちらの閾値で判定したかを示す。10/31 と 11/1、寒い日と暖かい日で基準が変わるため
     modes = [r["mode"] for r in rows if r.get("mode")]
     if modes:

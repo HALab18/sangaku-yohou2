@@ -23,7 +23,7 @@
 /* index.html / find.html の <script src="logic.js?v=..."> と一致させる版。
  * 古い logic.js がキャッシュに残ると「画面は新しいのに判定だけ旧版」という気づけない状態に
  * なるため、判定を変えたリリースでは必ず上げる(一致は test_logic.js が機械的に見ている)。 */
-var PW_LOGIC_VER = "230";
+var PW_LOGIC_VER = "233";
 
 /* ---- 定数 (scripts/mountain_weather.py と同一) ---- */
 // LEVELS[i]=[気圧面hPa, 標準高度m]。500m台の里山から3800m級までを6面でカバー。
@@ -50,6 +50,10 @@ var VIS_LOW=200, VIS_LOW_WIND=10;
 // 出るため、飽和に近い95%を境にする。視程が取れているときは使わない。
 var VIEW_RH_GATE=95;
 var RANK={A:0,B:1,C:2};
+// ---- 主判定の理由ラベル (blockIndex が返す reason に使う) ----
+// 「雨」ではなく「降水」。降水量は水換算で、冬は同じ数値が雪を意味する。本アプリは雨/雪を
+// 別途 precipPhase で判別表示しているので、判定側が「雨」と名乗ると表示同士が食い違う。
+var MAIN_REASON_WIND="風", MAIN_REASON_PRECIP="降水", MAIN_REASON_SEP="・";
 
 // 「その時刻に実際に値がある気圧面」だけで山頂標高の風速を補間する。
 // pts=[[標準高度m, 風速], ...] を高度の昇順で渡す。範囲外は最寄りの面の値をそのまま使う。
@@ -105,8 +109,10 @@ function sumOrNull(vals){
 // 主判定のあとに降格条件(D1 湿潤低体温 / D2 体感温度 / D4 視界不良)を安全側にのみ重ねる。
 // 風と降水だけでは、冬の-20℃・風7m/s(体感-32℃)や 夏の雨中12m/s が A のまま出てしまい、
 // 実際に低体温症・凍傷が起きる条件を「登山適」と表示してしまうため。
-// 降格理由は「主判定より悪い評価を出した条件」の名前。理由を出さずに B が出ると、
-// 風も雨も基準内なのに B になった説明が利用者に付かない。
+// reason は「その評価を決めた条件」の名前。主判定で決まったなら「風」「降水」
+// (同じ評価で並んだら「風・降水」)、降格条件が主判定より悪ければその条件名。
+// 主判定側にも名前を出すのは、同じ B でも「風が強い」と「雨」で取るべき行動が違うため
+// (行程短縮か中止か)。A のときは説明する対象が無いので空文字。
 //
 // 材料は安全側に寄せて渡すこと(風=ブロック内の最大・降水=合計・気温=最小・視程=最小)。
 // visMin に null を渡せば D4 はスキップされる(視程を取得しない find がこの形で呼ぶ)。
@@ -115,10 +121,20 @@ function blockIndex(ws,pr3,th,tempMin,feels,visMin){
   // 「登山適」として表示され、安全と逆方向に誤解させる(Open-Meteo は非対応項目や予報期間外を
   // 400 ではなく null で返すため、欠測は現実に起こりうる)
   if(ws==null&&pr3==null)return[null,""];
-  var idx="A";
-  function worse(v){if(v==="C"||idx==="C")idx="C";else if(v==="B")idx="B"}
-  if(ws!=null){if(ws>=th.wind[1])worse("C");else if(ws>=th.wind[0])worse("B")}
-  if(pr3!=null){if(pr3>=th.precip[1])worse("C");else if(pr3>=th.precip[0])worse("B")}
+  // 風と降水を「畳み込む前に」それぞれ評価する。最悪値だけを足していく書き方だと
+  // どちらの材料が効いたのかが消え、B の理由を利用者に示せない。
+  function grade(v,lo,hi){return v==null?null:(v>=hi?"C":(v>=lo?"B":"A"))}
+  var gw=grade(ws,th.wind[0],th.wind[1]), gp=grade(pr3,th.precip[0],th.precip[1]);
+  var idx=gw==null?gp:(gp==null?gw:(RANK[gp]>RANK[gw]?gp:gw));
+  // 理由は「idx と同じ評価を出した材料」全部。同着で片方しか書かないと、もう片方は
+  // 基準内だったと誤解される(風12m/s・降水6mm でどちらもC、のような日が実際に出る)。
+  var reason="";
+  if(idx!=="A"){
+    var mains=[];
+    if(gw===idx)mains.push(MAIN_REASON_WIND);
+    if(gp===idx)mains.push(MAIN_REASON_PRECIP);
+    reason=mains.join(MAIN_REASON_SEP);
+  }
   // ---- 降格条件。優先度は 低体温 > 体感 > 視界 (先に立ったものが理由になる) ----
   var dem=[];
   // D1 湿潤低体温: 濡れ+風+低温。2009年トムラウシ(7月・気温8〜10℃・風20m/s・雨)の型。
@@ -137,7 +153,8 @@ function blockIndex(ws,pr3,th,tempMin,feels,visMin){
   // 「最低B」にすると一度も効かない死んだ条件になる。視程200m未満+風10m/s以上は
   // ホワイトアウト+強風=行動不能に近く、C が実態に合う。
   if(visMin!=null&&ws!=null&&visMin<VIS_LOW&&ws>=VIS_LOW_WIND)dem.push(["C","視界"]);
-  var reason="";
+  // 降格は「厳密に悪い」ときだけ採用する。同着(風でB・低体温もB)なら主判定の理由を残す。
+  // 同着でも上書きすると、しきい値を超えた風という一次的な事実が理由から消える。
   for(var i=0;i<dem.length;i++){
     if(RANK[dem[i][0]]>RANK[idx]){idx=dem[i][0];reason=dem[i][1]}
   }

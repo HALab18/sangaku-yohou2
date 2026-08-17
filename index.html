@@ -19,7 +19,7 @@
 <!-- 登山指数 A/B/C の判定ロジック。docs/find.html と共有する唯一の実装。
      ?v= は logic.js の PW_LOGIC_VER と同じ値にする(古い版がキャッシュに残ると
      「画面は新しいのに判定だけ旧版」という気づけない状態になる)。 -->
-<script src="logic.js?v=230"></script>
+<script src="logic.js?v=233"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -606,7 +606,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.32β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.33β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -981,7 +981,7 @@ function modeTemps(h,times,idxs){
 // 欠測を区別する合計 sumOrNull と順位表 RANK は logic.js。
 // 3時間ブロックの登山指数 blockIndex は logic.js(docs/find.html と共有する唯一の実装)。
 // 材料は安全側に寄せて渡す: 風=最大 / 降水=合計 / 気温=最小 / 視程=最小。
-// 指数セル。降格条件で落ちたときはその理由を併記する
+// 指数セル。その評価を決めた条件(風/降水、または降格条件)を併記する
 function idxCell(bi,reason){
   if(bi==null)return"-";
   return(IDX[bi]??"-")+(reason?`<span class="dr">${reason}</span>`:"");
@@ -1632,14 +1632,18 @@ async function run(mt,opts){
   if(rows.some(r=>r.night))htmlOut+=`<p class="ewnote">⚠夜間: 21時〜翌朝5時にC相当の荒天が予想されます。日中の指数には含めていませんが、テント泊・小屋泊・早発ち(アルパインスタート)の際は特に注意してください。</p>`;
   if(rows.some(r=>r.model==="GSM"))htmlOut+=`<p class="ewnote">日付に付く <b>全球</b> 印${wkSw?`(${mdIso(wkSw.firstGsm)}以降)`:""}は、その日の予報が<b>全球モデル(GSM)</b>由来であることを示します。それ以前は日本域向けに細かい MSM(約5km)です。切替日はモデルの更新時刻で動くため、日によって前後します。</p>`;
   if(rows.some(r=>r.degraded))htmlOut+=`<p class="ewnote">${windLbl}の <b>*</b> 印は、その日が<b>900hPa/800hPaのデータが無い期間</b>(${wkSw?`${mdIso(wkSw.firstGsm)}以降の`:""}GSM期間)のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。強めに見積もって判断してください。</p>`;
-  // 降格理由の凡例。出た日だけ出す(理由の付かない表に説明だけ残らないように)
+  // 理由の凡例。出た日だけ出す(理由の付かない表に説明だけ残らないように)。
+  // ★ reason は「風」「降水」(主判定)と「低体温/体感/視界」(降格条件)が混ざる。
+  //   同着の日は「風・降水」のように連結されて来るので、凡例を引くときは必ず分解すること
+  //   (連結文字列をそのままキーにすると leg に無く undefined が凡例に混ざる)。
   {
-    const rset=new Set(rows.map(r=>r.reason).filter(Boolean));
-    const leg={"低体温":"低体温=気温10℃以下+降水+風8m/s以上(濡れによる低体温症の条件)",
+    const rset=new Set(rows.flatMap(r=>(r.reason||"").split("・")).filter(Boolean));
+    const leg={"風":"風=稜線風が下記モードのしきい値以上","降水":"降水=3時間降水量が下記モードのしきい値以上(水換算。冬は雪)",
+      "低体温":"低体温=気温10℃以下+降水+風8m/s以上(濡れによる低体温症の条件)",
       "体感":"体感=体感温度-20℃以下(凍傷リスク域)",
       "視界":"視界=視程200m未満+風10m/s以上(地吹雪・ホワイトアウトで行動困難)"};
-    if(rset.size)htmlOut+=`<p class="ewnote">指数に付く語は、風・降水の基準ではなく<b>降格条件</b>で下がったことを示します: `
-      +["低体温","体感","視界"].filter(k=>rset.has(k)).map(k=>leg[k]).join(" / ")+`</p>`;
+    if(rset.size)htmlOut+=`<p class="ewnote">指数に付く語は、その日の評価を決めた条件です: `
+      +["風","降水","低体温","体感","視界"].filter(k=>rset.has(k)).map(k=>leg[k]).join(" / ")+`</p>`;
     // 今どちらの閾値で判定したかを示す。10/31 と 11/1、寒い日と暖かい日で基準が変わるため
     const modes=[...new Set(rows.map(r=>r.mode).filter(Boolean))];
     const thTxt={"夏山":"稜線風10/15m/s・3h降水1/5mm","冬山・残雪期":"稜線風8/12m/s・3h降水1/3mm"};

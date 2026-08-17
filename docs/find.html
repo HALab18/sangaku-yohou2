@@ -13,7 +13,7 @@
 <!-- 登山指数 A/B/C の判定ロジック。index.html と共有する唯一の実装。
      ?v= は logic.js の PW_LOGIC_VER と同じ値にする(古い版がキャッシュに残ると
      「画面は新しいのに判定だけ旧版」という気づけない状態になる)。 -->
-<script src="../logic.js?v=230"></script>
+<script src="../logic.js?v=233"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -1024,16 +1024,19 @@ footer a{color:var(--link)}
   //            (winter判定・稜線風の減点・abc がこの窓に依存するためスコアが変わりうる)
   //  / find14: sc に減点内訳 brk を追加(sc の形が変わる)。あわせてキーに標高帯を足した
   //            (標高帯で対象座数が変わるため、同じエリア・県・日付でも別の結果になる)
+  //  / find15: 正式指数の理由(sc.abc.reason)に主判定「風」「降水」を追加(sc の中身が変わる)。
+  //            A/B/C の値自体は変わらないが、旧キャッシュだと理由だけ空のまま復元される
   // 上げ忘れると旧キャッシュがそのまま復元され、天気列だけ古い表示になる。
-  function cacheKey(r,p,e,date){return "find14:"+r+":"+p+":"+e+":"+date}
+  function cacheKey(r,p,e,date){return "find15:"+r+":"+p+":"+e+":"+date}
   // 直近の検索条件を保存するキー。ページを再訪した時にセレクタと結果を復元する用途
   // (bfcache が効かない iOS 直リンク等のフォールバック。詳細は末尾の restoreLastSearch)。
-  var LAST_KEY="find14:last";
+  var LAST_KEY="find15:last";
   // 旧世代のキャッシュキー掃除。バージョンを上げても古い接頭辞のキーが sessionStorage に
   // 残り続け、quota に達するとキャッシュが黙って無効化される(認証ゲートが守っている
   // 無料枠と逆方向に働く)。既知の旧接頭辞を明示的に消す(localStorageの列挙APIには依存しない)。
-  // 次にバージョンを上げる時は、この配列に現行の "find13" を追記すること。
-  var OLD_FIND_PREFIXES=["find2","find3","find4","find5","find6","find7","find8","find9","find10","find11","find12","find13"];
+  // 次にバージョンを上げる時は、いま現行の接頭辞("find15")をこの配列に追記すること
+  // (この配列には「もう使わない世代」だけを並べる。現行を入れると自分のキャッシュを消す)。
+  var OLD_FIND_PREFIXES=["find2","find3","find4","find5","find6","find7","find8","find9","find10","find11","find12","find13","find14"];
   function cleanupOldCache(){
     try{
       var ks=[];for(var i=0;i<sessionStorage.length;i++)ks.push(sessionStorage.key(i));
