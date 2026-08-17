@@ -64,7 +64,7 @@ TEMPLATE = r"""<!doctype html>
 <!-- 登山指数 A/B/C の判定ロジック。index.html と共有する唯一の実装。
      ?v= は logic.js の PW_LOGIC_VER と同じ値にする(古い版がキャッシュに残ると
      「画面は新しいのに判定だけ旧版」という気づけない状態になる)。 -->
-<script src="../logic.js?v=233"></script>
+<script src="../logic.js?v=234"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>

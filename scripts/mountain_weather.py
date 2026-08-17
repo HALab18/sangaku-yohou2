@@ -655,10 +655,18 @@ def block_index(ridge_ws, precip_3h, th, temp_min=None, feels=None, vis_min=None
 
 
 LT_LABEL = ("低", "やや注意", "注意", "高い")
+# 夕方フラグを立てる発雷リスクの段階。EVE_THUNDER_LV は降水条件とセットで、
+# EVE_THUNDER_LV_SOLO(極端な不安定)は降水予測が無くても単独で立てる。
+EVE_THUNDER_LV, EVE_THUNDER_LV_SOLO = 2, 3
+# 17〜20時の降水量合計(mm)。この値以上をモデルが出しているときだけ EVE_THUNDER_LV で立てる。
+EVE_THUNDER_PRECIP = 1.0
 
 
 def lightning_risk(cape, cin):
-    """発雷リスク(表示専用。A/B/C 指数の判定には使わない。index.html の lightningRisk と同一)
+    """発雷リスク {"lv":段階, "label":表記}。CAPE が欠測なら None (logic.js の lightningRisk と同一)
+
+    A/B/C 指数そのものには入らないが、⚠夕方フラグの雷条件(eve_thunder)の入力になるため
+    logic_cases.json の等価性テストの対象。返り値を dict にしているのは JS 側と形をそろえるため。
 
     CAPE = 対流の「燃料」、CIN = 上昇を抑える「蓋」。燃料が多くても蓋が厚ければ発雷しにくい。
     そこで CAPE で大枠の段階を決め、蓋が厚いぶんだけ段階を下げる。
@@ -680,7 +688,30 @@ def lightning_risk(cape, cin):
         elif a >= 50:
             lv -= 1  # ある程度の蓋
     lv = max(0, min(3, lv))
-    return lv, LT_LABEL[lv]
+    return {"lv": lv, "label": LT_LABEL[lv]}
+
+
+def eve_thunder(cape, cin, precip_eve):
+    """⚠夕方フラグの雷条件 (logic.js の eveThunder と同一)。
+    cape/cin は 17〜20時の山頂格子の値(CAPE=最大・CIN=|最小|)、
+    precip_eve は同じ時間帯の降水量合計(sum_or_none の結果)。
+
+    ★ CAPE の段階だけで立てると夏に飽和して日を区別できなくなる(実測: 12山×10日で 27.5%、
+      うち 24.2% がこの条件由来。過去92日でも CAPE>=1000 単独は 14.7%・7月だけなら34%)。
+      原因は2つ。(1) CAPE は「不安定さ」であって対流が実際に起きるかは別で、CAPE 1500〜3400 でも
+      夕方の降水予測が 0.0mm の日が多い。(2) 低い山ほど CAPE が大きく(実測の最大 高尾山3570 対
+      槍ヶ岳1210)、絶対閾値だと低山が系統的に点灯する。毎日出る警告は無視されるので安全と逆方向。
+      そこで「モデルが実際に夕方の降水を出していること」を重ねる(実測 27.5% → 10.0%)。
+    ★ ただし EVE_THUNDER_LV_SOLO(極端な不安定)は降水条件を課さない。降水を出せない乾いた雷を
+      取りこぼさないための安全弁で、実測での増加は 9.2% → 10.0% と小さい。
+    ★ 降水が欠測(None)なら降水条件は課さない。「データが無い→警告を出さない」は安全と逆方向。
+    """
+    lt = lightning_risk(cape, cin)
+    if lt is None:
+        return False
+    if lt["lv"] >= EVE_THUNDER_LV_SOLO:
+        return True
+    return lt["lv"] >= EVE_THUNDER_LV and (precip_eve is None or precip_eve >= EVE_THUNDER_PRECIP)
 
 
 def lightning_cell(cape, cin):
@@ -688,7 +719,7 @@ def lightning_cell(cape, cin):
     lt = lightning_risk(cape, cin)
     if lt is None:
         return "-"
-    lv, label = lt
+    lv, label = lt["lv"], lt["label"]
     # CIN は API が絶対値で返すが、慣例に合わせて負値表記で見せる(0 は素の 0)
     num = f"CAPE {cape:.0f}"
     if cin is not None:
@@ -1276,7 +1307,7 @@ def daily_summary_rows(data, dates, elev):
         # 日の指数を決めたブロックの降格理由を採用する(最悪値と同じ評価の最初のもの)
         day_reason = next((r for b, r in verdicts if b == day_idx and r), "")
         # 日中がA/Bで夕方(17-20時)が荒れるなら急変警告フラグ (日中の指数は変えない)。
-        # 風雨がC相当のときに加えて、発雷リスクが「注意」以上のときも立てる
+        # 風雨がC相当のときに加えて、雷条件(eve_thunder)でも立てる
         eve = [i for i in idxs if 17 <= int(times[i][11:13]) <= 20]
         evening = False
         if eve and day_idx is not None and day_idx != "C":
@@ -1289,8 +1320,11 @@ def daily_summary_rows(data, dates, elev):
                 cape_e = max((ca[i] for i in eve if i < len(ca) and ca[i] is not None), default=None)
                 cin_e = min((ci[i] for i in eve if i < len(ci) and ci[i] is not None),
                             key=abs, default=None)
-                lt_e = lightning_risk(cape_e, cin_e)
-                evening = lt_e is not None and lt_e[0] >= 2
+                # 降水は「山頂格子の CAPE が高いだけの日」を落とすための条件。合計は
+                # sum_or_none で取る(sum(v or 0) だと欠測が 0mm に化け、降水条件が
+                # 常に不成立=フラグが立たない側に倒れる)
+                pr_e = sum_or_none(h["precipitation"][i] for i in eve)
+                evening = eve_thunder(cape_e, cin_e, pr_e)
         # 夜間(21時〜翌5時)の荒天フラグ。行動時間帯にも夕方にも入らないため、これまで
         # この帯は完全に無評価だった。冬型では風のピークが夜間に来ることが多く、
         # テント泊・小屋泊・早発ち(アルパインスタート)で最初に効く。
@@ -1362,7 +1396,8 @@ def print_daily_summary(rows, title, has_snow=False, elev=None):
               "のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。"
               "強めに見積もって判断してください。")
     if any(r.get("evening") for r in rows):
-        print("- ⚠夕方: 17〜20時に天候の急変(C相当)、または発雷リスク「注意」以上が予想されます。"
+        print("- ⚠夕方: 17〜20時に天候の急変(C相当)、または発雷リスクが高く夕方に降水が"
+              "予想されます(発雷リスク「高い」の日は降水予想が無くても付けます)。"
               "日中の指数には含めていませんが、"
               "下山遅れ・テント泊・ご来光待ちの際は特に注意してください。")
     if any(r.get("night") for r in rows):

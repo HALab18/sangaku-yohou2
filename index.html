@@ -19,7 +19,7 @@
 <!-- 登山指数 A/B/C の判定ロジック。docs/find.html と共有する唯一の実装。
      ?v= は logic.js の PW_LOGIC_VER と同じ値にする(古い版がキャッシュに残ると
      「画面は新しいのに判定だけ旧版」という気づけない状態になる)。 -->
-<script src="logic.js?v=233"></script>
+<script src="logic.js?v=234"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -606,7 +606,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.33β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.34β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -1003,25 +1003,7 @@ function precipPhase(fl,elev){
   if(fl>elev+200)return"雨";
   return"みぞれ";
 }
-// 発雷リスク(表示専用。A/B/C 指数の判定には使わない。mountain_weather.py の lightning_risk と同一)。
-// CAPE = 対流の「燃料」、CIN = 上昇を抑える「蓋」。燃料が多くても蓋が厚ければ発雷しにくい。
-// そこで CAPE で大枠の段階を決め、蓋が厚いぶんだけ段階を下げる。
-// CAPE の区切り 500/1000/2500 は一般的な雷雨の目安に合わせたもの(criteria.md の「CAPEの目安」)。
-// CIN 側は「下げる」方向にのみ効かせる。Open-Meteo の convective_inhibition は絶対値(J/kg)で返り、
-// 実データでは中央値 1〜15・約半数が 0 と「蓋なし」が既定状態のため、蓋が薄いことを理由に
-// 段階を上げると、ほぼ全ての時刻が上振れして意味を成さなくなる。
-// ブロック集計側では「蓋が最も薄い時刻」= |CIN| の最小値を渡す(安全側)。
-const LT_LABEL=["低","やや注意","注意","高い"];
-function lightningRisk(cape,cin){
-  if(cape==null)return null;
-  let lv=cape>=2500?3:cape>=1000?2:cape>=500?1:0;
-  if(cin!=null){
-    const a=Math.abs(cin);
-    if(a>=100)lv-=2;else if(a>=50)lv-=1;
-  }
-  lv=Math.max(0,Math.min(3,lv));
-  return{lv,label:LT_LABEL[lv]};
-}
+// 発雷リスク lightningRisk と ⚠夕方の雷条件 eveThunder、その定数 LT_LABEL は logic.js。
 // 体感温度 feelsLike(豪州気象局の Apparent Temperature)は logic.js。
 // 山頂からの景色(眺望) viewScore は logic.js。
 const visTxt=vis=>vis==null?null:vis>=1000?`${Math.round(vis/1000)}km`:`${Math.round(vis)}m`;
@@ -1548,7 +1530,7 @@ async function run(mt,opts){
     // 日の指数を決めたブロックの降格理由を採用する(最悪値と同じ評価の最初のもの)
     const dayReason=verdicts.find(x=>x[0]===dayIdxV&&x[1])?.[1]??"";
     // 日中がA/Bで夕方(17-20時)が荒れるなら急変警告フラグ (日中の指数は変えない)。
-    // 風雨がC相当のときに加えて、発雷リスクが「注意」以上のときも立てる
+    // 風雨がC相当のときに加えて、雷条件(eveThunder)でも立てる
     let evening=false;
     if(dayIdxV!=null&&dayIdxV!=="C"){
       const eve=idxs.filter(i=>{const hr=+times[i].slice(11,13);return hr>=17&&hr<=20});
@@ -1559,9 +1541,11 @@ async function run(mt,opts){
           // 達してフラグが日を区別できなくなる(cape_area を作っている箇所の注記を参照)
           const capeArrE=eve.map(i=>h.cape?.[i]).filter(v=>v!=null);
           const cinArrE=eve.map(i=>h.convective_inhibition?.[i]).filter(v=>v!=null);
-          const ltE=lightningRisk(capeArrE.length?Math.max(...capeArrE):null,
-            cinArrE.length?cinArrE.reduce((a,b)=>Math.abs(b)<Math.abs(a)?b:a):null);
-          evening=ltE!=null&&ltE.lv>=2;
+          // 降水は「山頂格子の CAPE が高いだけの日」を落とすための条件。合計は sumOrNull で
+          // 取る(0 埋めの合計だと欠測が 0mm に化け、降水条件が常に不成立=フラグが立たない側に倒れる)
+          evening=eveThunder(capeArrE.length?Math.max(...capeArrE):null,
+            cinArrE.length?cinArrE.reduce((a,b)=>Math.abs(b)<Math.abs(a)?b:a):null,
+            sumOrNull(eve.map(i=>h.precipitation[i])));
         }
       }
     }
@@ -1628,7 +1612,7 @@ async function run(mt,opts){
   if(rows.length>WK_HEAD)
     htmlOut+=`<button type="button" class="wk-toggle" aria-controls="wk-tbl" aria-expanded="${wkOpen}">`+
       `${wkOpen?"折りたたむ":`残り${rows.length-WK_HEAD}日を表示`}</button>`;
-  if(rows.some(r=>r.eve))htmlOut+=`<p class="ewnote">⚠夕方: 17〜20時に天候の急変(C相当)、または発雷リスク「注意」以上が予想されます。日中の指数には含めていませんが、下山遅れ・テント泊・ご来光待ちの際は特に注意してください。</p>`;
+  if(rows.some(r=>r.eve))htmlOut+=`<p class="ewnote">⚠夕方: 17〜20時に天候の急変(C相当)、または発雷リスクが高く夕方に降水が予想されます(発雷リスク「高い」の日は降水予想が無くても付けます)。日中の指数には含めていませんが、下山遅れ・テント泊・ご来光待ちの際は特に注意してください。</p>`;
   if(rows.some(r=>r.night))htmlOut+=`<p class="ewnote">⚠夜間: 21時〜翌朝5時にC相当の荒天が予想されます。日中の指数には含めていませんが、テント泊・小屋泊・早発ち(アルパインスタート)の際は特に注意してください。</p>`;
   if(rows.some(r=>r.model==="GSM"))htmlOut+=`<p class="ewnote">日付に付く <b>全球</b> 印${wkSw?`(${mdIso(wkSw.firstGsm)}以降)`:""}は、その日の予報が<b>全球モデル(GSM)</b>由来であることを示します。それ以前は日本域向けに細かい MSM(約5km)です。切替日はモデルの更新時刻で動くため、日によって前後します。</p>`;
   if(rows.some(r=>r.degraded))htmlOut+=`<p class="ewnote">${windLbl}の <b>*</b> 印は、その日が<b>900hPa/800hPaのデータが無い期間</b>(${wkSw?`${mdIso(wkSw.firstGsm)}以降の`:""}GSM期間)のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。強めに見積もって判断してください。</p>`;

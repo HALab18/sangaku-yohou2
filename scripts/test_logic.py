@@ -31,6 +31,8 @@ FUNCS = {
     "viewScore": mw.view_score,
     "interpWind": mw.interp_wind,
     "sumOrNull": mw.sum_or_none,
+    "lightningRisk": mw.lightning_risk,
+    "eveThunder": mw.eve_thunder,
 }
 
 

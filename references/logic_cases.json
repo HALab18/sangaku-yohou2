@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "_note": [
     "登山指数 A/B/C の判定ロジックが CLI(Python) と Web(JS) で同一であることを機械的に確かめるための入出力表。",
     "scripts/test_logic.py が scripts/mountain_weather.py を、scripts/test_logic.js が logic.js を、",
@@ -105,5 +105,32 @@
     {"name": "空なら null",                 "in": [[]], "out": null},
     {"name": "0mm は 0(欠測と区別する)",    "in": [[0, 0]], "out": 0},
     {"name": "欠測を混ぜても有効値だけ合計", "in": [[1, null, 2]], "out": 3}
+  ],
+
+  "lightningRisk": [
+    {"name": "CAPE欠測なら判定不能",        "in": [null, 0],   "out": null},
+    {"name": "CAPE499は「低」",             "in": [499, 0],    "out": {"lv": 0, "label": "低"}},
+    {"name": "CAPE500で「やや注意」",       "in": [500, 0],    "out": {"lv": 1, "label": "やや注意"}},
+    {"name": "CAPE999は「やや注意」",       "in": [999, 0],    "out": {"lv": 1, "label": "やや注意"}},
+    {"name": "CAPE1000で「注意」",          "in": [1000, 0],   "out": {"lv": 2, "label": "注意"}},
+    {"name": "CAPE2499は「注意」",          "in": [2499, 0],   "out": {"lv": 2, "label": "注意"}},
+    {"name": "CAPE2500で「高い」",          "in": [2500, 0],   "out": {"lv": 3, "label": "高い"}},
+    {"name": "CIN欠測でも段階は下げない",   "in": [2500, null], "out": {"lv": 3, "label": "高い"}},
+    {"name": "CIN49では下げない(境界)",     "in": [2500, 49],  "out": {"lv": 3, "label": "高い"}},
+    {"name": "CIN50で1段下げる",            "in": [2500, 50],  "out": {"lv": 2, "label": "注意"}},
+    {"name": "CIN100で2段下げる",           "in": [2500, 100], "out": {"lv": 1, "label": "やや注意"}},
+    {"name": "CINは絶対値で見る(負値)",     "in": [2500, -100], "out": {"lv": 1, "label": "やや注意"}},
+    {"name": "下げすぎても0でクランプ",     "in": [500, 100],  "out": {"lv": 0, "label": "低"}}
+  ],
+
+  "eveThunder": [
+    {"name": "CAPE欠測なら立てない",                    "in": [null, null, 5.0], "out": false},
+    {"name": "lv1は降水があっても立てない",             "in": [600, 0, 5.0],     "out": false},
+    {"name": "lv2+降水0.4mmは立てない(夏に飽和していた型)", "in": [1450, 0, 0.4], "out": false},
+    {"name": "lv2+降水1.0mmで立てる(境界)",             "in": [1450, 0, 1.0],    "out": true},
+    {"name": "lv2+降水欠測は降水条件を課さない",        "in": [1080, 0, null],   "out": true},
+    {"name": "lv3は降水0.0mmでも立てる(乾雷の安全弁)",  "in": [3410, 0, 0.0],    "out": true},
+    {"name": "厚い蓋でlv3→lv1に落ちれば立てない",       "in": [3000, 120, 0.0],  "out": false},
+    {"name": "降水が負値でも立てない",                  "in": [2200, 0, -0.4],   "out": false}
   ]
 }

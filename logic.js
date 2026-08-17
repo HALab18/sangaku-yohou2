@@ -23,7 +23,7 @@
 /* index.html / find.html の <script src="logic.js?v=..."> と一致させる版。
  * 古い logic.js がキャッシュに残ると「画面は新しいのに判定だけ旧版」という気づけない状態に
  * なるため、判定を変えたリリースでは必ず上げる(一致は test_logic.js が機械的に見ている)。 */
-var PW_LOGIC_VER = "233";
+var PW_LOGIC_VER = "234";
 
 /* ---- 定数 (scripts/mountain_weather.py と同一) ---- */
 // LEVELS[i]=[気圧面hPa, 標準高度m]。500m台の里山から3800m級までを6面でカバー。
@@ -54,6 +54,13 @@ var RANK={A:0,B:1,C:2};
 // 「雨」ではなく「降水」。降水量は水換算で、冬は同じ数値が雪を意味する。本アプリは雨/雪を
 // 別途 precipPhase で判別表示しているので、判定側が「雨」と名乗ると表示同士が食い違う。
 var MAIN_REASON_WIND="風", MAIN_REASON_PRECIP="降水", MAIN_REASON_SEP="・";
+// ---- 発雷リスクと ⚠夕方フラグの雷条件 (references/criteria.md「夕方急変の警告フラグ」) ----
+var LT_LABEL=["低","やや注意","注意","高い"];
+// 夕方フラグを立てる発雷リスクの段階。EVE_THUNDER_LV は降水条件とセットで、
+// EVE_THUNDER_LV_SOLO(極端な不安定)は降水予測が無くても単独で立てる。
+var EVE_THUNDER_LV=2, EVE_THUNDER_LV_SOLO=3;
+// 17〜20時の降水量合計(mm)。この値以上をモデルが出しているときだけ EVE_THUNDER_LV で立てる。
+var EVE_THUNDER_PRECIP=1.0;
 
 // 「その時刻に実際に値がある気圧面」だけで山頂標高の風速を補間する。
 // pts=[[標準高度m, 風速], ...] を高度の昇順で渡す。範囲外は最寄りの面の値をそのまま使う。
@@ -161,6 +168,48 @@ function blockIndex(ws,pr3,th,tempMin,feels,visMin){
   return[idx,reason];
 }
 
+// 発雷リスク {lv, label}。CAPE が欠測なら null。
+// CAPE = 対流の「燃料」、CIN = 上昇を抑える「蓋」。燃料が多くても蓋が厚ければ発雷しにくい。
+// そこで CAPE で大枠の段階を決め、蓋が厚いぶんだけ段階を下げる。
+// CAPE の区切り 500/1000/2500 は一般的な雷雨の目安(references/criteria.md「CAPEの目安」)。
+//
+// CIN 側は「下げる」方向にのみ効かせる。Open-Meteo の convective_inhibition は絶対値(J/kg)で
+// 返り、実データでは中央値 1〜15・約半数が 0 と「蓋なし」が既定状態のため、蓋が薄いことを
+// 理由に段階を上げると、ほぼ全ての時刻が上振れして意味を成さなくなる。
+// ブロック集計側では「蓋が最も薄い時刻」= |CIN| の最小値を渡す(安全側)。
+//
+// ★ 表示(詳細表の⚡列)と ⚠夕方フラグの両方が使う。表示は周辺4方位を含めた最大CAPEを渡し、
+//   フラグは山頂格子のCAPEを渡す ── 入力が違うだけで、この関数自体は共通。
+function lightningRisk(cape,cin){
+  if(cape==null)return null;
+  var lv=cape>=2500?3:cape>=1000?2:cape>=500?1:0;
+  if(cin!=null){
+    var a=Math.abs(cin);
+    if(a>=100)lv-=2;else if(a>=50)lv-=1;
+  }
+  lv=Math.max(0,Math.min(3,lv));
+  return{lv:lv,label:LT_LABEL[lv]};
+}
+
+// ⚠夕方フラグの雷条件。cape/cin は 17〜20時の山頂格子の値(CAPE=最大・CIN=|最小|)、
+// precipEve は同じ時間帯の降水量合計(sumOrNull の結果)。
+//
+// ★ CAPE の段階だけで立てると夏に飽和して日を区別できなくなる(実測: 12山×10日で 27.5%、
+//   うち 24.2% がこの条件由来。過去92日でも CAPE>=1000 単独は 14.7%・7月だけなら34%)。
+//   原因は2つ。(1) CAPE は「不安定さ」であって対流が実際に起きるかは別で、CAPE 1500〜3400 でも
+//   夕方の降水予測が 0.0mm の日が多い。(2) 低い山ほど CAPE が大きく(実測の最大 高尾山3570 対
+//   槍ヶ岳1210)、絶対閾値だと低山が系統的に点灯する。毎日出る警告は無視されるので安全と逆方向。
+//   そこで「モデルが実際に夕方の降水を出していること」を重ねる(実測 27.5% → 10.0%)。
+// ★ ただし EVE_THUNDER_LV_SOLO(極端な不安定)は降水条件を課さない。降水を出せない乾いた雷を
+//   取りこぼさないための安全弁で、実測での増加は 9.2% → 10.0% と小さい。
+// ★ 降水が欠測(null)なら降水条件は課さない。「データが無い→警告を出さない」は安全と逆方向。
+function eveThunder(cape,cin,precipEve){
+  var lt=lightningRisk(cape,cin);
+  if(lt==null)return false;
+  if(lt.lv>=EVE_THUNDER_LV_SOLO)return true;
+  return lt.lv>=EVE_THUNDER_LV&&(precipEve==null||precipEve>=EVE_THUNDER_PRECIP);
+}
+
 // 体感温度: 豪州気象局の Apparent Temperature (Steadman)。気温・風・湿度から算出する。
 //   e  = (RH/100) × 6.105 × exp(17.27×T / (237.7+T))   … 水蒸気圧(hPa)
 //   AT = T + 0.33×e − 0.70×風速(m/s) − 4.00
@@ -223,6 +272,8 @@ function viewScore(elev,low,mid,pr3,vis,rh){
 if(typeof module!=="undefined"&&module.exports)module.exports={
   PW_LOGIC_VER:PW_LOGIC_VER,LEVELS:LEVELS,SURFACE_WIND_M:SURFACE_WIND_M,
   DEGRADED_LEVELS:DEGRADED_LEVELS,
+  LT_LABEL:LT_LABEL,
   interpWind:interpWind,seasonTh:seasonTh,sumOrNull:sumOrNull,
-  blockIndex:blockIndex,feelsLike:feelsLike,viewScore:viewScore
+  blockIndex:blockIndex,feelsLike:feelsLike,viewScore:viewScore,
+  lightningRisk:lightningRisk,eveThunder:eveThunder
 };
