@@ -24,7 +24,12 @@
   gtag('config', 'G-B4FYN1EJ2S');
 </script>
 <style>
-:root{--night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
+/* --muted: 補足文字の共通色(index.html と同じ値)。白 6.2:1 / 表の偶数行 5.5:1 /
+   ページ背景 5.7:1 でいずれも WCAG AA(4.5:1) を満たす。
+   以前の #8a94a8 は 3.05:1、footer の #888 は 3.27:1 で未達だった
+   (順位・減点の内訳・日照の * 印は実データなので、薄すぎると読めない) */
+:root{--muted:#5a6270;
+  --night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
   --btn:#4276b5;--bg:#f4f6f9;--line:#dee4ee;--field:#c9d2e0}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:#222;
@@ -65,6 +70,13 @@ main{max-width:860px;margin:0 auto;padding:18px 14px 8px}
    ページ縦スクロールではなく .tbl 内スクロールで効くようにする(index.htmlと同じ方式)。
    overflow-x:auto だけだと position:sticky はページ全体に対しては効かない。 */
 .tbl{max-height:75vh;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin:10px 0 4px}
+/* 横スクロールの手がかり(index.html と同じ方式)。実測(375px)でこの表は 509px あり、
+   稜線風・降水確率・降水量が画面外に出る。手がかりが無いとそもそも横に送られない。
+   ★ 背景グラデーション方式は使えない: td が不透明(#fff / 偶数行)なのでセルに隠れる。
+     mask で描画結果ごとフェードさせる。sticky(ヘッダ行・左2列)は壊れないことを実測で確認済み。 */
+.tbl.xscroll{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);
+  mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent)}
+.tbl.xscroll.at-end{-webkit-mask-image:none;mask-image:none}
 table{border-collapse:collapse;width:100%}
 /* ヘッダはページ縦スクロール時に画面上端に固定し、どの列を見ているか分かるようにする(index.htmlと同じ挙動) */
 th{background:var(--slate);color:#fff;padding:6px 8px;font-weight:600;font-size:.86em;white-space:nowrap;position:sticky;top:0;z-index:2}
@@ -122,7 +134,7 @@ tr.row-c td.rank,tr.row-c td.nm{background:#fbe0da}
 th:nth-child(2),td.nm{box-shadow:inset -1px 0 0 var(--line)}
 td.nm a{color:var(--link);font-weight:700;text-decoration:none}
 td.nm a:hover{text-decoration:underline}
-td.nm small{display:block;color:#8a94a8;font-size:.82em;font-weight:400}
+td.nm small{display:block;color:var(--muted);font-size:.82em;font-weight:400}
 /* スコアの減点内訳。スコアの数字だけでは「何で引かれたか」が分からず、隣の列を突き合わせる
    必要があった。県・標高の行より一段弱い色にして、山名の読み取りを邪魔しないようにする。 */
 td.nm small.brk{color:#a2708a;font-size:.78em;letter-spacing:.02em}
@@ -140,9 +152,13 @@ h3.results-h .rcount{color:#556;font-weight:500;font-size:.9em;margin-left:6px}
 .rnote.caution{color:#b26b00;background:#fff8e6;border-left:4px solid #b26b00;padding:6px 10px;border-radius:0 4px 4px 0}
 .rnote a{color:var(--link)}
 /* 表の下に置く「各列の意味」凡例。ユーザーが「気温が2つあるが説明がない」等で
-   迷わないよう、列ごとの意味と単位・対象時間帯を短い1行で列挙する。 */
-.legend{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:14px 0 6px;font-size:.85em;color:#44506b}
-.legend h4{margin:0 0 6px;font-size:.95em;color:var(--night);font-weight:700}
+   迷わないよう、列ごとの意味と単位・対象時間帯を短い1行で列挙する。
+   ★ 既定で畳む。実測(375px)でこの凡例は 631px あり、表(509px)より背が高かった。
+     毎回読むものではないので、開きたい人だけ開く形にする(index.html の「表の見方」と同じ)。 */
+.legend{background:#fff;border:1px solid var(--line);border-radius:8px;margin:14px 0 6px;font-size:.85em;color:#44506b}
+.legend>summary{cursor:pointer;padding:10px 14px;font-size:.95em;color:var(--night);
+  font-weight:700;user-select:none}
+.legend .tbody{padding:0 14px 12px}
 .legend dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 10px}
 .legend dt{font-weight:700;color:var(--night);white-space:nowrap}
 .legend dd{margin:0}
@@ -157,13 +173,13 @@ td.reason{color:#b26b00;font-weight:700;font-size:.85em;white-space:nowrap;text-
 .wxico{width:1.9em;height:1.9em;display:block;margin:0 auto 2px}
 .wxlbl{color:#556;font-size:.82em}
 /* 代表天気から降格した短時間の降水の注記 (index.html の .wxnote と同趣旨。表幅が狭いので一段小さく) */
-.wxnote{display:block;font-size:.72em;color:#6b7280;margin-top:2px;line-height:1.25}
+.wxnote{display:block;font-size:.72em;color:var(--muted);margin-top:2px;line-height:1.25}
 /* 日照が気象庁モデル外(別モデルで補完)であることの印。数値の読み取りを邪魔しない小さな * にする */
-td.num .altm{color:#8a94a8;font-weight:700;margin-left:1px}
+td.num .altm{color:var(--muted);font-weight:700;margin-left:1px}
 .num{font-variant-numeric:tabular-nums}
-.rank{color:#8a94a8;font-variant-numeric:tabular-nums}
+.rank{color:var(--muted);font-variant-numeric:tabular-nums}
 
-footer{color:#888;font-size:.82em;margin-top:26px;border-top:1px solid var(--line);padding-top:10px;padding-bottom:16px}
+footer{color:var(--muted);font-size:.82em;margin-top:26px;border-top:1px solid var(--line);padding-top:10px;padding-bottom:16px}
 footer a{color:var(--link)}
 
 #totop{position:fixed;right:16px;bottom:max(16px,env(safe-area-inset-bottom));z-index:30;
@@ -1150,6 +1166,29 @@ footer a{color:var(--link)}
   // index.html の週間見通し表(WK_HEAD/wk-toggle)と同じ考え方
   var FIND_HEAD=10;
 
+  /* 表が横にはみ出していること(=横スクロールできること)を右端のフェードで示す。
+   * 実測(375px幅)でこの表は 509px あり、表示できるのは 347px。稜線風・降水確率・降水量が
+   * 画面外に出る。手がかりが無いとそもそも横に送られないので、初見では列が無いのと同じになる。
+   * 右端まで送ったら .at-end でフェードを消す(最後の列が薄いまま残らないように)。
+   * index.html の markScrollables() と同じ実装。 */
+  var xsResizeBound=false;
+  function markScrollables(root){
+    function upd(t){
+      var over=t.scrollWidth-t.clientWidth>2;   // 端数での誤検出を避けるため 2px の余裕を見る
+      t.classList.toggle("xscroll",over);
+      t.classList.toggle("at-end",over&&t.scrollLeft>=t.scrollWidth-t.clientWidth-2);
+    }
+    function all(){Array.prototype.forEach.call(root.querySelectorAll(".tbl"),upd)}
+    Array.prototype.forEach.call(root.querySelectorAll(".tbl"),function(t){
+      upd(t);
+      if(t.dataset.xs)return;
+      t.dataset.xs="1";
+      t.addEventListener("scroll",function(){upd(t)},{passive:true});
+    });
+    if(!xsResizeBound){xsResizeBound=true;addEventListener("resize",all,{passive:true})}
+    return all;
+  }
+
   function tableHtml(rows,date,caution){
     var tblId="tbl-"+(caution?"caution":"safe");
     var open=rows.length<=FIND_HEAD;
@@ -1170,8 +1209,8 @@ footer a{color:var(--link)}
 
   // 表の下に置く「各列の意味」凡例。対象時間帯(朝7時〜夕方3時)・単位・重要ポイントを簡潔に説明
   var LEGEND_HTML=(
-    '<div class="legend"><h4>表の見方</h4>'+
-    '<dl>'+
+    '<details class="legend"><summary>表の見方</summary>'+
+    '<div class="tbody"><dl>'+
     '<dt>スコア</dt><dd>0〜100 の登山適性スコア。'+
       '<span class="rk rk-a">A</span>70〜100 '+
       '<span class="rk rk-b">B</span>45〜69 '+
@@ -1198,7 +1237,7 @@ footer a{color:var(--link)}
       '(足切り: 夏18m/s・冬12m/s以上)。冬は同じ風速でも危険度が大きく上がるためです</dd>'+
     '<dt>降水確率</dt><dd>朝7時〜夕方3時の降水確率の最大値 (%)。参考表示のみです</dd>'+
     '<dt>降水量</dt><dd>朝7時〜夕方3時の合計降水量（mm）。スコアに直接影響します</dd>'+
-    '</dl></div>');
+    '</dl></div></details>');
 
   // gotAt = この順位表を取得した時刻(キャッシュ復元時はキャッシュに入れた時刻)
   // initAll = 発表時刻の文字列("" なら取得できなかったので出さない)
@@ -1265,6 +1304,7 @@ footer a{color:var(--link)}
     // 分かるようにする。1回だけ表示(メイン表と足切り表のどちらか(または両方)が出た時)。
     h+=LEGEND_HTML;
     elResults.innerHTML=h;
+    markScrollables(elResults);
   }
 
   elGo.addEventListener("click",function(){search(false)});
@@ -1284,6 +1324,8 @@ footer a{color:var(--link)}
       more.forEach(function(tr){tr.hidden=!open});
       toggleBtn.setAttribute("aria-expanded",open);
       toggleBtn.textContent=open?"折りたたむ":"残り"+more.length+"件を表示";
+      // 行が増えると長い山名で表幅が変わるので、横スクロールの手がかりを測り直す
+      markScrollables(elResults);
       return;
     }
     var a=e.target.closest?e.target.closest("td.nm a"):null;
