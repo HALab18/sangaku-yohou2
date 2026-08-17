@@ -313,9 +313,22 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
 tr.wk-sep td,tr.wk-sep td:first-child{border-top:2px solid #b9c2d0;background:#f6f8fb;
   color:#5b6472;font-size:.78em;font-weight:700;padding:3px 8px;letter-spacing:.02em;
   /* ★ 中央寄せにしない。この行は表の全幅(colspan)なので、スマホのように表が画面より広いと
-     中央＝画面の外になり、横スクロールしないと文言が読めない。左端なら初期表示で見える。
+     中央＝画面の外になり、横スクロールしないと文言が読めない。左端なら初期表示で見える
+     (スクロールした先でも見え続けるのは下の .wk-sepin 側で倒している)。
      td の text-align:center を上書きするため、詳細度で勝つセレクタで指定している。 */
   text-align:left}
+/* 全幅セルの右端に固定列の罫線(th:first-child,td:first-child の inset box-shadow)を描かせない。
+   この行の td は colspan で行幅全体を占めるため、日付/指数の境目でなく表の右端に線が入る。
+   上の th:first-child,td:first-child と同詳細度なので、ここ(後ろ)に置いて後勝ちさせる。 */
+tr.wk-sep td{box-shadow:none}
+/* ★ 全幅セルの中で「文言だけ」を左端に追従させる。
+   この td は td:first-child の sticky に一致するが、セル幅＝行幅なので追従できない
+   (ずらせる余地が 0)。そのままだと横スクロールで文言が左へ流れ去り、他の行の日付列だけが
+   固定で残るため、帯が表のグリッドから外れて見える。包んだ span を sticky にすれば、
+   包含ブロック(＝全幅の td)の中を左端に張り付いて移動できる。
+   left は td の左 padding と同じ 8px にする。0 だと送ったときだけ文字が画面端に寄り、
+   スクロール位置 0 のときと余白が変わって一瞬カクッと動いて見える。 */
+.wk-sepin{position:sticky;left:8px;display:inline-block;max-width:100%}
 .wxnote{display:block;font-size:.78em;color:var(--muted);margin-top:2px;line-height:1.3}
 /* 詳細表の見出し直下に出す控えめなキャプション(山名とデータ取得日時)。スクショを切り取っても
    どの山のいつの取得か分かるようにするため。目立たせない */
@@ -648,7 +661,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.39β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.40β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -1748,7 +1761,7 @@ async function run(mt,opts){
     // (.wk-sep を除いて数えている。開閉ボタン側と対になっているので片方だけ直さないこと)
     if(wkSw&&iso(r.d)===wkSw.firstGsm)
       htmlOut+=`<tr class="wk-sep${more?" wk-more":""}"${more&&!wkOpen?" hidden":""}>`
-        +`<td colspan="${sepCols}">▼ ここから全球モデル(GSM)の予報です</td></tr>`;
+        +`<td colspan="${sepCols}"><span class="wk-sepin">▼ ここから全球モデル(GSM)の予報です</span></td></tr>`;
     const cls=["wk-row"];if(more)cls.push("wk-more");
     htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}" tabindex="0" role="button"><td>${md(r.d)}${wj(r.d)}${r.mode==="冬山・残雪期"?'<span class="wmode" title="冬山・残雪期の基準(稜線風8/12m/s・3h降水1/3mm)で判定した日">冬</span>':""}${r.model==="GSM"?'<span class="mdlm" title="全球モデル(GSM)の予報。日本域向けの MSM(約5km)より格子が広く、稜線風はやや弱めに出ます">全球</span>':""}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"><span class="ewi">⚠</span>夕方</span>':""}${r.night?'<span class="ew"><span class="ewi">⚠</span>夜間</span>':""}</td><td class="agr">${r.agree||"-"}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
     <td>${r.view}</td><td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws,r.degraded)}</td>
@@ -2598,6 +2611,9 @@ document.getElementById("out").addEventListener("click",e=>{
   // (畳む側と数える側で対象が違う。片方だけ直すと「残り4日」で3日しか出ない状態になる)
   const days=document.querySelectorAll("#wk-tbl tr.wk-more:not(.wk-sep)").length;
   btn.textContent=open?"折りたたむ":`残り${days}日を表示`;
+  // 行の出入りで .tbl の縦スクロールバーの有無＝clientWidth が変わるので、横スクロールの
+  // 手がかりを測り直す。呼ばないと .xscroll/.at-end が次の scroll/resize まで古いまま残る
+  markScrollables(document);
 });
 
 // 見通し表の行→詳細予報へのジャンプ。

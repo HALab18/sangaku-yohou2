@@ -23,8 +23,13 @@
   gtag('config', 'G-B4FYN1EJ2S');
 </script>
 <style>
-:root{--night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
-  --btn:#4276b5;--btn-d:#3a68a3;--sel:#dceaf9;--bg:#f4f6f9;--line:#dee4ee}
+/* index.html と同じトークンを使う。--muted は補足文字の共通色で、
+   白 6.2:1 / ページ背景 #f4f6f9 5.7:1 と WCAG AA(4.5:1) を満たす。以前の #7a8398 は 3.4:1、
+   footer の #888 は 3.27:1 で未達だった。--field はセカンダリなボタンの枠色。
+   値を変えるときは index.html 側と揃えること(共有CSSを持たない方式なので手で揃える)。 */
+:root{--muted:#5a6270;
+  --night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
+  --btn:#4276b5;--btn-d:#3a68a3;--sel:#dceaf9;--bg:#f4f6f9;--line:#dee4ee;--field:#c9d2e0}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:#222;
@@ -45,11 +50,11 @@ a{color:var(--link)}
 
 /* 現在地ボタン: 押した時だけ1回測位し、座標対応リンクの href を書き換える。
    index.html の #gps と同じ「セカンダリの控えめな外観」に揃える */
-#geo{width:100%;padding:12px;font-size:15px;border-radius:12px;border:1.5px solid #c9d2e0;
+#geo{width:100%;padding:12px;font-size:15px;border-radius:12px;border:1.5px solid var(--field);
   background:#fff;color:var(--link);font-weight:700;cursor:pointer;font-family:inherit;margin-top:14px}
 #geo:hover{background:var(--sel)}
-#geo:disabled{color:#9aa7bd;cursor:wait}
-#geostatus{margin:6px 2px 0;font-size:.86em;color:#5b6b8a;font-weight:600;min-height:1.4em}
+#geo:disabled{color:var(--muted);cursor:wait}
+#geostatus{margin:6px 2px 0;font-size:.86em;color:var(--muted);font-weight:600;min-height:1.4em}
 #geostatus.err{color:#a03415}
 
 .linklist{background:#fff;border-radius:14px;box-shadow:0 2px 12px rgba(30,45,74,.10);
@@ -62,7 +67,7 @@ a{color:var(--link)}
   display:flex;align-items:center;justify-content:center;flex:none;font-size:19px}
 .li-body{flex:1;min-width:0}
 .li-title{display:block;font-weight:700;font-size:.95em;color:#222}
-.li-desc{display:block;font-size:.8em;color:#7a8398;line-height:1.6}
+.li-desc{display:block;font-size:.8em;color:var(--muted);line-height:1.6}
 /* 現在地が反映されたリンクにだけ出す印。既定は非表示 */
 .li-here{display:none;font-size:.78em;color:var(--btn);font-weight:700}
 .linkitem.here .li-here{display:block}
@@ -71,7 +76,7 @@ a{color:var(--link)}
 .notice{background:#edf2f9;border-left:5px solid var(--slate);color:#44506b;padding:10px 12px;
   border-radius:0 6px 6px 0;margin:16px 0;font-size:.86em}
 
-footer{color:#888;font-size:.82em;margin-top:26px;border-top:1px solid var(--line);
+footer{color:var(--muted);font-size:.82em;margin-top:26px;border-top:1px solid var(--line);
   padding-top:10px;padding-bottom:16px}
 footer a{color:var(--link)}
 </style>
