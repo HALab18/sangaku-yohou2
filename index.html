@@ -324,6 +324,9 @@ tr.wk-sep td,tr.wk-sep td:first-child{border-top:2px solid #b9c2d0;background:#f
   border-radius:0 6px 6px 0;margin:6px 0 14px;font-size:.9em}
 /* 凡例末尾の「詳しく」リンク。理由・実測値は解説ページ側に置き、ここは短い事実だけにする */
 .ewnote a.more,.notice a.more{color:inherit;text-decoration:underline;white-space:nowrap}
+/* 参考情報の凡例(全球印・稜線風*印)。危険側の注意(.ewnote の赤)と区別しつつ、
+   凡例として並ぶので余白は .ewnote に合わせる(.notice 既定の 18px だとここだけ空く) */
+.notice.leg{margin:6px 0 14px;padding:8px 12px}
 /* 予報の確度 ◎/○/△。指数(A/B/C)の隣に置くので、色は付けず記号だけで示す。
    色を付けると「確度が低い=危険」と読まれるが、確度は危険度ではなくモデルの揃い方 */
 .agr{text-align:center;font-weight:600;white-space:nowrap}
@@ -618,7 +621,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.36β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.37β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -1716,7 +1719,9 @@ async function run(mt,opts){
   }
   if(rows.some(r=>r.eve)||rows.some(r=>r.night)){
     const ew=[];
-    if(rows.some(r=>r.eve))ew.push("⚠夕方=17〜20時に荒天(C相当)の見込み");
+    // ★「荒天(C相当)」だけに縮めないこと。eve は C相当 **または** 雷条件(eveThunder)で立つ。
+    //   雷だけで立った日に「荒天」と書くと、危険の種類を取り違えさせる(ver 2.36β で一度やった)。
+    if(rows.some(r=>r.eve))ew.push("⚠夕方=17〜20時に荒天(C相当)または発雷のおそれ");
     if(rows.some(r=>r.night))ew.push("⚠夜間=21時〜翌5時に荒天(C相当)の見込み");
     htmlOut+=`<p class="ewnote">${ew.join("、")}。日中の指数には含めません。 <a class="more" href="docs/how-it-works-web.html#index-criteria">詳しく</a></p>`;
   }
@@ -1724,27 +1729,28 @@ async function run(mt,opts){
     const gw=[];
     if(rows.some(r=>r.model==="GSM"))gw.push(`日付の<b>全球</b>印${wkSw?`(${mdIso(wkSw.firstGsm)}以降)`:""}=全球モデル(GSM)由来の予報`);
     if(rows.some(r=>r.degraded))gw.push(`${windLbl}の<b>*</b>印=稜線風がやや弱めに出ている可能性`);
-    htmlOut+=`<p class="notice">${gw.join("、")}。 <a class="more" href="docs/how-it-works-web.html#ridge-wind">詳しく</a></p>`;
+    htmlOut+=`<p class="notice leg">${gw.join("、")}。 <a class="more" href="docs/how-it-works-web.html#ridge-wind">詳しく</a></p>`;
   }
   // 理由の凡例。出た日だけ出す(理由の付かない表に説明だけ残らないように)。
   // ★ reason は「風」「降水」(主判定)と「低体温/体感/視界」(降格条件)が混ざる。
   //   同着の日は「風・降水」のように連結されて来るので、凡例を引くときは必ず分解すること
   //   (連結文字列をそのままキーにすると leg に無く undefined が凡例に混ざる)。
+  // 「判定モード」と「指数に付く語」は、どちらも “この表の指数の読み方” なので1段落にまとめる。
+  // 各条件の中身(低体温=気温10℃以下+降水+風8m/s以上 …)は解説ページ側に置き、ここは語だけ挙げる。
   {
     const rset=new Set(rows.flatMap(r=>(r.reason||"").split("・")).filter(Boolean));
-    const leg={"風":"風=稜線風が下記モードのしきい値以上","降水":"降水=3時間降水量が下記モードのしきい値以上(水換算。冬は雪)",
-      "低体温":"低体温=気温10℃以下+降水+風8m/s以上(濡れによる低体温症の条件)",
-      "体感":"体感=体感温度-20℃以下(凍傷リスク域)",
-      "視界":"視界=視程200m未満+風10m/s以上(地吹雪・ホワイトアウトで行動困難)"};
-    if(rset.size)htmlOut+=`<p class="ewnote">指数に付く語は、その日の評価を決めた条件です: `
-      +["風","降水","低体温","体感","視界"].filter(k=>rset.has(k)).map(k=>leg[k]).join(" / ")+`</p>`;
     // 今どちらの閾値で判定したかを示す。10/31 と 11/1、寒い日と暖かい日で基準が変わるため
     const modes=[...new Set(rows.map(r=>r.mode).filter(Boolean))];
     const thTxt={"夏山":"稜線風10/15m/s・3h降水1/5mm","冬山・残雪期":"稜線風8/12m/s・3h降水1/3mm"};
-    if(modes.length)htmlOut+=`<p class="ewnote">判定モード: `
-      +modes.map(m=>`${m}(${thTxt[m]})`).join(" / ")
+    const parts=[];
+    if(modes.length)parts.push(`判定モード: `+modes.map(m=>`${m}(${thTxt[m]})`).join(" / ")
       +(modes.length>1?"（日ごとに山頂気温を見て切り替わります）":"")
-      +(rows.some(r=>r.mode==="冬山・残雪期")?"　表の日付に付く<b>冬</b>印がその日です。":"")+`</p>`;
+      +(rows.some(r=>r.mode==="冬山・残雪期")?"。日付の<b>冬</b>印がその日":""));
+    if(rset.size)parts.push(`指数に付く<b>`
+      +["風","降水","低体温","体感","視界"].filter(k=>rset.has(k)).join("・")
+      +`</b>=その評価を決めた条件`);
+    if(parts.length)htmlOut+=`<p class="ewnote">${parts.join("。")}。`
+      +` <a class="more" href="docs/how-it-works-web.html#index-criteria">詳しく</a></p>`;
   }
   // 詳細 (表示間隔 step=3 or 1)
   for(let dt2=new Date(start);dt2<=detailEnd;dt2=addDays(dt2,1)){
@@ -1817,7 +1823,9 @@ async function run(mt,opts){
         <td>${cl}</td>${hasSnow?`<td>${snowCell(depArr.length?Math.max(...depArr):null,sfBlk)}</td>`:""}</tr>`;
     }
     htmlOut+=`</table></div>`;
-    if(dayDegraded)htmlOut+=`<p class="ewnote">${windLbl}の <b>*</b> 印は、900hPa/800hPaのデータが無い時間帯(全球モデル=GSM の時間帯)のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。強めに見積もって判断してください。</p>`;
+    // 週間表の下の同じ印の凡例(上の gw)と文言をそろえる。片方だけ長いと、同じ記号に
+    // 長短2つの説明が1ページに並ぶことになる。
+    if(dayDegraded)htmlOut+=`<p class="notice leg">${windLbl}の<b>*</b>印=稜線風がやや弱めに出ている可能性（全球モデル=GSM の時間帯）。 <a class="more" href="docs/how-it-works-web.html#ridge-wind">詳しく</a></p>`;
     htmlOut+=`</section>`;
   }
 
