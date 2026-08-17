@@ -32,7 +32,7 @@ sys.stderr.reconfigure(encoding="utf-8")
 
 # 基本の取得元は日本域に最適化された気象庁モデル (0-4日=MSM 約5km / 5-11日=GSM。自動で切替わる)。
 # JMA_URL に無い項目 (降水確率・突風・CAPE/CIN・視程・積雪深) だけ FORECAST_URL から補完する。
-# FORECAST_URL はモデル比較(compare_models)でも引き続き使う。
+# FORECAST_URL は確度(見通し表の「確度」列)のための3モデル取得(fetch_models)にも使う。
 JMA_URL = "https://api.open-meteo.com/v1/jma"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
@@ -714,6 +714,32 @@ def eve_thunder(cape, cin, precip_eve):
     return lt["lv"] >= EVE_THUNDER_LV and (precip_eve is None or precip_eve >= EVE_THUNDER_PRECIP)
 
 
+# ---- 予報の確度 (references/criteria.md「予報の確度」) ----
+# 気象庁・ECMWF・GFS の3モデルに同じ判定手順を回したとき、指数がどれだけ揃うか。
+# A/B/C の判定には一切使わない(併記するだけ)。
+AGREE_HIGH, AGREE_MID, AGREE_LOW = "◎", "○", "△"
+
+
+def model_agree(idx_list):
+    """予報の確度 (logic.js の modelAgree と同一)。
+    idx_list=["A","B","A"] のような3モデルの指数。返すのは ◎/○/△ か None(判定不能→「-」表示)。
+
+    ★ 1つでも欠測なら None。「取れなかった→揃っている(◎)」に倒すと、通信が細いときほど
+      確度が高く見えるという安全と逆方向の壊れ方をする。
+    ★ 一致度は指数の段階差だけで決まる。「どのモデルが悪い側か」は見ない。実測でその向きは
+      警告として使えないと分かっている(発火率29〜45%・適合率54〜59%。DEVLOG の U3 測定3)。
+    """
+    if not idx_list or len(idx_list) < 3:
+        return None
+    rs = []
+    for v in idx_list:
+        if v is None or v not in RANK:
+            return None
+        rs.append(RANK[v])
+    sp = max(rs) - min(rs)
+    return AGREE_HIGH if sp == 0 else (AGREE_MID if sp == 1 else AGREE_LOW)
+
+
 def lightning_cell(cape, cin):
     """詳細表の発雷リスクセル。アイコンの本数(1〜4)と段階ラベル、続けて元の数値を併記"""
     lt = lightning_risk(cape, cin)
@@ -1251,7 +1277,55 @@ def morning_view(h, times, idxs, elev):
     return view_cell(best, best_note, best_vis)
 
 
-def daily_summary_rows(data, dates, elev):
+def block_verdict(h, block, th, elev, vis_all=(), rh_all=()):
+    """ブロックの指数と降格理由。降格条件の材料は安全側に取る
+    (気温=最小・風=最大・降水=合計・視程=最小)。
+
+    確度(model_agree)のために ECMWF/GFS にも同じものを回すので、hourly を引数で受ける。
+    ここを日別集計の側に埋め込んでしまうと、追加モデルだけ別実装になって食い違う。"""
+    rws = [ridge_wind(h, i, elev) for i in block]
+    ws = max((s for s, _, _ in rws if s is not None), default=None)
+    pr = sum_or_none(h["precipitation"][i] for i in block)
+    tmn = min((h["temperature_2m"][i] for i in block
+               if h["temperature_2m"][i] is not None), default=None)
+    vmn = min((vis_all[i] for i in block
+               if i < len(vis_all) and vis_all[i] is not None), default=None)
+    # 湿度は最大値(最も熱が逃げにくい = 安全側)
+    rhx = max((rh_all[i] for i in block
+               if i < len(rh_all) and rh_all[i] is not None), default=None)
+    bi, rs = block_index(ws, pr, th, tmn, feels_like(tmn, ws, rhx), vmn)
+    return bi, rs, ws, rws
+
+
+def act_blocks(times, act):
+    """行動時間帯の時刻列を3時間ブロックに切る(空ブロックは返さない)"""
+    for start_h in range(3, 18, 3):
+        block = [i for i in act if int(times[i][11:13]) // 3 * 3 == start_h]
+        if block:
+            yield block
+
+
+def day_index_of(h, date, elev):
+    """1モデルぶんの hourly から、その日の登山指数(行動時間帯ブロックの最悪値)を出す。
+    確度のために ECMWF/GFS へ回す用。判定できたブロックが1つも無ければ None(判定不能)。
+
+    ★ 夏冬モードは「そのモデル自身の気温」で決める。各モデルを自分の土俵で評価しないと、
+      気象庁の気温で他モデルを裁くことになり、一致度が気温差の写像になってしまう。
+    ★ 視程は models= では取れないので D4(視界不良)はスキップになる。気象庁メンバーだけ
+      D4 が効く非対称は残るが、D4 は「視程200m未満+風10m/s以上」で発火が稀なので開示で倒す。
+    """
+    times = h.get("time") or []
+    act = [i for i in day_indices(times, date)
+           if ACT_HOURS[0] <= int(times[i][11:13]) <= ACT_HOURS[1]]
+    if not act:
+        return None
+    th = season_thresholds(date.month, *mode_temps(h, times, date))
+    rh_all = h.get("relative_humidity_2m") or []
+    vs = [block_verdict(h, b, th, elev, (), rh_all)[0] for b in act_blocks(times, act)]
+    return next((v for v in ("C", "B", "A") if v in vs), None)
+
+
+def daily_summary_rows(data, dates, elev, cmp_hourly=None):
     h = data["hourly"]
     d = data["daily"]
     times = h["time"]
@@ -1269,20 +1343,7 @@ def daily_summary_rows(data, dates, elev):
         rh_all = h.get("relative_humidity_2m") or []
 
         def blk_verdict(block, th):
-            """ブロックの指数と降格理由。降格条件の材料は安全側に取る
-            (気温=最小・風=最大・降水=合計・視程=最小)"""
-            rws = [ridge_wind(h, i, elev) for i in block]
-            ws = max((s for s, _, _ in rws if s is not None), default=None)
-            pr = sum_or_none(h["precipitation"][i] for i in block)
-            tmn = min((h["temperature_2m"][i] for i in block
-                       if h["temperature_2m"][i] is not None), default=None)
-            vmn = min((vis_all[i] for i in block
-                       if i < len(vis_all) and vis_all[i] is not None), default=None)
-            # 湿度は最大値(最も熱が逃げにくい = 安全側)
-            rhx = max((rh_all[i] for i in block
-                       if i < len(rh_all) and rh_all[i] is not None), default=None)
-            bi, rs = block_index(ws, pr, th, tmn, feels_like(tmn, ws, rhx), vmn)
-            return bi, rs, ws, rws
+            return block_verdict(h, block, th, elev, vis_all, rh_all)
 
         # 夏冬モードはその日の山頂気温も見て決める(日単位。同一日内では閾値を変えない)
         th = season_thresholds(date.month, *mode_temps(h, times, date))
@@ -1292,10 +1353,7 @@ def daily_summary_rows(data, dates, elev):
         # 1つも判定できなければ day_idx は None (判定不能) のままにする
         verdicts = []
         ws_max, wd_max, w_degraded = None, None, False
-        for start_h in range(3, 18, 3):
-            block = [i for i in act if int(times[i][11:13]) // 3 * 3 == start_h]
-            if not block:
-                continue
+        for block in act_blocks(times, act):
             bi, rs, ws, rws = blk_verdict(block, th)
             if ws is not None and (ws_max is None or ws > ws_max):
                 ws_max = ws
@@ -1343,8 +1401,16 @@ def daily_summary_rows(data, dates, elev):
         pr_d = d["precipitation_sum"][di]
         sf_d = sf_all[di]
         wxd = wx.get(date.isoformat(), {})
+        # 予報の確度。気象庁メンバーには「この表に出す指数そのもの」を使う。
+        # models=jma_seamless から計算し直すと実測で7.5%(120日中9日)食い違い、
+        # 「◎なのに表示中の指数がどのメンバーとも違う」が起きるため。
+        midx, agree = None, None
+        if cmp_hourly:
+            midx = [day_idx] + [day_index_of(cmp_hourly[m], date, elev) for m in AGREE_MODELS]
+            agree = model_agree(midx)
         rows.append({
             "date": date, "idx": day_idx, "reason": day_reason,
+            "agree": agree, "midx": midx,
             "evening": evening, "night": night_bad, "mode": th["mode"],
             "model": day_model(h, times, date),
             "code": wxd.get("code", d["weather_code"][di]), "notes": wxd.get("notes", []),
@@ -1362,8 +1428,8 @@ def print_daily_summary(rows, title, has_snow=False, elev=None):
     print(f"\n### {title}")
     snow_h = " 積雪max(新雪) |" if has_snow else ""
     snow_sep = "---|" if has_snow else ""
-    print(f"| 日付 | 指数 | 天気 | 🏔 景色(朝) | 山頂気温 | {wind_label(elev)}max(5-16時) | 降水量 | 降水%(参考) |{snow_h}")
-    print(f"|---|---|---|---|---|---|---|---|{snow_sep}")
+    print(f"| 日付 | 指数 | 確度 | 天気 | 🏔 景色(朝) | 山頂気温 | {wind_label(elev)}max(5-16時) | 降水量 | 降水%(参考) |{snow_h}")
+    print(f"|---|---|---|---|---|---|---|---|---|{snow_sep}")
     for r in rows:
         wj = "月火水木金土日"[r["date"].weekday()]
         mark = (idx_cell(r["idx"], r.get("reason", ""))
@@ -1376,7 +1442,8 @@ def print_daily_summary(rows, title, has_snow=False, elev=None):
         # ★ 印にも注記にも「粗い」を使わない(index.html の .mdlm と同じ理由)。
         #   どのモデル由来かという事実の開示であって、予報の良し悪しの評価ではない。
         global_m = " 全球" if r.get("model") == "GSM" else ""
-        print(f"| {r['date'].strftime('%m/%d')}({wj}){global_m} | {mark} | {wx_txt}{wx_note_text(r.get('notes'))} "
+        print(f"| {r['date'].strftime('%m/%d')}({wj}){global_m} | {mark} | {r.get('agree') or '-'} "
+              f"| {wx_txt}{wx_note_text(r.get('notes'))} "
               f"| {r['view']} | {fnum(r['tmin'], '{:.0f}')}〜{fnum(r['tmax'], '{:.0f}')}℃ "
               f"| {wind_cell(r['wd'], r['ws'], r.get('degraded'))} "
               f"| {fnum(r['pr'], '{:.1f}')}mm | {fnum(r['prob'])}% |{snow_c}")
@@ -1395,6 +1462,13 @@ def print_daily_summary(rows, title, has_snow=False, elev=None):
         print(f"- {wind_label(elev)}の `*` は、900hPa/800hPaのデータが無い日(全球モデル=GSM の日)"
               "のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。"
               "強めに見積もって判断してください。")
+    if any(r.get("agree") for r in rows):
+        print("- 確度: 気象庁・欧州ECMWF・米国GFS の3モデルに同じ判定手順を回して、"
+              "指数がどれだけ揃うかを示します。◎=3モデルとも同じ / ○=1段階の差 / "
+              "△=2段階以上の差 / -=判定不能。実測(12山×58日・真値はERA5再解析)では"
+              "3日前時点の的中率が ◎77% / ○43% / △26% でした。**◎でも外れることはあります。**"
+              "△の日は悪い側のモデルも起こりうると考えて、引き返し判断に余裕を持たせてください。"
+              "A/B/C の判定そのものには使っていません。")
     if any(r.get("evening") for r in rows):
         print("- ⚠夕方: 17〜20時に天候の急変(C相当)、または発雷リスクが高く夕方に降水が"
               "予想されます(発雷リスク「高い」の日は降水予想が無くても付けます)。"
@@ -1475,40 +1549,87 @@ def print_upper_cold(data, dates):
     print("- A/B/C判定には使いません(気圧配置を自分で読むための参考値です)")
 
 
-def compare_models(lat, lon, elev, start, end):
-    models = ["jma_seamless", "ecmwf_ifs025", "gfs_seamless"]
-    labels = {"jma_seamless": "気象庁JMA", "ecmwf_ifs025": "欧州ECMWF", "gfs_seamless": "米国GFS"}
-    params = {
-        "latitude": lat, "longitude": lon, "elevation": elev,
-        "hourly": "temperature_2m,precipitation,wind_speed_10m,cloud_cover",
-        "timezone": "Asia/Tokyo", "wind_speed_unit": "ms",
-        "start_date": start.isoformat(), "end_date": end.isoformat(),
-        "models": ",".join(models),
-    }
-    data = http_json(FORECAST_URL, params)
-    h = data["hourly"]
-    times = h["time"]
-    print(f"\n### モデル間比較（予報の確度確認: 各モデルが一致するほど信頼度が高い）")
+CMP_MODELS = ("jma_seamless", "ecmwf_ifs025", "gfs_seamless")
+CMP_LABELS = {"jma_seamless": "気象庁JMA", "ecmwf_ifs025": "欧州ECMWF", "gfs_seamless": "米国GFS"}
+# 確度のために指数を計算し直すのはこの2つだけ。気象庁メンバーには本体(/v1/jma)から出した
+# 「表に出している指数そのもの」を使う(daily_summary_rows の注記参照)。
+AGREE_MODELS = ("ecmwf_ifs025", "gfs_seamless")
+# 確度の材料。稜線風を出すため気圧面が要る(compare_models 時代の地上4項目では足りない)。
+CMP_HOURLY = ("temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,cloud_cover,"
+              + ",".join(f"wind_speed_{p}hPa" for p, _ in PRESSURE_LEVELS))
+
+
+def fetch_models(lat, lon, elev, start, end):
+    """3モデル(気象庁/ECMWF/GFS)を1リクエストで取り、モデル別の hourly に切り分けて返す。
+    {model: hourly} の dict。取れなければ None(確度は「-」になり予報表はそのまま出る)。
+
+    ★ 補助情報なので落とさない。fatal=False で握るのは、ここで例外を投げると
+      組み上がった稜線風・気温・降水・登山指数を丸ごと捨てることになるため。"""
+    try:
+        data = http_json(FORECAST_URL, {
+            "latitude": lat, "longitude": lon, "elevation": elev,
+            "hourly": CMP_HOURLY,
+            "timezone": "Asia/Tokyo", "wind_speed_unit": "ms",
+            "start_date": start.isoformat(), "end_date": end.isoformat(),
+            "models": ",".join(CMP_MODELS),
+        }, fatal=False)
+    except Exception:
+        return None
+    if not data or not data.get("hourly", {}).get("time"):
+        return None
+    ch = data["hourly"]
+    out = {}
+    for m in CMP_MODELS:
+        hh = {"time": ch["time"]}
+        suf = "_" + m
+        for k, v in ch.items():
+            if k.endswith(suf):
+                hh[k[:-len(suf)]] = v
+        # models= を1つだけ指定したときは接尾辞が付かない。念のため素のキーで拾い直す
+        if "temperature_2m" not in hh:
+            hh = dict(ch)
+        out[m] = hh
+    return out
+
+
+def print_model_compare(cmp_hourly, rows, start, end):
+    """確度の内訳(モデル別の指数)と、その根拠になる生の値。--compare-models のときだけ出す。
+
+    通常出力に置かない理由: 生の表が並べるのは地上10m風・気温・降水・雲量で、確度が比べる
+    登山指数(稜線風+降水+季節しきい値)とは材料が違う。並べると「表は揃って見えるのに確度は△」
+    という食い違いが起きる。ここは確度を疑ったときに中を開けるための検証用。"""
+    print("\n### 確度の内訳（モデル別の登山指数）")
+    print("| 日付 | " + " | ".join(CMP_LABELS[m] for m in CMP_MODELS) + " | 確度 |")
+    print("|---|---|---|---|---|")
+    for r in rows:
+        mi = r.get("midx") or []
+        cells = [(mi[i] if i < len(mi) and mi[i] else "-") for i in range(len(CMP_MODELS))]
+        print(f"| {r['date'].strftime('%m/%d')} | " + " | ".join(cells)
+              + f" | {r.get('agree') or '-'} |")
+    print("- 気象庁の列は、上の見通し表に出している指数そのものです"
+          "(models=jma_seamless から計算し直すと実測で7.5%食い違うため使いません)")
+
+    print("\n### モデル間比較（内訳の根拠になる生の値）")
     print("| 日付 | モデル | 気温min〜max | 降水量 | 10m風max | 平均雲量 |")
     print("|---|---|---|---|---|---|")
     date = start
     while date <= end:
-        idxs = day_indices(times, date)
-        for m in models:
+        for m in CMP_MODELS:
+            h = cmp_hourly[m]
+            idxs = day_indices(h["time"], date)
+
             def col(v):
-                key = f"{v}_{m}"
-                if key not in h:
-                    key = v
-                return [h[key][i] for i in idxs if h.get(key) and h[key][i] is not None]
+                a = h.get(v) or []
+                return [a[i] for i in idxs if i < len(a) and a[i] is not None]
             temps, precs = col("temperature_2m"), col("precipitation")
             winds, clouds = col("wind_speed_10m"), col("cloud_cover")
             if not temps:
-                print(f"| {date.strftime('%m/%d')} | {labels[m]} | (データなし) | | | |")
+                print(f"| {date.strftime('%m/%d')} | {CMP_LABELS[m]} | (データなし) | | | |")
                 continue
             pr_txt = f"{sum(precs):.1f}mm" if precs else "-"
             wind_txt = f"{max(winds):.1f}m/s" if winds else "-"
             cloud_txt = f"{sum(clouds) / len(clouds):.0f}%" if clouds else "-"
-            print(f"| {date.strftime('%m/%d')} | {labels[m]} | {min(temps):.0f}〜{max(temps):.0f}℃ "
+            print(f"| {date.strftime('%m/%d')} | {CMP_LABELS[m]} | {min(temps):.0f}〜{max(temps):.0f}℃ "
                   f"| {pr_txt} | {wind_txt} | {cloud_txt} |")
         date += dt.timedelta(days=1)
 
@@ -1660,9 +1781,10 @@ def main():
     ap.add_argument("--interval", type=int, choices=[1, 3], default=3,
                     help="詳細の表示間隔 (時間)。既定3、1で1時間ごと")
     # 旧オプション。互換のため受け付けるが動作には影響しない
-    # (常に4日詳細・10日見通し・モデル比較を表示)
+    # (常に4日詳細・10日見通しを表示)
     ap.add_argument("--days", type=int, default=None, help=argparse.SUPPRESS)
     ap.add_argument("--weekly", action="store_true", help=argparse.SUPPRESS)
+    # 確度(見通し表の「確度」列)の内訳と、その根拠になる生の値を追加で出す検証用の隠しフラグ
     ap.add_argument("--compare-models", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--html", nargs="?", const="AUTO", metavar="PATH",
                     help="HTMLレポートも保存 (パス省略時はカレントに自動命名)")
@@ -1756,7 +1878,10 @@ def main():
 
         n_days = (fetch_end - today).days + 1
         dates = [today + dt.timedelta(days=i) for i in range(n_days)]
-        rows = daily_summary_rows(data, dates, elev)
+        # 確度(model_agree)の材料。見通し表と同じ全期間ぶん取る。取れなくても確度が「-」に
+        # なるだけで、予報表は完全に出る
+        cmp_hourly = fetch_models(lat, lon, elev, today, fetch_end)
+        rows = daily_summary_rows(data, dates, elev, cmp_hourly)
         print_daily_summary(rows, f"{JMA_DAYS}日間の見通し", has_snow, elev)
 
         d = start
@@ -1764,8 +1889,11 @@ def main():
             print_detail_day(data, d, elev, has_snow, step=args.interval)
             d += dt.timedelta(days=1)
 
-        compare_models(lat, lon, elev, start, detail_end)
-        # 上空の寒気はモデル間比較の下に置く。行動判断に直結する表(見通し・詳細)を先に読ませ、
+        # モデル別の内訳は通常出力に置かない(確度列に集約済み)。--compare-models は
+        # 確度を疑ったときに中を開けるための隠しフラグ。取得は上と共用なので追加コストなし
+        if args.compare_models and cmp_hourly:
+            print_model_compare(cmp_hourly, rows, start, detail_end)
+        # 上空の寒気は出力の最後に置く。行動判断に直結する表(見通し・詳細)を先に読ませ、
         # 気圧配置を自分で読むための参考値は後ろにまとめる。
         print_upper_cold(data, dates)
 

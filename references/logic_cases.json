@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "_note": [
     "登山指数 A/B/C の判定ロジックが CLI(Python) と Web(JS) で同一であることを機械的に確かめるための入出力表。",
     "scripts/test_logic.py が scripts/mountain_weather.py を、scripts/test_logic.js が logic.js を、",
@@ -132,5 +132,16 @@
     {"name": "lv3は降水0.0mmでも立てる(乾雷の安全弁)",  "in": [3410, 0, 0.0],    "out": true},
     {"name": "厚い蓋でlv3→lv1に落ちれば立てない",       "in": [3000, 120, 0.0],  "out": false},
     {"name": "降水が負値でも立てない",                  "in": [2200, 0, -0.4],   "out": false}
+  ],
+
+  "modelAgree": [
+    {"name": "3モデルとも同じなら◎",                   "in": [["A", "A", "A"]], "out": "◎"},
+    {"name": "1段階の差なら○",                         "in": [["A", "B", "A"]], "out": "○"},
+    {"name": "1段階の差(B/C)でも○",                    "in": [["B", "C", "C"]], "out": "○"},
+    {"name": "2段階の差なら△",                         "in": [["A", "C", "B"]], "out": "△"},
+    {"name": "並び順は関係なく段階差だけで決まる",      "in": [["A", "A", "C"]], "out": "△"},
+    {"name": "1つでも欠測なら判定不能",                "in": [[null, "A", "A"]], "out": null},
+    {"name": "3つそろわなければ判定不能",              "in": [["A", "A"]],      "out": null},
+    {"name": "知らない値は判定不能(0点扱いにしない)",  "in": [["A", "A", "X"]], "out": null}
   ]
 }

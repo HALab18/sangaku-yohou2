@@ -33,6 +33,7 @@ FUNCS = {
     "sumOrNull": mw.sum_or_none,
     "lightningRisk": mw.lightning_risk,
     "eveThunder": mw.eve_thunder,
+    "modelAgree": mw.model_agree,
 }
 
 

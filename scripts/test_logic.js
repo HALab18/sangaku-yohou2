@@ -25,7 +25,7 @@ const TOL = 1e-9;
 const FUNCS = {
   seasonTh: L.seasonTh, blockIndex: L.blockIndex, feelsLike: L.feelsLike,
   viewScore: L.viewScore, interpWind: L.interpWind, sumOrNull: L.sumOrNull,
-  lightningRisk: L.lightningRisk, eveThunder: L.eveThunder
+  lightningRisk: L.lightningRisk, eveThunder: L.eveThunder, modelAgree: L.modelAgree
 };
 
 // 期待値と実測の一致判定。浮動小数だけ絶対誤差 TOL を許す(それ以外は厳密一致)。
@@ -67,7 +67,7 @@ const PAGES = [["index.html", /<script src="logic\.js\?v=([^"]+)"/],
                [path.join("docs", "find.html"), /<script src="\.\.\/logic\.js\?v=([^"]+)"/]];
 // logic.js へ移した関数。ページ側に再定義が残っていたら、そちらが後勝ちで使われてしまう。
 const MOVED = ["blockIndex", "seasonTh", "feelsLike", "viewScore", "interpWind", "sumOrNull",
-               "lightningRisk", "eveThunder", "LT_LABEL"];
+               "lightningRisk", "eveThunder", "LT_LABEL", "modelAgree"];
 for (const [rel, re] of PAGES) {
   const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
   const m = src.match(re);

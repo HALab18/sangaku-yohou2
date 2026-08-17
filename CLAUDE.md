@@ -85,7 +85,14 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
   降水確率は `/v1/forecast` から補完するが **表示専用でスコアには入れない**
   （`score()` の `pprob`）。減点式を触るときは `s-=` の行に `pprob` を足さないこと。
   `sc` の中身を変えたら `cacheKey` / `LAST_KEY` の `findN:` を必ず上げる。
-- モデル比較表（`compare_models`）は別目的の機能なので `/v1/forecast?models=` のまま。
+- **確度**（週間表の「確度」列）は `/v1/forecast?models=` で3モデル（JMA/ECMWF/GFS）を1本で取り、
+  ECMWF と GFS に**同じ判定手順**を回して指数の段階差を見る（`fetch_models`/`splitModels` →
+  `day_index_of`/`dayIndexOf` → `model_agree`/`modelAgree`）。気象庁メンバーには
+  **アプリが表示している指数そのもの**を使う（`models=jma_seamless` から計算し直すと実測で
+  7.5%食い違い、「◎なのに表示中の指数がどのメンバーとも違う」が起きる）。
+  取得失敗は握って確度を `-` にする（主要な予報表を巻き添えにしない）。
+  ECMWF は 900/800hPa を配信しないが、影響は平均0.29m/s でモデル間差3.51m/s より十分小さいので
+  補正しない（**別モデルからの穴埋めは却下済み**）。確度は**判定には一切使わない**。
 
 ## 厳守する規約
 

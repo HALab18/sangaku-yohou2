@@ -23,7 +23,7 @@
 /* index.html / find.html の <script src="logic.js?v=..."> と一致させる版。
  * 古い logic.js がキャッシュに残ると「画面は新しいのに判定だけ旧版」という気づけない状態に
  * なるため、判定を変えたリリースでは必ず上げる(一致は test_logic.js が機械的に見ている)。 */
-var PW_LOGIC_VER = "234";
+var PW_LOGIC_VER = "235";
 
 /* ---- 定数 (scripts/mountain_weather.py と同一) ---- */
 // LEVELS[i]=[気圧面hPa, 標準高度m]。500m台の里山から3800m級までを6面でカバー。
@@ -56,6 +56,10 @@ var RANK={A:0,B:1,C:2};
 var MAIN_REASON_WIND="風", MAIN_REASON_PRECIP="降水", MAIN_REASON_SEP="・";
 // ---- 発雷リスクと ⚠夕方フラグの雷条件 (references/criteria.md「夕方急変の警告フラグ」) ----
 var LT_LABEL=["低","やや注意","注意","高い"];
+// ---- 予報の確度 (references/criteria.md「予報の確度」) ----
+// 気象庁・ECMWF・GFS の3モデルに同じ判定手順を回したとき、指数がどれだけ揃うか。
+// A/B/C の判定には一切使わない(併記するだけ)。
+var AGREE_HIGH="◎", AGREE_MID="○", AGREE_LOW="△";
 // 夕方フラグを立てる発雷リスクの段階。EVE_THUNDER_LV は降水条件とセットで、
 // EVE_THUNDER_LV_SOLO(極端な不安定)は降水予測が無くても単独で立てる。
 var EVE_THUNDER_LV=2, EVE_THUNDER_LV_SOLO=3;
@@ -210,6 +214,24 @@ function eveThunder(cape,cin,precipEve){
   return lt.lv>=EVE_THUNDER_LV&&(precipEve==null||precipEve>=EVE_THUNDER_PRECIP);
 }
 
+// 予報の確度 = 3モデル(気象庁・ECMWF・GFS)の登山指数がどれだけ揃うか。
+// idxList=["A","B","A"] のような指数の配列。返すのは ◎/○/△ か null(判定不能→「-」表示)。
+//
+// ★ 1つでも欠測なら null。「取れなかった→揃っている(◎)」に倒すと、通信が細いときほど
+//   確度が高く見えるという安全と逆方向の壊れ方をする(このファイル冒頭の原則と同じ)。
+// ★ 一致度は指数の段階差だけで決まる。「どのモデルが悪い側か」は見ない。実測でその向きは
+//   警告として使えないと分かっている(発火率29〜45%・適合率54〜59%。DEVLOG の U3 測定3)。
+function modelAgree(idxList){
+  if(!idxList||idxList.length<3)return null;
+  var rs=[],i;
+  for(i=0;i<idxList.length;i++){
+    if(idxList[i]==null||RANK[idxList[i]]==null)return null;
+    rs.push(RANK[idxList[i]]);
+  }
+  var sp=Math.max.apply(null,rs)-Math.min.apply(null,rs);
+  return sp===0?AGREE_HIGH:(sp===1?AGREE_MID:AGREE_LOW);
+}
+
 // 体感温度: 豪州気象局の Apparent Temperature (Steadman)。気温・風・湿度から算出する。
 //   e  = (RH/100) × 6.105 × exp(17.27×T / (237.7+T))   … 水蒸気圧(hPa)
 //   AT = T + 0.33×e − 0.70×風速(m/s) − 4.00
@@ -273,7 +295,8 @@ if(typeof module!=="undefined"&&module.exports)module.exports={
   PW_LOGIC_VER:PW_LOGIC_VER,LEVELS:LEVELS,SURFACE_WIND_M:SURFACE_WIND_M,
   DEGRADED_LEVELS:DEGRADED_LEVELS,
   LT_LABEL:LT_LABEL,
+  AGREE_HIGH:AGREE_HIGH,AGREE_MID:AGREE_MID,AGREE_LOW:AGREE_LOW,
   interpWind:interpWind,seasonTh:seasonTh,sumOrNull:sumOrNull,
   blockIndex:blockIndex,feelsLike:feelsLike,viewScore:viewScore,
-  lightningRisk:lightningRisk,eveThunder:eveThunder
+  lightningRisk:lightningRisk,eveThunder:eveThunder,modelAgree:modelAgree
 };

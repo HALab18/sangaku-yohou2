@@ -19,7 +19,7 @@
 <!-- 登山指数 A/B/C の判定ロジック。docs/find.html と共有する唯一の実装。
      ?v= は logic.js の PW_LOGIC_VER と同じ値にする(古い版がキャッシュに残ると
      「画面は新しいのに判定だけ旧版」という気づけない状態になる)。 -->
-<script src="logic.js?v=234"></script>
+<script src="logic.js?v=235"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -322,6 +322,16 @@ tr.wk-sep td,tr.wk-sep td:first-child{border-top:2px solid #b9c2d0;background:#f
 .vwnum{display:block;font-size:.76em;color:#6b7280;margin-top:2px;line-height:1.3}
 .ewnote{background:#f9d9cf;border-left:5px solid #a03415;padding:8px 12px;
   border-radius:0 6px 6px 0;margin:6px 0 14px;font-size:.9em}
+/* 予報の確度 ◎/○/△。指数(A/B/C)の隣に置くので、色は付けず記号だけで示す。
+   色を付けると「確度が低い=危険」と読まれるが、確度は危険度ではなくモデルの揃い方 */
+.agr{text-align:center;font-weight:600;white-space:nowrap}
+/* 確度の内訳。既定で閉じておく(毎回開いて見るものではない) */
+.agrdet{margin:6px 0 14px}
+.agrdet summary{cursor:pointer;padding:8px 12px;font-weight:600;color:#44506b;
+  background:#edf2f9;border-left:5px solid var(--slate);border-radius:0 6px 6px 0;
+  font-size:.9em;user-select:none}
+.agrdet[open] summary{border-radius:0 6px 0 0;margin-bottom:6px}
+.agrdet .ewnote{background:#edf2f9;border-left-color:var(--slate);color:#44506b}
 /* オフライン(保存済み予報)であることの明示。数字は取得時のままなので、
    予報表のどれよりも先に目に入る強さにしておく */
 .offnote{background:#fdeec2;border-left:5px solid #b8791a;color:#5c4310;padding:10px 12px;
@@ -606,7 +616,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.34β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.35β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -714,6 +724,33 @@ const JMA_DAYS=10;
 const SUPPLEMENT_HOURLY=["precipitation_probability","wind_gusts_10m",
   "cape","convective_inhibition","visibility","snow_depth","freezing_level_height"];
 const SUPPLEMENT_DAILY=["precipitation_probability_max"];
+// ---- 予報の確度 (references/criteria.md「予報の確度」) ----
+// 3モデルに同じ判定手順を回して指数がどれだけ揃うかを見る。判定(A/B/C)には一切使わない。
+const CMP_MODELS=["jma_seamless","ecmwf_ifs025","gfs_seamless"];
+const CMP_LABELS={jma_seamless:"気象庁JMA",ecmwf_ifs025:"欧州ECMWF",gfs_seamless:"米国GFS"};
+// 指数を計算し直すのはこの2つだけ。気象庁メンバーには本体(/v1/jma)から出した
+// 「表に出している指数そのもの」を使う(models=jma_seamless から計算し直すと実測で7.5%食い違い、
+// 「◎なのに表示中の指数がどのメンバーとも違う」が起きるため)。
+const AGREE_MODELS=["ecmwf_ifs025","gfs_seamless"];
+// 稜線風を出すため気圧面が要る(旧モデル比較表の地上4項目では足りない)。風向は取らない
+// (指数に効くのは風速だけ。interpWind は値のある面だけで補間する)。
+const CMP_HOURLY=["temperature_2m","relative_humidity_2m","precipitation","wind_speed_10m",
+  "cloud_cover",...LEVELS.map(p=>`wind_speed_${p[0]}hPa`)];
+// models= の応答(1本に3モデルぶんが接尾辞付きで入っている)をモデル別の hourly に切り分ける。
+// キーは接尾辞を外した素の名前に戻すので、そのまま ridgeWind / blockIndex に渡せる。
+function splitModels(cd){
+  const ch=cd&&cd.hourly;
+  if(!ch||!Array.isArray(ch.time))return null;
+  const out={};
+  for(const m of CMP_MODELS){
+    const hh={time:ch.time},suf="_"+m;
+    for(const k in ch)if(k.endsWith(suf))hh[k.slice(0,-suf.length)]=ch[k];
+    // models= を1つだけ指定したときは接尾辞が付かない。念のため素のキーで拾い直す
+    out[m]=hh.temperature_2m?hh:{...ch};
+  }
+  return out;
+}
+
 // extra の系列を base の time 軸に「時刻をキーにして」貼り直す(CLI版 _merge_series と同じ)。
 // 2本のAPIは end_date のクランプ結果が食い違いうるので、添字が揃っている前提を置かない。
 // 足りない時刻は null で埋めるため、下流は必ず base.time と同じ長さの列を得る。
@@ -981,6 +1018,49 @@ function modeTemps(h,times,idxs){
 // 欠測を区別する合計 sumOrNull と順位表 RANK は logic.js。
 // 3時間ブロックの登山指数 blockIndex は logic.js(docs/find.html と共有する唯一の実装)。
 // 材料は安全側に寄せて渡す: 風=最大 / 降水=合計 / 気温=最小 / 視程=最小。
+
+// ブロックの指数と降格理由。降格条件の材料は安全側に取る
+// (気温=最小・風=最大・降水=合計・視程=最小)。返すのは [指数, 理由, 風速max, 稜線風の配列]。
+// 確度(modelAgree)のために ECMWF/GFS にも同じものを回すので、hourly を引数で受ける。
+// ここを日別集計の中に埋め込むと、追加モデルだけ別実装になって食い違う
+// (CLI版 block_verdict と同じ)。
+function blockVerdict(hh,blk,th,elev){
+  const rw=blk.map(i=>ridgeWind(hh,i,elev));
+  const wsArr=rw.map(x=>x[0]).filter(v=>v!=null);
+  const ws=wsArr.length?Math.max(...wsArr):null;
+  const pr=sumOrNull(blk.map(i=>hh.precipitation?.[i]));
+  const tArr=blk.map(i=>hh.temperature_2m?.[i]).filter(v=>v!=null);
+  const tmn=tArr.length?Math.min(...tArr):null;
+  const vArr=blk.map(i=>hh.visibility?.[i]).filter(v=>v!=null);
+  const vmn=vArr.length?Math.min(...vArr):null;
+  // 湿度は最大値(最も熱が逃げにくい = 安全側)
+  const rArr=blk.map(i=>hh.relative_humidity_2m?.[i]).filter(v=>v!=null);
+  const rhx=rArr.length?Math.max(...rArr):null;
+  return[...blockIndex(ws,pr,th,tmn,feelsLike(tmn,ws,rhx),vmn),ws,rw];
+}
+// 行動時間帯の時刻列を3時間ブロックに切る(空ブロックは返さない)
+function actBlocks(times,act){
+  const out=[];
+  for(let sh=3;sh<18;sh+=3){
+    const blk=act.filter(i=>Math.floor(+times[i].slice(11,13)/3)*3===sh);
+    if(blk.length)out.push(blk);
+  }
+  return out;
+}
+// 1モデルぶんの hourly から、その日の登山指数(行動時間帯ブロックの最悪値)を出す。
+// 確度のために ECMWF/GFS へ回す用(CLI版 day_index_of と同じ)。
+// ★ 夏冬モードは「そのモデル自身の気温」で決める。気象庁の気温で他モデルを裁くと、
+//   一致度が気温差の写像になってしまう。各モデルを自分の土俵で評価する。
+// ★ 視程は models= では取れないので D4(視界不良)はスキップになる。気象庁メンバーだけ
+//   D4 が効く非対称は残るが、D4 は「視程200m未満+風10m/s以上」で発火が稀なので開示で倒す。
+function dayIndexOf(hh,ds,elev){
+  const times=hh.time||[],idxs=dayIdx(times,ds);
+  const act=idxs.filter(i=>{const hr=+times[i].slice(11,13);return hr>=ACT_HOURS[0]&&hr<=ACT_HOURS[1]});
+  if(!act.length)return null;
+  const th=seasonTh(+ds.slice(5,7),...modeTemps(hh,times,idxs));
+  const vs=actBlocks(times,act).map(b=>blockVerdict(hh,b,th,elev)[0]);
+  return["C","B","A"].find(v=>vs.includes(v))??null;
+}
 // 指数セル。その評価を決めた条件(風/降水、または降格条件)を併記する
 function idxCell(bi,reason){
   if(bi==null)return"-";
@@ -1231,7 +1311,7 @@ async function run(mt,opts){
   // 保存済み予報の再生(snap)が先に決まっている時は触らない。
   const cached=(reuse&&!snap&&lastFetch&&lastFetch.key===fetchKey(mt)
     &&Date.now()-lastFetch.t<=REUSE_TTL_MS)?lastFetch:null;
-  let data,supFailed=false,fetchedAt=null,cmpSnap=null;
+  let data,supFailed=false,fetchedAt=null,cmpHourly=null,agreeSnap=null;
   let inits={jma_msm:null,jma_gsm:null};
 
   async function fetchAll(){
@@ -1265,7 +1345,11 @@ async function run(mt,opts){
     const{elevation:_omitElev,latitude:_omitLat,longitude:_omitLon,...areaCommon}=common;
     // 発表時刻(モデル初期時刻)も同じ束で取る。modelInit は自分で失敗を握って null を返すので、
     // ここが遅れたり落ちたりしても予報の表示には影響しない(sessionStorage に10分キャッシュ)
-    const[dataR,supR,areaR,msmR,gsmR]=await Promise.allSettled([
+    // 確度(見通し表の「確度」列)のための3モデル取得も同じ束に入れる。以前は表を描いた**後に**
+    // 単発で投げていたぶん直列に待たされていた。ここに入れれば本数は変わらず並列になる。
+    // 期間は見通し表と同じ today..fetchEnd(10日)。日付範囲が start に依存しないので、
+    // 行クリックで日を変えても取り直しは要らない(旧 cmpRange の出し分けは廃止)。
+    const[dataR,supR,areaR,msmR,gsmR,cmpR]=await Promise.allSettled([
       apiJson(JMA_URL,{...common,hourly:hourly.join(","),
         daily:"weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,sunrise,sunset"}),
       apiJson(FORECAST_URL,{...common,hourly:SUPPLEMENT_HOURLY.join(","),daily:SUPPLEMENT_DAILY.join(",")}),
@@ -1273,7 +1357,11 @@ async function run(mt,opts){
         latitude:[mt.lat+nb,mt.lat-nb,mt.lat,mt.lat].map(v=>v.toFixed(4)).join(","),
         longitude:[mt.lon,mt.lon,mt.lon+nb,mt.lon-nb].map(v=>v.toFixed(4)).join(","),
         hourly:"cape,convective_inhibition"}),
-      modelInit("jma_msm"),modelInit("jma_gsm")
+      modelInit("jma_msm"),modelInit("jma_gsm"),
+      apiJson(FORECAST_URL,{latitude:mt.lat,longitude:mt.lon,elevation:mt.elev,
+        timezone:"Asia/Tokyo",wind_speed_unit:"ms",
+        start_date:iso(today),end_date:iso(fetchEnd),
+        hourly:CMP_HOURLY.join(","),models:CMP_MODELS.join(",")})
     ]);
     if(dataR.status==="rejected")throw dataR.reason;   // 主要データの失敗だけが致命
     data=dataR.value;
@@ -1305,9 +1393,11 @@ async function run(mt,opts){
       }
       data.hourly.cape_area=ca;data.hourly.cin_area=ci;
     }
-    // 見通し表の行クリックで同じ地点を描き直すときに使い回す(モデル比較は日付範囲に
-    // 依存するので、下の比較表ブロックで cmp / cmpRange を後から入れる)。
-    lastFetch={key:fetchKey(mt),t:Date.now(),data,supFailed,inits,fetchedAt,cmp:null,cmpRange:null};
+    // 確度の材料。失敗しても握る(確度は全日「-」になり、予報表はそのまま出る)。
+    // 補助情報のために、組み上がった稜線風・気温・降水・登山指数を捨ててはいけない。
+    cmpHourly=cmpR.status==="fulfilled"?splitModels(cmpR.value):null;
+    // 見通し表の行クリックで同じ地点を描き直すときに使い回す。
+    lastFetch={key:fetchKey(mt),t:Date.now(),data,supFailed,inits,fetchedAt,cmpHourly};
   }
 
   // 圏外でその山の保存も無いなら、取りに行っても必ず失敗する。3回リトライ(約4.5秒)ぶん
@@ -1330,7 +1420,7 @@ async function run(mt,opts){
   const reused=!offline&&!!cached;
   if(reused){
     data=cached.data;supFailed=cached.supFailed;
-    inits=cached.inits;fetchedAt=cached.fetchedAt;
+    inits=cached.inits;fetchedAt=cached.fetchedAt;cmpHourly=cached.cmpHourly;
   }
   if(offline){
     data=snap.data;supFailed=!!snap.supFailed;
@@ -1338,7 +1428,9 @@ async function run(mt,opts){
     inits={jma_msm:typeof ini.msm==="number"?new Date(ini.msm):null,
            jma_gsm:typeof ini.gsm==="number"?new Date(ini.gsm):null};
     fetchedAt=new Date(snap.t);   // 各表のキャプションの「取得」も保存時刻に揃う
-    cmpSnap=snap.cmp||null;
+    // 確度は派生値(1日あたり ◎/○/△ と3モデルの指数)だけを保存してある。生の3モデル応答を
+    // 入れると1件+36KBになるうえ、保存する意味も無い(内訳の表示にしか使わないため)。
+    agreeSnap=snap.agree||null;
   }
   const h=data.hourly,times=h.time,d=data.daily;
   // その日の主要な予報が MSM(約5km)由来か GSM(粗い)由来かを、データそのものから判定する。
@@ -1498,28 +1590,11 @@ async function run(mt,opts){
     // 夏冬モードはその日の山頂気温も見て決める(日単位。同一日内では閾値を変えない)
     const th=seasonTh(dt2.getMonth()+1,...modeTemps(h,times,idxs));
     const act=idxs.filter(i=>{const hr=+times[i].slice(11,13);return hr>=ACT_HOURS[0]&&hr<=ACT_HOURS[1]});
-    // ブロックの指数と降格理由。降格条件の材料は安全側に取る
-    // (気温=最小・風=最大・降水=合計・視程=最小)
-    const blkVerdict=blk=>{
-      const rw=blk.map(i=>ridgeWind(h,i,mt.elev));
-      const wsArr=rw.map(x=>x[0]).filter(v=>v!=null);
-      const ws=wsArr.length?Math.max(...wsArr):null;
-      const pr=sumOrNull(blk.map(i=>h.precipitation[i]));
-      const tArr=blk.map(i=>h.temperature_2m?.[i]).filter(v=>v!=null);
-      const tmn=tArr.length?Math.min(...tArr):null;
-      const vArr=blk.map(i=>h.visibility?.[i]).filter(v=>v!=null);
-      const vmn=vArr.length?Math.min(...vArr):null;
-      // 湿度は最大値(最も熱が逃げにくい = 安全側)
-      const rArr=blk.map(i=>h.relative_humidity_2m?.[i]).filter(v=>v!=null);
-      const rhx=rArr.length?Math.max(...rArr):null;
-      return[...blockIndex(ws,pr,th,tmn,feelsLike(tmn,ws,rhx),vmn),ws,rw];
-    };
+    const blkVerdict=blk=>blockVerdict(h,blk,th,mt.elev);
     // 判定できたブロックだけを集め、その最悪値を日の指数にする。
     // 1つも判定できなければ dayIdxV は null (判定不能) のままにする
     const verdicts=[];let wsMax=null,wdMax=null,wDegraded=false;
-    for(let sh=3;sh<18;sh+=3){
-      const blk=act.filter(i=>Math.floor(+times[i].slice(11,13)/3)*3===sh);
-      if(!blk.length)continue;
+    for(const blk of actBlocks(times,act)){
       const[bi,rs,ws,rw]=blkVerdict(blk);
       if(ws!=null&&(wsMax==null||ws>wsMax)){
         wsMax=ws;const m=rw.find(x=>x[0]===ws);wdMax=m?.[1];wDegraded=m?.[2]??false;
@@ -1574,7 +1649,17 @@ async function run(mt,opts){
       if(best==null||order[v[0]]<order[best[0]]){best=v;bestVis=vi}
     }
     const dep=idxs.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
-    rows.push({d:new Date(dt2),idx:dayIdxV,eve:evening,code:wxByDate.get(ds)?.code??d.weather_code[di],notes:wxByDate.get(ds)?.notes||[],phrase:wxByDate.get(ds)?.phrase,
+    // 予報の確度。気象庁メンバーには「この表に出す指数そのもの」(dayIdxV)を使う。
+    // オフライン再生では保存しておいた派生値をそのまま読む(生の3モデル応答は保存しない)。
+    let midx=null,agree=null;
+    if(offline){
+      const a=agreeSnap&&agreeSnap[ds];
+      if(a){midx=a.midx||null;agree=a.agree||null}
+    }else if(cmpHourly){
+      midx=[dayIdxV,...AGREE_MODELS.map(m=>dayIndexOf(cmpHourly[m],ds,mt.elev))];
+      agree=modelAgree(midx);
+    }
+    rows.push({d:new Date(dt2),idx:dayIdxV,eve:evening,agree,midx,code:wxByDate.get(ds)?.code??d.weather_code[di],notes:wxByDate.get(ds)?.notes||[],phrase:wxByDate.get(ds)?.phrase,
       tmin:d.temperature_2m_min[di],
       tmax:d.temperature_2m_max[di],
       ws:wsMax,wd:wdMax,degraded:wDegraded,
@@ -1590,11 +1675,11 @@ async function run(mt,opts){
   const WK_HEAD=7;
   const wkOpen=rows.length<=WK_HEAD||start>addDays(today,WK_HEAD-1);
   htmlOut+=`<h2>${JMA_DAYS}日間の見通し</h2>${capFor(rows.map(r=>iso(r.d)))}<div class="tbl" id="wk-tbl"><table>
-    <tr><th>日付</th><th>指数</th><th>天気</th><th>🏔 景色(朝)</th><th>山頂気温</th><th>${windLbl}max(5-16時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
+    <tr><th>日付</th><th>指数</th><th>確度</th><th>天気</th><th>🏔 景色(朝)</th><th>山頂気温</th><th>${windLbl}max(5-16時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
   // 精度が粗くなる境目に区切り行を1本だけ挟む。行の並びは崩さず、境界の前後がひと目で分かる
   // ようにするのが目的(列は増やさない)。境目が無い期間(全部MSM/全部GSM)では何も挟まない。
   const wkSw=modelSwitch(rows.map(r=>iso(r.d)));
-  const sepCols=8+(hasSnow?1:0);
+  const sepCols=9+(hasSnow?1:0);
   rows.forEach((r,i)=>{
     const more=i>=WK_HEAD;
     // 区切り行にも wk-more を付けて一緒に畳む。ただし「残りN日」の件数には数えない
@@ -1603,7 +1688,7 @@ async function run(mt,opts){
       htmlOut+=`<tr class="wk-sep${more?" wk-more":""}"${more&&!wkOpen?" hidden":""}>`
         +`<td colspan="${sepCols}">▼ ここから全球モデル(GSM)の予報です</td></tr>`;
     const cls=["wk-row"];if(more)cls.push("wk-more");
-    htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}" tabindex="0" role="button"><td>${md(r.d)}${wj(r.d)}${r.mode==="冬山・残雪期"?'<span class="wmode" title="冬山・残雪期の基準(稜線風8/12m/s・3h降水1/3mm)で判定した日">冬</span>':""}${r.model==="GSM"?'<span class="mdlm" title="全球モデル(GSM)の予報。日本域向けの MSM(約5km)より格子が広く、稜線風はやや弱めに出ます">全球</span>':""}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"><span class="ewi">⚠</span>夕方</span>':""}${r.night?'<span class="ew"><span class="ewi">⚠</span>夜間</span>':""}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
+    htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}" tabindex="0" role="button"><td>${md(r.d)}${wj(r.d)}${r.mode==="冬山・残雪期"?'<span class="wmode" title="冬山・残雪期の基準(稜線風8/12m/s・3h降水1/3mm)で判定した日">冬</span>':""}${r.model==="GSM"?'<span class="mdlm" title="全球モデル(GSM)の予報。日本域向けの MSM(約5km)より格子が広く、稜線風はやや弱めに出ます">全球</span>':""}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"><span class="ewi">⚠</span>夕方</span>':""}${r.night?'<span class="ew"><span class="ewi">⚠</span>夜間</span>':""}</td><td class="agr">${r.agree||"-"}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
     <td>${r.view}</td><td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws,r.degraded)}</td>
     <td>${u1(r.pr,"mm")}</td><td>${u0(r.prob,"%")}</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
   });
@@ -1612,6 +1697,21 @@ async function run(mt,opts){
   if(rows.length>WK_HEAD)
     htmlOut+=`<button type="button" class="wk-toggle" aria-controls="wk-tbl" aria-expanded="${wkOpen}">`+
       `${wkOpen?"折りたたむ":`残り${rows.length-WK_HEAD}日を表示`}</button>`;
+  // 確度の凡例と内訳。内訳は既定で閉じておく(毎回開いて見るものではない)。
+  // 内訳の中身は「モデル別の登山指数」= 確度とまったく同じ材料。旧「モデル間比較」表は
+  // 地上10m風・気温・降水・雲量を並べていたため、確度(稜線風+降水+季節しきい値で決まる)と
+  // 材料が違い、「表は揃って見えるのに確度は△」という食い違いが起きるので作り替えた。
+  if(rows.some(r=>r.agree)){
+    htmlOut+=`<p class="ewnote"><b>確度</b>は、気象庁・欧州ECMWF・米国GFS の3モデルに<b>同じ判定手順</b>を回して、指数がどれだけ揃うかを示します。◎=3モデルとも同じ / ○=1段階の差 / △=2段階以上の差 / -=判定不能。実測(12山×58日・真値はERA5再解析)では3日前時点の的中率が ◎77% / ○43% / △26% でした。<b>◎でも外れることはあります。</b>△の日は悪い側のモデルも起こりうると考えて、引き返し判断に余裕を持たせてください。A/B/C の判定そのものには使っていません。</p>`;
+    htmlOut+=`<details class="agrdet"><summary>確度の内訳（モデル別の登山指数）</summary>
+      <div class="tbl"><table><tr><th>日付</th>${CMP_MODELS.map(m=>`<th>${CMP_LABELS[m]}</th>`).join("")}<th>確度</th></tr>`
+      +rows.map(r=>`<tr><td>${md(r.d)}</td>`
+        +CMP_MODELS.map((m,k)=>`<td>${r.midx?.[k]||"-"}</td>`).join("")
+        +`<td class="agr">${r.agree||"-"}</td></tr>`).join("")
+      +`</table></div><p class="ewnote">気象庁の列は、上の表に出している指数そのものです（<code>models=jma_seamless</code> から計算し直すと実測で7.5%食い違うため使いません）。ECMWF は 900hPa/800hPa を配信しないため、稜線風の内挿点が2面少なくなります（実測の影響は平均0.29m/s）。</p></details>`;
+  }else if(!offline){
+    htmlOut+=`<p class="notice">確度（モデル別の内訳）を取得できませんでした（上の予報表には影響しません。時間をおいて再読み込みすると表示されます）。</p>`;
+  }
   if(rows.some(r=>r.eve))htmlOut+=`<p class="ewnote">⚠夕方: 17〜20時に天候の急変(C相当)、または発雷リスクが高く夕方に降水が予想されます(発雷リスク「高い」の日は降水予想が無くても付けます)。日中の指数には含めていませんが、下山遅れ・テント泊・ご来光待ちの際は特に注意してください。</p>`;
   if(rows.some(r=>r.night))htmlOut+=`<p class="ewnote">⚠夜間: 21時〜翌朝5時にC相当の荒天が予想されます。日中の指数には含めていませんが、テント泊・小屋泊・早発ち(アルパインスタート)の際は特に注意してください。</p>`;
   if(rows.some(r=>r.model==="GSM"))htmlOut+=`<p class="ewnote">日付に付く <b>全球</b> 印${wkSw?`(${mdIso(wkSw.firstGsm)}以降)`:""}は、その日の予報が<b>全球モデル(GSM)</b>由来であることを示します。それ以前は日本域向けに細かい MSM(約5km)です。切替日はモデルの更新時刻で動くため、日によって前後します。</p>`;
@@ -1711,61 +1811,14 @@ async function run(mt,opts){
     htmlOut+=`</section>`;
   }
 
-  // モデル比較 (常時表示。ただし補助情報なので、失敗しても主要な予報表は必ず描画する)
-  {
-    const cmpEnd=detailEnd;
-    const models=["jma_seamless","ecmwf_ifs025","gfs_seamless"];
-    const labels={jma_seamless:"気象庁JMA",ecmwf_ifs025:"欧州ECMWF",gfs_seamless:"米国GFS"};
-    // 3モデル同時取得はこのページで最も重いリクエストで、混雑時に最初に落ちる。
-    // これは「モデルが一致するか」を見るための補助情報であって登山可否の判断材料ではない。
-    // 一方この時点で主要な予報表(直近実況・10日見通し・時間別詳細)は既に組み上がっており、
-    // 描画は最後の out.innerHTML まで行われない。ここで throw させると、完成済みの
-    // 稜線風・気温・降水・登山指数を丸ごと捨てることになるので、失敗はここで閉じ込める。
-    // この表だけは日付範囲(start〜cmpEnd)に依存するので、使い回せるのは範囲が同じ時だけ。
-    // 範囲が変わっていれば、他が使い回しでもこの1本だけ取り直す。
-    const cmpRange=`${iso(start)}..${iso(cmpEnd)}`;
-    let cd=null;
-    if(offline)cd=cmpSnap;   // 保存時に取れていた分をそのまま使う(通信はしない)
-    else if(reused&&cached.cmpRange===cmpRange)cd=cached.cmp;
-    else{
-      status.textContent="モデル比較を取得中…";
-      try{
-        cd=await apiJson(FORECAST_URL,{
-          latitude:mt.lat,longitude:mt.lon,elevation:mt.elev,
-          hourly:"temperature_2m,precipitation,wind_speed_10m,cloud_cover",
-          timezone:"Asia/Tokyo",wind_speed_unit:"ms",models:models.join(","),
-          start_date:iso(start),end_date:iso(cmpEnd)});
-      }catch(e){cd=null}
-      if(lastFetch&&lastFetch.key===fetchKey(mt)){lastFetch.cmp=cd;lastFetch.cmpRange=cmpRange}
-    }
-    cmpSnap=cd;   // 保存用(オフライン時は素通り)
-    htmlOut+=`<h2>モデル間比較（各モデルが一致するほど信頼度が高い）</h2>`;
-    if(!cd||!cd.hourly||!Array.isArray(cd.hourly.time)){
-      htmlOut+=`<p class="notice">モデル比較データを取得できませんでした`
-        +`（上の予報表には影響しません。時間をおいて再読み込みすると表示されます）。</p>`;
-    }else{
-      const ch=cd.hourly;
-      htmlOut+=`${cap}<div class="tbl"><table>
-        <tr><th>日付</th><th>モデル</th><th>気温min〜max</th><th>降水量</th><th>10m風max</th><th>平均雲量</th></tr>`;
-      for(let dt2=new Date(start);dt2<=cmpEnd;dt2=addDays(dt2,1)){
-        const idxs=dayIdx(ch.time,iso(dt2));
-        for(const m of models){
-          const col=v=>{const k=ch[`${v}_${m}`]?`${v}_${m}`:v;return idxs.map(i=>ch[k]?.[i]).filter(x=>x!=null)};
-          const temps=col("temperature_2m"),precs=col("precipitation"),winds=col("wind_speed_10m"),clouds=col("cloud_cover");
-          htmlOut+=temps.length?
-            `<tr><td>${md(dt2)}</td><td>${labels[m]}</td><td>${Math.round(Math.min(...temps))}〜${Math.round(Math.max(...temps))}℃</td>
-             <td>${precs.length?precs.reduce((a,b)=>a+b,0).toFixed(1)+"mm":"-"}</td><td>${winds.length?Math.max(...winds).toFixed(1)+"m/s":"-"}</td>
-             <td>${clouds.length?Math.round(clouds.reduce((a,b)=>a+b,0)/clouds.length)+"%":"-"}</td></tr>`:
-            `<tr><td>${md(dt2)}</td><td>${labels[m]}</td><td colspan="4">(データなし)</td></tr>`;
-        }
-      }
-      htmlOut+=`</table></div>`;
-    }
-  }
+  // ※ かつてここに「モデル間比較」表(3モデルの気温・降水・10m風・雲量)を出していたが、
+  //   見通し表の確度列とその内訳(モデル別の指数)に置き換えて廃止した。並べる材料が
+  //   地上10m風と稜線風で違うため、「表は揃って見えるのに確度は△」という食い違いが
+  //   起きるのが理由(内訳は確度とまったく同じ材料で作っている)。取得自体は fetchAll に移動。
 
   // 上空の寒気。寒気の強さは冬型の荒れ方と夏の不安定度の両方を規定するが山頂気温では読めない。
-  // 行動判断に直結する表(見通し・詳細・モデル比較)を先に読ませ、気圧配置を自分で読むための
-  // 参考値はモデル間比較の下にまとめる。
+  // 行動判断に直結する表(見通し・詳細)を先に読ませ、気圧配置を自分で読むための
+  // 参考値は出力の最後にまとめる。
   {
     const UP=[["temperature_850hPa","850hPa(約1500m)"],["temperature_700hPa","700hPa(約3000m)"],
       ["temperature_500hPa","500hPa(約5500m)"]];
@@ -1802,7 +1855,11 @@ async function run(mt,opts){
   // = できない約束をしない。
   // 使い回した回は保存し直さない(同じ内容を 56KB 書き直すだけになる)。
   // 索引には前回の保存が残っているので、下の snapRowHtml は従来どおり出る。
-  if(!offline&&!reused&&sid&&snapSave(mt,{data,supFailed,cmp:cmpSnap,
+  // 確度は「派生した値」だけを保存する。生の3モデル応答は1件あたり約36KB あるうえ、
+  // 保存しても内訳を描き直すのに使うだけなので持つ意味がない(旧 cmp の保存より小さくなる)。
+  const agreeSave={};
+  for(const r of rows)if(r.agree)agreeSave[iso(r.d)]={agree:r.agree,midx:r.midx};
+  if(!offline&&!reused&&sid&&snapSave(mt,{data,supFailed,agree:agreeSave,
       init:{msm:inits.jma_msm?inits.jma_msm.getTime():null,
             gsm:inits.jma_gsm?inits.jma_gsm.getTime():null}}))
     snapRequestPersist();  // 残す価値のあるデータができた回だけ。await しない(描画を待たせない)
