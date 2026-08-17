@@ -1174,7 +1174,7 @@ def print_detail_day(data, date, elev, has_snow=False, step=3):
               f"| {feel_c} | {wind_cell(wd, ws, degraded)} | {fnum(gust, '{:.0f}')}m/s "
               f"| {pr_c} | {fnum(prob)}% | {lightning_cell(cape, cin)} | {cl} |{snow_c}")
     if day_degraded:
-        print(f"- {wind_label(elev)}の `*` は、900hPa/800hPaのデータが無い時間帯(粗いモデル=GSM の時間帯)"
+        print(f"- {wind_label(elev)}の `*` は、900hPa/800hPaのデータが無い時間帯(全球モデル=GSM の時間帯)"
               "のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。"
               "強めに見積もって判断してください。")
 
@@ -1322,23 +1322,28 @@ def print_daily_summary(rows, title, has_snow=False, elev=None):
                 + (" ⚠夜間" if r.get("night") else ""))
         snow_c = f" {snow_cell(r.get('depth'), r.get('sf'))} |" if has_snow else ""
         wx_txt = phrase_text(r.get("phrase")) or wcode(r["code"])
-        # 粗いモデル(GSM)由来の日に印を付ける。markdown の表なので Web のような区切り線は
+        # 全球モデル(GSM)由来の日に印を付ける。markdown の表なので Web のような区切り線は
         # 引けないぶん、下の注記で「MM/DD 以降」と境目の日付を必ず書く。
-        coarse = " 粗" if r.get("model") == "GSM" else ""
-        print(f"| {r['date'].strftime('%m/%d')}({wj}){coarse} | {mark} | {wx_txt}{wx_note_text(r.get('notes'))} "
+        # ★ 印にも注記にも「粗い」を使わない(index.html の .mdlm と同じ理由)。
+        #   どのモデル由来かという事実の開示であって、予報の良し悪しの評価ではない。
+        global_m = " 全球" if r.get("model") == "GSM" else ""
+        print(f"| {r['date'].strftime('%m/%d')}({wj}){global_m} | {mark} | {wx_txt}{wx_note_text(r.get('notes'))} "
               f"| {r['view']} | {fnum(r['tmin'], '{:.0f}')}〜{fnum(r['tmax'], '{:.0f}')}℃ "
               f"| {wind_cell(r['wd'], r['ws'], r.get('degraded'))} "
               f"| {fnum(r['pr'], '{:.1f}')}mm | {fnum(r['prob'])}% |{snow_c}")
     gsm = [r for r in rows if r.get("model") == "GSM"]
     if gsm:
         # 境目の日付は行そのものから出す(「N日目から」の決め打ちは切替がモデルのラン時刻で
-        # 動くため事実と食い違う)。全日GSMのときは「以降」と言えないので日付を書かない。
-        head = (f"{gsm[0]['date']:%m/%d} 以降の" if len(gsm) < len(rows) else "")
-        print(f"- 日付の「粗」は、{head}予報が粗いモデル(GSM)由来であることを示します"
-              "(それ以前は日本域に細かい MSM 約5km)。"
+        # 動くため事実と食い違う)。全日GSMのときは境目が表の中に無いので、日付も
+        # 「それ以前は MSM」も書かない(この表に存在しない「それ以前」を指してしまう)。
+        if len(gsm) < len(rows):
+            head, tail = f"{gsm[0]['date']:%m/%d} 以降の", "(それ以前は日本域向けに細かい MSM 約5km)。"
+        else:
+            head, tail = "", "(細かい MSM 約5km は、この表より前の期間です)。"
+        print(f"- 日付の「全球」は、{head}予報が全球モデル(GSM)由来であることを示します{tail}"
               "切替日はモデルの更新時刻で動くため、日によって前後します。")
     if any(r.get("degraded") for r in rows):
-        print(f"- {wind_label(elev)}の `*` は、900hPa/800hPaのデータが無い日(粗いモデル=GSM の日)"
+        print(f"- {wind_label(elev)}の `*` は、900hPa/800hPaのデータが無い日(全球モデル=GSM の日)"
               "のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。"
               "強めに見積もって判断してください。")
     if any(r.get("evening") for r in rows):
@@ -1682,9 +1687,9 @@ def main():
               "(「濡れ注意」の印が付く時間帯は特に)")
         print("- 突風は地上10mの値です。稜線風(山頂標高の気圧面)とは高度が違うため、"
               "稜線での実際の突風はこの値より強いことがあります")
-        model_txt = (f"〜{sw[0]:%m/%d}=MSM 約5km / {sw[1]:%m/%d}〜=GSM(粗い)。"
+        model_txt = (f"〜{sw[0]:%m/%d}=MSM 約5km / {sw[1]:%m/%d}〜=GSM(全球モデル)。"
                      "切替日はモデルの更新時刻で動きます" if sw else
-                     "MSM 約5km → GSM(粗い) と自動で切替わります")
+                     "MSM 約5km → GSM(全球モデル) と自動で切替わります")
         print(f"- データ: 気象庁モデル ({model_txt}。表示は{JMA_DAYS}日目まで)。"
               f"降水確率・突風・CAPE/CIN・視程・積雪深・0℃高度は気象庁モデルに無いため別モデルで補完"
               f" / 取得: {dt.datetime.now():%Y-%m-%d %H:%M} / 出典: Open-Meteo")

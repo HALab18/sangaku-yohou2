@@ -614,15 +614,17 @@ footer a{color:var(--link)}
   elElev.addEventListener("change",updateHint);
 
   // ---- 稜線風速の補間・判定のしきい値 ----
-  // interpWind と定数 (LEVELS / SURFACE_WIND_M / WINTER_TMAX / WINTER_TMIN / WET_HYPO_* /
-  // FEELS_* / RANK) は logic.js にある。index.html と共有する唯一の実装なので、
+  // interpWind と定数 (LEVELS / SURFACE_WIND_M / DEGRADED_LEVELS / WINTER_TMAX / WINTER_TMIN /
+  // WET_HYPO_* / FEELS_* / RANK) は logic.js にある。index.html と共有する唯一の実装なので、
   // ここに複製しないこと(片方だけ直すと詳細ページと山さがしで判定がズレる)。
   // 900/800hPa を別モデルで埋めてはいけない理由も logic.js のコメントに書いてある。
   // 900hPa・800hPa は MSM 期間にしか配信されない(GSM 期間はこの2面が丸ごと欠測)。この2面が
   // 両方欠測の時刻は内挿点が減り、稜線風が実測で北ア級-1.2m/s程度弱く出る(埋め合わせは却下済み。
   // 上のコメント参照)。degraded として持ち回り、score()/formalIndex() の表示側で `*` を出す。
+  // 面の番号は logic.js の DEGRADED_LEVELS から引く(900/800 をここに書き写さない。
+  // 書き写すと logic.js 側を変えたときに find だけ古い面を見続ける)。
   var DEGRADED_LEVEL_IDX=LEVELS.reduce(function(a,L,li){
-    if(L[0]===900||L[0]===800)a.push(li);return a},[]);
+    if(DEGRADED_LEVELS.indexOf(L[0])>=0)a.push(li);return a},[]);
   // i時刻の稜線風速+degraded。lvArrs=LEVELS と同じ並びの風速配列、w10=地上10m風の配列。
   // 気圧面が1つも無い時刻は null(判定不能)。ここで地上10m風だけの pts を interpWind に渡すと
   // 最下点の生値(=地上風)が返り、稜線20m/s相当の日が地上4m/sとして通ってしまう。すると
@@ -1241,7 +1243,7 @@ footer a{color:var(--link)}
          '天気・降水量・稜線風・積雪は気象庁モデルのままです'+
          '(<a href="find-score.html">計算方法</a>)。</p>';
     }
-    // 稜線風が900hPa/800hPa欠測(GSM期間・5日目以降)でやや弱めに出ている山も、表の下に1回だけ明記する。
+    // 稜線風が900hPa/800hPa欠測(粗いモデル=GSM の期間)でやや弱めに出ている山も、表の下に1回だけ明記する。
     var degN=rows.filter(function(x){return x.sc.ridgeDegraded}).length;
     if(degN){
       h+='<p class="rnote">※ 稜線風の <b>*</b> 印'+(degN<rows.length?"が付いた山":"")+

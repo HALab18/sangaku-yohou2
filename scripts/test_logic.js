@@ -75,7 +75,10 @@ for (const [rel, re] of PAGES) {
       + " (古い logic.js がキャッシュに残り、判定だけ旧版になります)");
   }
   for (const f of MOVED) {
-    if (new RegExp("function\\s+" + f + "\\s*\\(").test(src)) {
+    // 宣言の形は問わない。`function 名(` だけを見ていると
+    // `const 名=(…)=>{}` / `var 名=function(…)` での再定義を素通しする
+    // (どの形でも後勝ちで logic.js の実装を上書きするので、検出できないと意味が無い)。
+    if (new RegExp("(?:function|const|let|var)\\s+" + f + "\\s*[=(]").test(src)) {
       fails.push(`${rel}: ${f}() が再定義されています (logic.js の実装が上書きされます)`);
     }
   }
