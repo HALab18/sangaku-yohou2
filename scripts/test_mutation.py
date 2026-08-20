@@ -48,6 +48,8 @@ COPY = [
     "scripts/test_logic.js",
     "scripts/test_logic_fuzz.py",
     "scripts/test_logic_fuzz.js",
+    "scripts/test_display.py",
+    "scripts/test_display.js",
     "references/logic_cases.json",
     "docs/find.html",
 ]
@@ -109,6 +111,18 @@ MUTATIONS = [
      LOGIC, 'var PW_LOGIC_VER = "', 'var PW_LOGIC_VER = "0'),
     ("index.html に blockIndex を再定義する(logic.js の実装が上書きされる)",
      INDEX, '<script src="logic.js?v=', '<script>function blockIndex(){return["A",""]}</script>\n<script src="logic.js?v='),
+    # ---- 表示まわり。CLI と Web に同じものが2重に書かれている範囲 ----
+    ("Web 側の「濡れ注意」の気温を境界ちょうどで外す",
+     INDEX, 'return temp<=WET_WARN_TEMP&&', 'return temp<WET_WARN_TEMP&&'),
+    ("CLI 側の「濡れ注意」の気温しきい値を 15 → 14 にずらす",
+     CLI, 'WET_WARN_TEMP_C = 15', 'WET_WARN_TEMP_C = 14'),
+    ("Web 側の雨雪判別の margin を 100 → 200 にずらす",
+     INDEX, 'if(fl<elev-100)return"雪";', 'if(fl<elev-200)return"雪";'),
+    ("CLI 側の天気を集約する時間帯窓をずらす",
+     CLI, "WX_WINDOW = (4, 17)", "WX_WINDOW = (4, 16)"),
+    ("Web 側の安全オーバーライドから雷を外す(悪天が日代表に昇格しなくなる)",
+     INDEX, 'const SAFETY_OVERRIDE=new Set([65,66,67,75,82,85,86,95,96,99]);',
+     'const SAFETY_OVERRIDE=new Set([65,66,67,75,82,85,86]);'),
 ]
 
 
@@ -141,6 +155,8 @@ def check_layers(work, have_node):
             caught.append("表")
     if run([py, "scripts/test_logic_fuzz.py", "--n", "400"], work) not in (0, None):
         caught.append("乱数")
+    if have_node and run([py, "scripts/test_display.py", "--n", "300"], work) not in (0, None):
+        caught.append("表示")
     return caught
 
 

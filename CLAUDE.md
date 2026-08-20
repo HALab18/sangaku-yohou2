@@ -36,6 +36,7 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `skill/auth-renew/SKILL.md` | 認証コード更新スキル（「認証コードを更新して」で年次ローテーションを自動実行） |
 | `references/logic_cases.json` `scripts/test_logic.py` `scripts/test_logic.js` | 判定ロジックの等価性テスト。同じ入出力表を CLI(Python) と `logic.js`(Node) で回す |
 | `scripts/test_logic_fuzz.py` `scripts/test_logic_fuzz.js` | 同じ9関数を乱数で総当たりし、Python↔JS の一致と**不変条件**（悪化させて指数が良くならない・欠測が好条件に化けない等）を見る。入力表の生成は Python 側の1箇所だけ |
+| `scripts/test_display.py` `scripts/test_display.js` | **表示まわり**の等価性テスト（天気の文言・濡れ注意・雨雪判別・積雪や視程の表記）。判定と違いここは一本化されておらず CLI と index.html に2重に書かれている。index.html は書き換えず、DOM に触らない範囲を目印で切り出して評価する |
 | `scripts/test_mutation.py` | わざとバグを仕込んで**テストが落ちること**を確かめる。落ちない変異があれば、その範囲についてテストは書いていないのと同じ |
 | `scripts/check_consistency.py` | 2箇所以上に同じ値を書いている場所の突き合わせ（`JMA_DAYS`・`FIND_DAYS`・`AUTH_VER` の `?v=`・日本域の範囲・`sw.js` の `CACHE` 版）と、実装から消えたはずの説明がドキュメントに残っていないかの検査。`check_mountains.py` の `[5/6]` が呼ぶ |
 | `scripts/db_*.py gen_*.py check_*.py` | DB保守ツール群（下記パイプライン） |
@@ -125,6 +126,12 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 
    `logic.js` の関数を index.html / docs/find.html 側に再定義しないこと（後勝ちで上書きされ、
    `logic.js` を直しても反映されないという壊れ方をする。`test_logic.js` が検出する）。
+
+   **表示まわり（天気の文言・濡れ注意・雨雪判別・積雪や視程の表記）は一本化されておらず、
+   CLI と index.html に2重に書かれている。** 片方だけ直さないこと。突き合わせは
+   `python scripts/test_display.py`（`check_mountains.py` の `[4/6]` が呼ぶ）。
+   index.html 側は「DOM に触らない範囲」を目印（`const WET_PRECIP=` 〜 `// ---- APIアクセス`）で
+   切り出して評価しているので、この範囲に DOM を触るコードを入れないこと。
 4. **CLI本体に第三者パッケージを足さない**（依存ゼロを維持）。保守スクリプト側はOK。
 5. **座標変更・DB編集をしたら必ず `python scripts/check_mountains.py` を通す**
    （形式・CLI/Web同期・自動生成ページの同期・判定ロジックの等価性・**定数同期とドキュメントの

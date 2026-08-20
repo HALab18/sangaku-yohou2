@@ -7,11 +7,13 @@
   3. 自動生成ページ(docs/find.html・docs/mountains.html)が生成元と一致しているか
      - 生成物を直接編集すると、次に生成スクリプトを流した時点で修正が消える。
        実際に find.html の z-index 修正がこの経路で失われた前例があるため検査する
-  4. 判定ロジックの等価性 (references/logic_cases.json の入出力表 + 乱数総当たり)
+  4. 判定と表示の等価性 (入出力表 + 乱数総当たり + 表示まわり)
      - CLI(scripts/mountain_weather.py) と Web(logic.js) が同じ入力で同じ A/B/C を
        返すかを機械的に確かめる。片方だけ直すと静かにズレるため(CLAUDE.md 規約3)
      - 入出力表だけでは人が思いつかなかった組み合わせが抜けるので、
        乱数総当たりと不変条件(test_logic_fuzz.py)も併せて回す
+     - 天気の文言・濡れ注意・雨雪判別・積雪表記は logic.js に一本化されておらず
+       CLI と index.html に2重に書かれているため、test_display.py で突き合わせる
      - JS 側は Node が必要。無い環境ではスキップし「未検証」と明示する
   5. 定数の同期とドキュメントの整合性 (scripts/check_consistency.py)
      - JMA_DAYS・FIND_DAYS・AUTH_VER の ?v=・日本域の範囲・sw.js の CACHE 版など、
@@ -160,6 +162,15 @@ def check_logic():
     if fz.returncode:
         errors.append('乱数総当たり/不変条件(test_logic_fuzz.py)で違反:' + CRLF_INDENT
                       + (fz.stdout or fz.stderr).strip().replace('\n', CRLF_INDENT))
+
+    # 表示まわり(天気の文言・濡れ注意・雨雪判別・積雪表記)。判定と違って一本化されておらず、
+    # CLI と index.html に同じものが2重に書かれているので、ここで突き合わせる。
+    # node が無ければ test_display.py 側が未検証として自分で飛ばす
+    dp = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_display.py')],
+                        capture_output=True, text=True, encoding='utf-8')
+    if dp.returncode:
+        errors.append('表示まわり(test_display.py)が CLI と Web で不一致:' + CRLF_INDENT
+                      + (dp.stdout or dp.stderr).strip().replace('\n', CRLF_INDENT))
     return errors, notes
 
 
@@ -263,7 +274,7 @@ def main():
     ng = ng or bool(gen)
 
     logic, logic_notes = check_logic()
-    print(f"[4/6] 判定ロジックの等価性 (CLI と logic.js / 入出力表・乱数・不変条件): "
+    print(f"[4/6] 判定と表示が CLI と Web で一致するか (入出力表・乱数・不変条件・表示): "
           f"{'OK' if not logic else f'{len(logic)}件の不一致'}")
     for e in logic:
         print(f"  ✕ {e}")
