@@ -35,6 +35,9 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `skill/SKILL.md` | Claude Code スキル定義（「◯◯岳の予報を調べて」で自動実行） |
 | `skill/auth-renew/SKILL.md` | 認証コード更新スキル（「認証コードを更新して」で年次ローテーションを自動実行） |
 | `references/logic_cases.json` `scripts/test_logic.py` `scripts/test_logic.js` | 判定ロジックの等価性テスト。同じ入出力表を CLI(Python) と `logic.js`(Node) で回す |
+| `scripts/test_logic_fuzz.py` `scripts/test_logic_fuzz.js` | 同じ9関数を乱数で総当たりし、Python↔JS の一致と**不変条件**（悪化させて指数が良くならない・欠測が好条件に化けない等）を見る。入力表の生成は Python 側の1箇所だけ |
+| `scripts/test_mutation.py` | わざとバグを仕込んで**テストが落ちること**を確かめる。落ちない変異があれば、その範囲についてテストは書いていないのと同じ |
+| `scripts/check_consistency.py` | 2箇所以上に同じ値を書いている場所の突き合わせ（`JMA_DAYS`・`FIND_DAYS`・`AUTH_VER` の `?v=`・日本域の範囲・`sw.js` の `CACHE` 版）と、実装から消えたはずの説明がドキュメントに残っていないかの検査。`check_mountains.py` の `[5/6]` が呼ぶ |
 | `scripts/db_*.py gen_*.py check_*.py` | DB保守ツール群（下記パイプライン） |
 
 **公開URL**: https://halab18.github.io/sangaku-yohou2/
@@ -102,17 +105,30 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 2. **mountains.csv は BOM付きUTF-8・CRLF を維持。** Excelでの文字化け防止。`check_mountains.py` が形式を検証する。
 3. **CLIとWebの判定ロジックは同一に保つ。** 判定の実装は **`scripts/mountain_weather.py`(CLI) と `logic.js`(Web) の2箇所だけ**。
    片方だけ閾値やロジックを変えない。基準変更は `references/criteria.md`・CLI・`logic.js`・
-   `references/logic_cases.json`・図解ページを揃え、下記を通すこと（`check_mountains.py` の `[4/5]` も同じ2本を呼ぶ）:
+   `references/logic_cases.json`・図解ページを揃え、下記を通すこと（`check_mountains.py` の `[4/5]` が同じ3本を呼ぶ）:
 
    ```bash
-   python scripts/test_logic.py && node scripts/test_logic.js
+   python scripts/test_logic.py && node scripts/test_logic.js && python scripts/test_logic_fuzz.py
    ```
+
+   **入出力表だけを信用しない。** `logic_cases.json` は人が選んだ代表値なので、書いた人が
+   思いつかなかった組み合わせは入らない（実際に「山頂雲量が欠測でも雲海を名乗る」変異は
+   表を素通りし、乱数側だけが捕まえた）。判定を触ったら、テスト自体が効いているかも確かめる:
+
+   ```bash
+   python scripts/test_mutation.py
+   ```
+
+   しきい値を変えたときは `test_mutation.py` の `MUTATIONS` が「変異が当たりません」と
+   言い出すので、置換前の文字列も併せて直すこと（当たっていない変異を通ったと数えると、
+   この仕掛け自体が嘘になる）。
 
    `logic.js` の関数を index.html / docs/find.html 側に再定義しないこと（後勝ちで上書きされ、
    `logic.js` を直しても反映されないという壊れ方をする。`test_logic.js` が検出する）。
 4. **CLI本体に第三者パッケージを足さない**（依存ゼロを維持）。保守スクリプト側はOK。
 5. **座標変更・DB編集をしたら必ず `python scripts/check_mountains.py` を通す**
-   （形式・CLI/Web同期・自動生成ページの同期・判定ロジックの等価性・DEM照合）。
+   （形式・CLI/Web同期・自動生成ページの同期・判定ロジックの等価性・**定数同期とドキュメントの
+   整合性**・DEM照合）。判定やテストを触ったときは `--mutation` も付ける。
 6. **`docs/find.html` と `docs/mountains.html` は自動生成物。直接編集しない。**
    修正は `scripts/gen_find.py` / `scripts/gen_mountain_list.py` に入れて再生成する。
    生成物だけ直すと次の再生成で消える（実際に find.html の z-index 修正がこれで失われた）。

@@ -7,11 +7,17 @@
   3. 自動生成ページ(docs/find.html・docs/mountains.html)が生成元と一致しているか
      - 生成物を直接編集すると、次に生成スクリプトを流した時点で修正が消える。
        実際に find.html の z-index 修正がこの経路で失われた前例があるため検査する
-  4. 判定ロジックの等価性 (references/logic_cases.json の入出力表)
+  4. 判定ロジックの等価性 (references/logic_cases.json の入出力表 + 乱数総当たり)
      - CLI(scripts/mountain_weather.py) と Web(logic.js) が同じ入力で同じ A/B/C を
        返すかを機械的に確かめる。片方だけ直すと静かにズレるため(CLAUDE.md 規約3)
+     - 入出力表だけでは人が思いつかなかった組み合わせが抜けるので、
+       乱数総当たりと不変条件(test_logic_fuzz.py)も併せて回す
      - JS 側は Node が必要。無い環境ではスキップし「未検証」と明示する
-  5. Open-Meteo Elevation API による標高の照合
+  5. 定数の同期とドキュメントの整合性 (scripts/check_consistency.py)
+     - JMA_DAYS・FIND_DAYS・AUTH_VER の ?v=・日本域の範囲・sw.js の CACHE 版など、
+       2箇所以上に同じ値を書いている場所を突き合わせる
+     - 実装から消えたはずの説明(旧・体感温度の式など)がドキュメントに残っていないか
+  6. Open-Meteo Elevation API による標高の照合
      - 座標が山頂から外れていると、その地点のDEM標高がCSVの山頂標高より
        大幅に低くなることを利用して座標ミスを検出する
      - DEMはCopernicus GLO-90 (90m格子) のため、尖った岩峰(槍ヶ岳・剱岳・権現岳等)は
@@ -19,6 +25,8 @@
 
 使い方:
   python scripts/check_mountains.py
+  python scripts/check_mountains.py --mutation   # テスト自体が効いているかも確かめる
+                                                 # (判定・テストを触ったときに付ける。12秒ほど)
 
 終了コード: 0=問題なし / 1=要修正(形式エラー・同期ずれ・座標ミスの疑い)あり
 """
@@ -118,10 +126,15 @@ def check_generated():
 
 
 def check_logic():
-    """判定ロジックが CLI と Web で一致するか (scripts/test_logic.py / test_logic.js)
+    """判定ロジックが CLI と Web で一致するか
+    (scripts/test_logic.py / test_logic.js / test_logic_fuzz.py)
 
     ロジックの二重実装は「片方だけ直して気づかない」で壊れる。ここを通ることが、
     CLI・logic.js・references/criteria.md を揃えて直したことの証拠になる。
+
+    入出力表(logic_cases.json)は人が選んだ代表値なので、書いた人が思いつかなかった
+    組み合わせは入らない。実際に「山頂雲量が欠測でも雲海を名乗る」バグは表を素通りした。
+    そこで乱数総当たりと不変条件(test_logic_fuzz.py)も併せて回す。
     """
     errors, notes = [], []
     py = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_logic.py')],
@@ -136,11 +149,50 @@ def check_logic():
         # Node はこのチェックのためだけの依存。無くても CLI 本体は動くので落とさない
         notes.append('Node が無いため JS 側(logic.js)は未検証です'
                      ' (node scripts/test_logic.js を実行できる環境で確認してください)')
-        return errors, notes
-    if js.returncode:
+        js = None
+    if js is not None and js.returncode:
         errors.append('Web側(test_logic.js)が不一致:' + CRLF_INDENT
                       + (js.stdout or js.stderr).strip().replace('\n', CRLF_INDENT))
+
+    # 乱数総当たり + 不変条件。node が無ければ fuzz 側が等価性の比較だけを自動で飛ばす
+    fz = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_logic_fuzz.py')],
+                        capture_output=True, text=True, encoding='utf-8')
+    if fz.returncode:
+        errors.append('乱数総当たり/不変条件(test_logic_fuzz.py)で違反:' + CRLF_INDENT
+                      + (fz.stdout or fz.stderr).strip().replace('\n', CRLF_INDENT))
     return errors, notes
+
+
+def check_mutation():
+    """テスト自体が効いているか (scripts/test_mutation.py)
+
+    わざとバグを仕込んで「テストが落ちること」を確かめる。落ちない変異があれば、
+    その範囲についてテストは書いていないのと同じ。12秒ほどかかるうえ、判定や
+    テストを触っていなければ結果が変わらないので、--mutation を付けた時だけ回す。
+    """
+    r = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_mutation.py')],
+                       capture_output=True, text=True, encoding='utf-8')
+    if not r.returncode:
+        return []
+    return ['仕込んだバグを検出できないテストがあります:' + CRLF_INDENT
+            + (r.stdout or r.stderr).strip().replace('\n', CRLF_INDENT)]
+
+
+def check_consistency():
+    """定数の同期とドキュメントの整合性 (scripts/check_consistency.py)
+
+    「2箇所以上に同じ値を書く」場所を機械で突き合わせる。ここが守れずに
+    AUTH_VER と ?v= がずれ、新しい認証コードを渡された利用者が弾かれた前例がある。
+    外部通信を伴わないので毎回回す。
+    """
+    r = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'check_consistency.py')],
+                       capture_output=True, text=True, encoding='utf-8')
+    if not r.returncode:
+        return []
+    body = (r.stdout or r.stderr).strip()
+    # 個々の食い違いは check_consistency.py 側が ✕ 付きで出しているので、その行だけ拾う
+    return [ln.strip()[2:] for ln in body.splitlines() if ln.strip().startswith("✕")] \
+        or [body.replace('\n', CRLF_INDENT)]
 
 
 def fetch_elevations(chunk):
@@ -187,30 +239,31 @@ def check_elevation(rows):
 
 
 def main():
+    want_mutation = "--mutation" in sys.argv
     rows = load_rows()
     print(f"山岳DBチェック: {len(rows)}座 ({MOUNTAINS_CSV.name})")
     ng = False
 
     fmt = check_format(rows)
-    print(f"\n[1/5] CSV形式: {'OK' if not fmt else f'{len(fmt)}件のエラー'}")
+    print(f"\n[1/6] CSV形式: {'OK' if not fmt else f'{len(fmt)}件のエラー'}")
     for e in fmt:
         print(f"  ✕ {e}")
     ng = ng or bool(fmt)
 
     sync = check_sync(rows)
-    print(f"[2/5] index.html との同期: {'OK' if not sync else f'{len(sync)}件のずれ'}")
+    print(f"[2/6] index.html との同期: {'OK' if not sync else f'{len(sync)}件のずれ'}")
     for e in sync:
         print(f"  ✕ {e}")
     ng = ng or bool(sync)
 
     gen = check_generated()
-    print(f"[3/5] 自動生成ページの同期: {'OK' if not gen else f'{len(gen)}件のずれ'}")
+    print(f"[3/6] 自動生成ページの同期: {'OK' if not gen else f'{len(gen)}件のずれ'}")
     for e in gen:
         print(f"  ✕ {e}")
     ng = ng or bool(gen)
 
     logic, logic_notes = check_logic()
-    print(f"[4/5] 判定ロジックの等価性 (CLI と logic.js): "
+    print(f"[4/6] 判定ロジックの等価性 (CLI と logic.js / 入出力表・乱数・不変条件): "
           f"{'OK' if not logic else f'{len(logic)}件の不一致'}")
     for e in logic:
         print(f"  ✕ {e}")
@@ -218,8 +271,23 @@ def main():
         print(f"  ⚠ {e}")
     ng = ng or bool(logic)
 
+    if want_mutation:
+        mut = check_mutation()
+        print(f"[+] テストの有効性 (ミューテーション): "
+              f"{'OK' if not mut else '検出できない変異あり'}")
+        for e in mut:
+            print(f"  ✕ {e}")
+        ng = ng or bool(mut)
+
+    cons = check_consistency()
+    print(f"[5/6] 定数同期とドキュメントの整合性: "
+          f"{'OK' if not cons else f'{len(cons)}件の食い違い'}")
+    for e in cons:
+        print(f"  ✕ {e}")
+    ng = ng or bool(cons)
+
     suspects, warns = check_elevation(rows)
-    print(f"[5/5] DEM標高照合 (Open-Meteo Elevation API): "
+    print(f"[6/6] DEM標高照合 (Open-Meteo Elevation API): "
           f"{'OK' if not suspects and not warns else f'疑い{len(suspects)}件 / 要確認{len(warns)}件'}")
     for e in suspects:
         print(f"  ✕ {e}")
