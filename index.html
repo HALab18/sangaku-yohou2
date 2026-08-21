@@ -297,8 +297,11 @@ th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
 /* その日を冬山・残雪期の基準で判定したことを示す印。夏側には付けない(全日に付くと区別にならない) */
 .wmode{display:inline-block;margin-left:5px;padding:0 5px;border-radius:8px;background:#dde9f5;
   color:#23477a;font-size:.76em;font-weight:700;vertical-align:middle;white-space:nowrap}
-/* 稜線風の degraded 印(900hPa/800hPa欠測)。find の .altm と同じ「控えめだが見える」トーン */
-.dgd{color:#8a94a8;font-weight:700;margin-left:1px}
+/* 稜線風の degraded 印(900hPa/800hPa欠測)。find の .altm と同じ「控えめだが見える」トーン。
+   ★ 色は --muted から外さないこと。以前は #8a94a8 だったが、表の偶数行 #eef1f6 の上では
+     2.70:1 しかなく AA(4.5:1)に届いていなかった。この印は「GSM 期間は風を弱めに見積もる」
+     ことを補正せず開示で倒すという判断そのものなので、読めない色で出すと判断が成立しない。 */
+.dgd{color:var(--muted);font-weight:700;margin-left:1px}
 /* その日の予報が全球モデル(GSM)由来であることを示す印。判定の印(.wmode の青)とは別物なので
    .dgd と同じグレー系に寄せ、「データの素性」の側だと分かるトーンにする。
    ★ 文言に「粗い」を使わない: 印もこの下の区切り行も、事実(どのモデル由来か)を伝えるもので
@@ -613,7 +616,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="gate entry" id="authgate" hidden>
   <div class="ahead">🔑 認証コードを入力してください（初回のみ）</div>
   <form class="authrow" id="authform">
-    <input id="authcode" placeholder="7文字のコード" maxlength="20"
+    <input id="authcode" aria-label="認証コード" placeholder="7文字のコード" maxlength="20"
       autocomplete="off" autocapitalize="characters" spellcheck="false">
     <button id="authbtn" type="submit">認証</button>
   </form>
@@ -656,7 +659,10 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
-<div class="entry" id="status"></div>
+<!-- role/aria-live: 取得失敗や範囲外日付の文面はここにしか出ない。付けないと
+     スクリーンリーダーには何も起きていないように見える(障害時ほど伝わらない)。
+     aria-atomic は、書き換えのたびに差分ではなく文面全体を読ませるため。 -->
+<div class="entry" id="status" role="status" aria-live="polite" aria-atomic="true"></div>
 <div class="entry" id="cands"></div>
 <div id="out"></div>
 </div>
@@ -664,7 +670,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.42β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.43β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
