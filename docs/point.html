@@ -18,7 +18,11 @@
   gtag('config', 'G-B4FYN1EJ2S');
 </script>
 <style>
-:root{--night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
+/* --muted: 補足文字の共通色(index.html / gen_find.py と同じ値)。白 6.2:1 /
+   ページ背景 #f4f6f9 5.7:1 で WCAG AA(4.5:1) を満たす。以前この画面は
+   .hint が #999(2.85:1)、footer が #888(3.27:1) で未達だった */
+:root{--muted:#5a6270;
+  --night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
   --btn:#4276b5;--btn-d:#3a68a3;--sel:#dceaf9;--bg:#f4f6f9;--line:#dee4ee;--field:#c9d2e0}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
@@ -62,7 +66,7 @@ input:focus,select:focus{outline:2px solid var(--night);outline-offset:1px}
 .seg label+label span{border-left:1.5px solid var(--field)}
 .seg input:checked+span{background:var(--sel);color:var(--night);font-weight:700}
 .seg input:focus-visible+span{outline:2px solid var(--btn);outline-offset:-3px}
-.hint{color:#999;font-size:.8em;margin:0}
+.hint{color:var(--muted);font-size:.8em;margin:0}
 
 button{font-size:16px;padding:14px;border:0;border-radius:12px;background:var(--btn);
   color:#fff;font-weight:700;cursor:pointer;font-family:inherit;width:100%;letter-spacing:.1em;
@@ -73,7 +77,7 @@ button:disabled{background:#9aa7bd;cursor:wait}
 #status{margin:4px 2px 0;font-size:.92em;color:#5b6b8a;font-weight:600;min-height:1.4em}
 #status.err{color:#a03415}
 
-footer{color:#888;font-size:.82em;margin-top:26px;border-top:1px solid var(--line);padding-top:10px;padding-bottom:16px}
+footer{color:var(--muted);font-size:.82em;margin-top:26px;border-top:1px solid var(--line);padding-top:10px;padding-bottom:16px}
 footer a{color:var(--link)}
 </style>
 </head>

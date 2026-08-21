@@ -102,9 +102,12 @@ main{max-width:1080px;margin:0 auto;padding:26px 14px 8px}
 .entry{max-width:560px;margin-left:auto;margin-right:auto}
 
 /* 利用規約 (折りたたみ・控えめ) */
-.terms{color:#82868f;font-size:.8em;line-height:1.75;margin-bottom:12px;
+/* ★ 色は --muted から外さないこと。以前は本文 #82868f(3.52:1)・見出し #8b909a(3.09:1) で
+   AA(4.5:1) に届いていなかった。「控えめに置く」のは畳んである(details)ことで足りており、
+   薄さで畳む必要はない。免責は読ませる前提の文章なので、読めない色は機能を損ねる。 */
+.terms{color:var(--muted);font-size:.8em;line-height:1.75;margin-bottom:12px;
   border:1px solid var(--line);border-radius:10px;background:#fafbfd}
-.terms summary{list-style:none;cursor:pointer;padding:10px 13px;font-weight:600;color:#8b909a;
+.terms summary{list-style:none;cursor:pointer;padding:10px 13px;font-weight:600;color:var(--muted);
   display:flex;align-items:center;gap:7px;user-select:none}
 .terms summary::-webkit-details-marker{display:none}
 .terms summary::before{content:"▸";color:#b9bec6;transition:transform .15s}
@@ -161,7 +164,7 @@ input:focus,select:focus{outline:2px solid var(--night);outline-offset:1px}
 /* 消去(×)ボタン。目立たせすぎない: 最近見た山の .rcx と同じ配色・ホバー挙動 */
 .mname-wrap{position:relative}
 .mclear{position:absolute;right:4px;top:50%;transform:translateY(-50%);
-  padding:9px 8px;border:0;background:none;color:#aab2c0;font-size:16px;line-height:1;cursor:pointer}
+  padding:9px 8px;border:0;background:none;color:var(--muted);font-size:16px;line-height:1;cursor:pointer}
 .mclear:hover{color:#a03415}
 .frow{display:flex;gap:12px}
 .frow>.f{flex:1;min-width:0}
@@ -209,9 +212,11 @@ button:disabled{background:#9aa7bd;cursor:wait}
 #sugg div{display:flex;justify-content:space-between;gap:14px;padding:9px 12px;cursor:pointer;
   font-size:14px;color:#222}
 #sugg div:hover{background:#e8eef7}
-#sugg small{color:#888;white-space:nowrap}
+/* ★ --muted を使う。以前の #888 は白地で 3.54:1。県名と標高は同名の山を見分ける材料なので、
+   読めないと候補を選び間違える */
+#sugg small{color:var(--muted);white-space:nowrap}
 /* 最近見た山 (未入力時だけ先頭に出す履歴。見出しは data-n を持たないので選択されない) */
-#sugg .rchead{display:block;padding:6px 12px 4px;font-size:11.5px;color:#8a94a8;
+#sugg .rchead{display:block;padding:6px 12px 4px;font-size:11.5px;color:var(--muted);
   font-weight:700;letter-spacing:.04em;background:#f4f6f9;cursor:default}
 #sugg .rchead:hover{background:#f4f6f9}
 #sugg .rc.rclast,
@@ -232,7 +237,7 @@ button:disabled{background:#9aa7bd;cursor:wait}
 /* ×・📌は指で押せる大きさを確保する。行タップとの誤爆を避けるため履歴行にだけ出す。
    負マージンで行の padding へ食い込ませ、見た目の行高(約40px)は通常候補と揃えたまま */
 #sugg .rcx,#sugg .rcp{flex:0 0 auto;margin:-9px 0;padding:9px 7px;border:0;background:none;
-  color:#aab2c0;font-size:15px;line-height:1;cursor:pointer}
+  color:var(--muted);font-size:15px;line-height:1;cursor:pointer}
 #sugg .rcx{margin-right:-6px;padding-right:10px}
 #sugg .rcx:hover{color:#a03415}
 /* 未ピンの📌も出しておく(淡く)。押せることが分からないと機能に気づけない */
@@ -275,14 +280,21 @@ ul.meta{margin:0 0 8px;padding-left:1.2em;color:#555;font-size:.9em}
   mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent)}
 .tbl.xscroll.at-end{-webkit-mask-image:none;mask-image:none}
 table{border-collapse:collapse;white-space:nowrap;width:100%}
-th{background:var(--slate);color:#fff;padding:6px 9px;font-weight:600;font-size:.9em;position:sticky;top:0;z-index:2}
-td{padding:5px 9px;border-bottom:1px solid var(--line);text-align:center;background:#fff}
-tr:nth-child(even) td{background:#eef1f6}
+/* ★ th は scope で2種類に分かれる。scope=col がヘッダ行(紺・上に固定)、scope=row が
+     先頭列の日付/時刻(見た目は td と同じ・左に固定)。
+   ★ thead / tbody は入れないこと。いまヘッダ行は暗黙の tbody の1行目にあり、縞は
+     tr:nth-child(even) で当たっている。thead を入れるとデータ行の番号が1つずれて
+     縞が反転する。さらに下の .wk-sep は縞と詳細度をわざと揃えて source 順で勝たせてあり、
+     その均衡も崩れる。属性セレクタなら構造を変えずに同じ結果になる。 */
+th[scope=col]{background:var(--slate);color:#fff;padding:6px 9px;font-weight:600;font-size:.9em;position:sticky;top:0;z-index:2}
+td,th[scope=row]{padding:5px 9px;border-bottom:1px solid var(--line);text-align:center;background:#fff;
+  font-weight:400;font-size:1em}
+tr:nth-child(even) td,tr:nth-child(even) th[scope=row]{background:#eef1f6}
 /* スマホ対策: ヘッダ行(上)と先頭列(左=日付/時刻)をスクロール時に固定 */
-th:first-child{left:0;z-index:3}
-td:first-child{position:sticky;left:0;z-index:1;background:#fff}
-tr:nth-child(even) td:first-child{background:#eef1f6}
-th:first-child,td:first-child{box-shadow:inset -1px 0 0 var(--line)}
+th[scope=col]:first-child{left:0;z-index:3}
+td:first-child,th[scope=row]{position:sticky;left:0;z-index:1;background:#fff}
+tr:nth-child(even) td:first-child,tr:nth-child(even) th[scope=row]{background:#eef1f6}
+th[scope=col]:first-child,td:first-child,th[scope=row]{box-shadow:inset -1px 0 0 var(--line)}
 .b{display:inline-block;min-width:2.6em;padding:1px 7px;border-radius:10px;font-weight:700;font-size:.92em}
 .b-a{background:#d8efe1;color:#1c5b3f}.b-b{background:#fdeec9;color:#7b5e00}.b-c{background:#f9d9cf;color:#a03415}
 .v-ex{color:#1c5b3f;font-weight:700}.v-ok{color:#2d6a4f}.v-so{color:#7b5e00}.v-ng{color:#a03415}
@@ -407,16 +419,26 @@ tr.wk-sep.wk-sep-top td{border-top:0}
 .wk-toggle[aria-expanded="true"]::after{transform:rotate(180deg)}
 /* 見通し表の行→詳細予報へのジャンプ。行をタップ/クリックすると該当日の詳細に移動する */
 .wk-row{cursor:pointer}
-.wk-row:hover td,.wk-row:focus-visible td,
-.wk-row:hover td:first-child,.wk-row:focus-visible td:first-child{background:#dde6f2}
-.wk-row:focus-visible{outline:2px solid var(--link);outline-offset:-2px}
+.wk-row:hover td,.wk-row:hover th[scope=row],
+.wk-row:has(:focus-visible) td,.wk-row:has(:focus-visible) th[scope=row]{background:#dde6f2}
+.wk-row:has(:focus-visible){outline:2px solid var(--link);outline-offset:-2px}
+/* 日付セルの中の「詳細へ」ボタン。行そのものに role="button" を付けると tr の役割(行)を
+   上書きして表の構造ごと消えるので、本物の button を1つ置いてそこに名前を持たせる。
+   グローバルの button{} が青いボタンなので全部打ち消す。 */
+.wk-jump{background:none;color:inherit;font:inherit;padding:0;border:0;border-radius:0;
+  cursor:pointer;text-align:inherit;white-space:nowrap}
+.wk-jump:hover{background:none}
+/* 行全体を光らせるのは :has() が要る。無い環境(iOS 15.3以前など)でも見失わないよう、
+   ボタン自身の輪郭は :has() と無関係に必ず出す */
+.wk-jump:focus-visible{outline:2px solid var(--link);outline-offset:2px;border-radius:3px}
 .detail-day{scroll-margin-top:10px}
 @keyframes detailFlash{0%,100%{background:transparent}30%,70%{background:#fdeec2}}
 .detail-flash{animation:detailFlash 1.4s ease-in-out}
 @media(prefers-reduced-motion:reduce){.detail-flash{animation:none}}
 .notice{background:#edf2f9;border-left:5px solid var(--slate);color:#44506b;padding:10px 12px;
   border-radius:0 6px 6px 0;margin:18px 0;font-size:.9em}
-footer{color:#888;font-size:.82em;margin-top:8px;text-align:center}
+/* ★ --muted を使う。以前の #888 はページ背景 #f4f6f9 の上で 3.27:1 しかなかった */
+footer{color:var(--muted);font-size:.82em;margin-top:8px;text-align:center}
 footer p{margin:0;line-height:1.8}
 /* 改訂履歴リンクはタップ目標が文字高さぶんしか無く押しづらかったので、
    中央寄せ(footer の text-align)を保ったまま上下左右に余白を持たせて広げる */
@@ -638,7 +660,11 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
       <input id="mname" placeholder="例: 燕岳" required autocomplete="off">
       <button type="button" id="mnameClear" class="mclear" aria-label="山名を消去" hidden>×</button>
     </span>
-    <div id="sugg" hidden></div>
+    <!-- role="listbox" は名乗れない: 「最近見た山」の行が中に 📌 と × のボタンを持っており、
+         option の中に操作できる要素を置くのは ARIA 違反になるため。正規の combobox にするには
+         grid 構成へ作り替えが要る(未了)。ここでは名前だけ与えて、実際の操作性は
+         キーボード(↓↑ / Esc / Home / End)で担保している。 -->
+    <div id="sugg" role="group" aria-label="山名の候補" hidden></div>
   </label>
   <div class="frow">
     <label class="f">開始日（詳細表示）
@@ -670,7 +696,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.43β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.44β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -1658,9 +1684,9 @@ async function run(mt,opts){
       depth:dep.length?Math.max(...dep):null});
   }
   if(pastRows.length){
-    htmlOut+=`<h2>直近の実況(モデル解析値・過去${pastRows.length}日)</h2>${capFor(pastRows.map(r=>iso(r.d)))}<div class="tbl"><table>
-      <tr><th>日付</th><th>天気</th><th>山頂気温</th><th>${windLbl}max(5-17時)</th><th>降水量</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
-    for(const r of pastRows)htmlOut+=`<tr><td>${md(r.d)}${wj(r.d)}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
+    htmlOut+=`<h2>直近の実況(モデル解析値・過去${pastRows.length}日)</h2>${capFor(pastRows.map(r=>iso(r.d)))}<div class="tbl"><table aria-label="直近の実況">
+      <tr><th scope="col">日付</th><th scope="col">天気</th><th scope="col">山頂気温</th><th scope="col">${windLbl}max(5-17時)</th><th scope="col">降水量</th>${hasSnow?'<th scope="col">積雪max(新雪)</th>':""}</tr>`;
+    for(const r of pastRows)htmlOut+=`<tr><th scope="row">${md(r.d)}${wj(r.d)}</th><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
       <td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws,r.degraded)}</td>
       <td>${u1(r.pr,"mm")}</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
     htmlOut+=`</table></div><ul class="meta"><li>※モデル解析値であり観測所の実測ではありません。現地の最新情報を優先してください</li></ul>`;
@@ -1758,8 +1784,8 @@ async function run(mt,opts){
   // ただし検索した日が8日目以降なら畳む意味がない(目的の日が隠れる)ので最初から開いて描く。
   const WK_HEAD=7;
   const wkOpen=rows.length<=WK_HEAD||start>addDays(today,WK_HEAD-1);
-  htmlOut+=`<h2>${JMA_DAYS}日間の見通し</h2>${capFor(rows.map(r=>iso(r.d)))}<div class="tbl" id="wk-tbl"><table>
-    <tr><th>日付</th><th>指数</th><th>確度</th><th>天気</th><th>🏔 景色(朝)</th><th>山頂気温</th><th>${windLbl}max(5-16時)</th><th>降水量</th><th>降水%(参考)</th>${hasSnow?"<th>積雪max(新雪)</th>":""}</tr>`;
+  htmlOut+=`<h2>${JMA_DAYS}日間の見通し</h2>${capFor(rows.map(r=>iso(r.d)))}<div class="tbl" id="wk-tbl"><table aria-label="${JMA_DAYS}日間の見通し">
+    <tr><th scope="col">日付</th><th scope="col">指数</th><th scope="col">確度</th><th scope="col">天気</th><th scope="col">🏔 景色(朝)</th><th scope="col">山頂気温</th><th scope="col">${windLbl}max(5-16時)</th><th scope="col">降水量</th><th scope="col">降水%(参考)</th>${hasSnow?'<th scope="col">積雪max(新雪)</th>':""}</tr>`;
   // 精度が粗くなる境目に区切り行を1本だけ挟む。行の並びは崩さず、境界の前後がひと目で分かる
   // ようにするのが目的(列は増やさない)。境目が無い期間(全部MSM/全部GSM)では何も挟まない。
   const wkSw=modelSwitch(rows.map(r=>iso(r.d)));
@@ -1783,7 +1809,11 @@ async function run(mt,opts){
       htmlOut+=`<tr class="wk-sep${more?" wk-more":""}"${more&&!wkOpen?" hidden":""}>`
         +`<td colspan="${sepCols}"><span class="wk-sepin">▼ ここから全球モデル(GSM)の予報です</span></td></tr>`;
     const cls=["wk-row"];if(more)cls.push("wk-more");
-    htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}" tabindex="0" role="button"><td>${md(r.d)}${wj(r.d)}${r.mode==="冬山・残雪期"?'<span class="wmode" title="冬山・残雪期の基準(稜線風8/12m/s・3h降水1/3mm)で判定した日">冬</span>':""}${r.model==="GSM"?'<span class="mdlm" title="全球モデル(GSM)の予報。日本域モデル(MSM 約5km)より格子が広く、稜線風はやや弱めに出ます">全球</span>':""}</td><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"><span class="ewi">⚠</span>夕方</span>':""}${r.night?'<span class="ew"><span class="ewi">⚠</span>夜間</span>':""}</td><td class="agr">${r.agree||"-"}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
+    // ★ tr に role="button" を付けないこと。tr の役割(行)を上書きして表の構造ごと消え、
+    //   全セルの連結が1つのボタン名として読まれる状態になる。日付セルの中に本物の button を
+    //   1つ置いて、そこに「どこへ行くのか」の名前を持たせる。マウスでの行クリックは
+    //   #out の click 委譲側で従来どおり効く。
+    htmlOut+=`<tr class="${cls.join(" ")}"${more&&!wkOpen?" hidden":""} data-date="${iso(r.d)}"><th scope="row"><button type="button" class="wk-jump" aria-label="${md(r.d)}${wj(r.d).replace(/<[^>]*>/g,"")} の詳細予報へ">${md(r.d)}${wj(r.d)}</button>${r.mode==="冬山・残雪期"?'<span class="wmode" title="冬山・残雪期の基準(稜線風8/12m/s・3h降水1/3mm)で判定した日">冬</span>':""}${r.model==="GSM"?'<span class="mdlm" title="全球モデル(GSM)の予報。日本域モデル(MSM 約5km)より格子が広く、稜線風はやや弱めに出ます">全球</span>':""}</th><td>${idxCell(r.idx,r.reason)}${r.eve?'<span class="ew"><span class="ewi">⚠</span>夕方</span>':""}${r.night?'<span class="ew"><span class="ewi">⚠</span>夜間</span>':""}</td><td class="agr">${r.agree||"-"}</td><td>${r.phrase?wxPhraseHtml(r.phrase):wcode(r.code)}${wxnote(r.notes)}</td>
     <td>${r.view}</td><td>${tempRange(r.tmin,r.tmax)}</td><td>${windCell(r.wd,r.ws,r.degraded)}</td>
     <td>${u1(r.pr,"mm")}</td><td>${u0(r.prob,"%")}</td>${hasSnow?`<td>${snowCell(r.depth,r.sf)}</td>`:""}</tr>`;
   });
@@ -1838,8 +1868,8 @@ async function run(mt,opts){
   // 材料が違い、「表は揃って見えるのに確度は△」という食い違いが起きるので作り替えた。
   if(rows.some(r=>r.agree)){
     htmlOut+=`<details class="agrdet"><summary>確度の内訳（モデル別の登山指数）</summary>
-      <div class="tbl"><table><tr><th>日付</th>${CMP_MODELS.map(m=>`<th>${CMP_LABELS[m]}</th>`).join("")}<th>確度</th></tr>`
-      +rows.map(r=>`<tr><td>${md(r.d)}</td>`
+      <div class="tbl"><table aria-label="モデル間の比較"><tr><th scope="col">日付</th>${CMP_MODELS.map(m=>`<th scope="col">${CMP_LABELS[m]}</th>`).join("")}<th scope="col">確度</th></tr>`
+      +rows.map(r=>`<tr><th scope="row">${md(r.d)}</th>`
         +CMP_MODELS.map((m,k)=>`<td>${r.midx?.[k]||"-"}</td>`).join("")
         +`<td class="agr">${r.agree||"-"}</td></tr>`).join("")
       +`</table></div><p class="ewnote">気象庁の列は上の表と同じ指数です。 <a class="more" href="docs/how-it-works-web.html#agree">気象庁の列の扱い・ECMWFの制約について</a></p></details>`;
@@ -1855,8 +1885,8 @@ async function run(mt,opts){
     const thD=seasonTh(dt2.getMonth()+1,...modeTemps(h,times,idxs));
     // 見通し表の行クリックからのジャンプ先。id は iso(dt2) と一致させる(jumpToDetail が参照する)
     htmlOut+=`<section id="detail-${ds}" class="detail-day">
-    <h2>${ds} ${wj(dt2)} ${step===1?"1時間ごと":"3時間ごと"}詳細${sun}</h2>${capFor([ds])}<div class="tbl"><table>
-      <tr><th>時刻</th><th>指数</th><th>天気</th><th>🏔 景色(眺望)</th><th>気温</th><th>体感</th><th>${windLbl}</th><th>突風</th><th>降水</th><th>降水%(参考)</th><th>⚡ 発雷リスク</th><th>雲(下/中/上)</th>${hasSnow?"<th>積雪(新雪)</th>":""}</tr>`;
+    <h2>${ds} ${wj(dt2)} ${step===1?"1時間ごと":"3時間ごと"}詳細${sun}</h2>${capFor([ds])}<div class="tbl"><table aria-label="${ds} の詳細">
+      <tr><th scope="col">時刻</th><th scope="col">指数</th><th scope="col">天気</th><th scope="col">🏔 景色(眺望)</th><th scope="col">気温</th><th scope="col">体感</th><th scope="col">${windLbl}</th><th scope="col">突風</th><th scope="col">降水</th><th scope="col">降水%(参考)</th><th scope="col">⚡ 発雷リスク</th><th scope="col">雲(下/中/上)</th>${hasSnow?'<th scope="col">積雪(新雪)</th>':""}</tr>`;
     let dayDegraded=false;
     for(let sh=0;sh<24;sh+=step){
       const blk=idxs.filter(i=>Math.floor(+times[i].slice(11,13)/step)*step===sh);
@@ -1911,7 +1941,7 @@ async function run(mt,opts){
       const prTxt=u1(pr,"mm")+(phase&&pr!=null&&pr>=0.1?`<span class="dr">${phase}</span>`:"");
       const depArr=blk.map(i=>h.snow_depth?.[i]).filter(v=>v!=null);
       const sfBlk=blk.reduce((s,i)=>s+(h.snowfall?.[i]||0),0);
-      htmlOut+=`<tr><td>${String(sh).padStart(2,"0")}時</td><td>${idxCell(bi,biReason)}</td><td>${wxCodeIcon(h.weather_code[i0])}</td><td>${view}</td>
+      htmlOut+=`<tr><th scope="row">${String(sh).padStart(2,"0")}時</th><td>${idxCell(bi,biReason)}</td><td>${wxCodeIcon(h.weather_code[i0])}</td><td>${view}</td>
         <td>${u1(temp,"℃")}</td><td>${u1(feel,"℃")}${wet}</td><td>${windCell(wd2,ws,degraded2)}</td>
         <td>${u0(gust,"m/s")}</td><td>${prTxt}</td><td>${u0(prob,"%")}</td><td>${ltCell(lt,cape,cin)}</td>
         <td>${cl}</td>${hasSnow?`<td>${snowCell(depArr.length?Math.max(...depArr):null,sfBlk)}</td>`:""}</tr>`;
@@ -1945,10 +1975,10 @@ async function run(mt,opts){
       if(cells.some(c=>c!=="-"))urows.push([dt2,cells]);
     }
     if(urows.length){
-      htmlOut+=`<h2>上空の寒気(日中9〜15時の平均)</h2>${capFor(urows.map(u=>iso(u[0])))}<div class="tbl"><table>
-        <tr><th>日付</th>${UP.map(u=>`<th>${u[1]}</th>`).join("")}</tr>`;
+      htmlOut+=`<h2>上空の寒気(日中9〜15時の平均)</h2>${capFor(urows.map(u=>iso(u[0])))}<div class="tbl"><table aria-label="上空の寒気">
+        <tr><th scope="col">日付</th>${UP.map(u=>`<th scope="col">${u[1]}</th>`).join("")}</tr>`;
       for(const[dt3,cells]of urows)
-        htmlOut+=`<tr><td>${md(dt3)}${wj(dt3)}</td>${cells.map(c=>`<td>${c}</td>`).join("")}</tr>`;
+        htmlOut+=`<tr><th scope="row">${md(dt3)}${wj(dt3)}</th>${cells.map(c=>`<td>${c}</td>`).join("")}</tr>`;
       htmlOut+=`</table></div><ul class="meta">
         <li>500hPa(上空約5500m)は大気の不安定度の目安。気象庁の雷注意報では夏-6℃以下・冬-36℃以下が発雷しやすい目安とされます</li>
         <li>850hPa(上空約1500m)は冬型の強さの目安。-6℃以下で平地でも雪、-12℃以下で日本海側は大雪になりやすい</li>
@@ -2528,8 +2558,14 @@ function recentRemove(name){
 {
   const inp=document.getElementById("mname"),sugg=document.getElementById("sugg"),
         mclear=document.getElementById("mnameClear");
+  // 開閉はここだけを通す。以前は sugg.hidden=… が4箇所に散っており、Esc や矢印キーを
+  // 足すときに「どの経路で閉じたのか」が追えなかった
+  function setOpen(v){sugg.hidden=!v}
+  // Esc で閉じた直後だけは、入力欄へフォーカスを戻しても開き直さない
+  // (戻すと focus ハンドラの update() が走って即座に再表示されてしまう)
+  let escaped=false;
   function render(list,recents){
-    if(!list.length&&!recents.length){sugg.hidden=true;sugg.innerHTML="";return}
+    if(!list.length&&!recents.length){setOpen(false);sugg.innerHTML="";return}
     // 📴印の判定材料。行ごとに引き直すと localStorage を最大12回触るのでここで1回だけ作る
     const saved=recents.length?snapNameSet():null;
     // 見出しは1本のまま。ドロップダウンは max-height:min(280px,45vh) しかないので、
@@ -2543,7 +2579,7 @@ function recentRemove(name){
       // なので流用しない(同じ記号を2つの意味に使うと混同する)
       const off=saved.has("n:"+r.n)?`<span class="rcoff" title="保存済み: 圏外でも表示できます" aria-label="圏外でも表示できます">📴</span>`:"";
       return `<div data-n="${esc(r.n)}" class="rc${pinned?" pinned":""}`
-      +`${pinLast?" rcpinlast":""}${i===recents.length-1?" rclast":""}" tabindex="0" role="option">`
+      +`${pinLast?" rcpinlast":""}${i===recents.length-1?" rclast":""}" tabindex="0">`
       +`<span>${esc(r.n)}${off}</span><small>${esc(r.p)}${r.e==null?"":" "+esc(r.e)+"m"}</small>`
       // 📌は未ピンの行にも出す(CSSで淡くする)。ピン済みの行にしか出さないと機能に気づけない
       +`<button type="button" class="rcp" data-p="${esc(r.n)}" aria-pressed="${pinned}" `
@@ -2551,11 +2587,12 @@ function recentRemove(name){
       +`<button type="button" class="rcx" data-x="${esc(r.n)}" `
       +`aria-label="${esc(r.n)}を履歴から削除">×</button></div>`}).join(""):"";
     sugg.innerHTML=head+list.map(m=>
-      `<div data-n="${esc(m[0])}" tabindex="0" role="option"><span>${esc(m[0])}</span><small>${esc(m[2])} ${m[5]}m</small></div>`).join("");
-    sugg.hidden=false;sugg.scrollTop=0;
+      `<div data-n="${esc(m[0])}" tabindex="0"><span>${esc(m[0])}</span><small>${esc(m[2])} ${m[5]}m</small></div>`).join("");
+    setOpen(true);sugg.scrollTop=0;
   }
   function update(){
     mclear.hidden=!inp.value;
+    if(escaped)return;   // Esc で閉じたまま。次の入力(input)で escaped が解ける
     const q=inp.value.trim();
     // 入力中は従来どおり全一致のみ。未入力時だけ履歴を先頭に固定し、
     // その下は先頭50件(全件は対応山リストページへ)。履歴と同名は50件側から除いて重複を避ける
@@ -2563,13 +2600,13 @@ function recentRemove(name){
     const r=recentLoad();
     render(MOUNTAINS.filter(m=>!r.some(x=>x.n===m[0])).slice(0,50),r);
   }
-  inp.addEventListener("input",update);
+  inp.addEventListener("input",()=>{escaped=false;update()});
   inp.addEventListener("focus",update);
   // フォーカスが sugg 内(候補行・📌・×)へ Tab移動した場合は閉じない。閉じるかどうかは
   // 「フォーカスが今どこにあるか」を少し待って確認する(blur/focusin の発火順序に依存しないため)
   const wrap=inp.closest("label")||inp.parentElement;
   wrap.addEventListener("focusout",()=>{
-    setTimeout(()=>{if(!wrap.contains(document.activeElement))sugg.hidden=true},150);
+    setTimeout(()=>{if(!wrap.contains(document.activeElement)){setOpen(false);escaped=false}},150);
   });
   // 行の選択・📌切替・×削除を1箇所で行う共通処理(ポインタ操作とキーボード操作の両方から呼ぶ)
   function activate(el){
@@ -2582,12 +2619,12 @@ function recentRemove(name){
     const x=el.closest("[data-x]");
     if(x){recentRemove(x.dataset.x);update();return}
     const d=el.closest("div[data-n]");if(!d)return;
-    inp.value=d.dataset.n;mclear.hidden=!inp.value;sugg.hidden=true;sugg.innerHTML="";
+    inp.value=d.dataset.n;mclear.hidden=!inp.value;setOpen(false);sugg.innerHTML="";
     inp.blur(); // スマホのキーボードを閉じる
   }
   // 消去ボタン: 空にして候補欄を「最近見た山」に戻す(未入力時の挙動と同じ)
   mclear.addEventListener("click",()=>{
-    inp.value="";mclear.hidden=true;inp.focus();update();
+    inp.value="";mclear.hidden=true;escaped=false;inp.focus();update();
   });
   // タップとスクロールを区別する: 指を押した位置を覚え、ほぼ動かず離した時だけ選択
   let downX=0,downY=0;
@@ -2599,8 +2636,44 @@ function recentRemove(name){
     if(Math.hypot(e.clientX-downX,e.clientY-downY)>10)return; // スクロール操作
     activate(e.target);
   });
-  // キーボード操作: Tab で候補行・📌・×へフォーカス移動し、Enter/Space で選択・切替・削除する
+  // キーボード操作
+  //   Tab       … 候補行・📌・× を順に辿る(従来どおり)
+  //   Enter/Space… 選択・ピン切替・削除
+  //   ↓ / ↑     … 候補行のあいだを移動。入力欄で↓を押すと先頭の候補へ入り、
+  //                先頭で↑を押すと入力欄へ戻る
+  //   Home / End… 先頭 / 末尾の候補へ
+  //   Esc       … 閉じて入力欄へ戻る
+  // ★ 移動先は候補行(div[data-n])だけに絞る。📌と×まで矢印で回すと、候補を1つ下げるのに
+  //   3回押すことになり「候補を選ぶ」という主目的の操作が重くなる(それらは Tab で届く)。
+  const rows=()=>[...sugg.querySelectorAll("div[data-n]")];
+  function moveTo(i){
+    const rs=rows();if(!rs.length)return;
+    if(i<0){inp.focus();return}                       // 先頭より上は入力欄へ戻る
+    (rs[Math.min(i,rs.length-1)]).focus();
+  }
+  function curIndex(el){const rs=rows();return rs.indexOf(el.closest("div[data-n]"))}
+  inp.addEventListener("keydown",e=>{
+    if(e.key==="Escape"){
+      if(sugg.hidden)return;
+      e.preventDefault();escaped=true;setOpen(false);return;
+    }
+    if(e.key!=="ArrowDown"&&e.key!=="ArrowUp")return;
+    if(sugg.hidden){escaped=false;update();if(sugg.hidden)return}
+    e.preventDefault();                               // カーソルの行頭/行末移動を抑止
+    const rs=rows();if(!rs.length)return;
+    (e.key==="ArrowDown"?rs[0]:rs[rs.length-1]).focus();
+  });
   sugg.addEventListener("keydown",e=>{
+    if(e.key==="Escape"){e.preventDefault();escaped=true;setOpen(false);inp.focus();return}
+    if(e.key==="ArrowDown"||e.key==="ArrowUp"||e.key==="Home"||e.key==="End"){
+      const i=curIndex(e.target);if(i<0)return;       // 候補行の外(念のため)
+      e.preventDefault();
+      if(e.key==="ArrowDown")moveTo(i+1);
+      else if(e.key==="ArrowUp")moveTo(i-1);
+      else if(e.key==="Home")moveTo(0);
+      else moveTo(rows().length-1);
+      return;
+    }
     if(e.key!=="Enter"&&e.key!==" ")return;
     if(!e.target.closest("div[data-n],[data-x],[data-p]"))return;
     e.preventDefault(); // Space でのスクロールを抑止
@@ -2665,12 +2738,8 @@ document.getElementById("out").addEventListener("click",e=>{
   const row=e.target.closest("tr[data-date]");if(!row)return;
   jumpToDetail(row.dataset.date);
 });
-document.getElementById("out").addEventListener("keydown",e=>{
-  if(e.key!=="Enter"&&e.key!==" ")return;
-  const row=e.target.closest("tr[data-date]");if(!row)return;
-  e.preventDefault();
-  jumpToDetail(row.dataset.date);
-});
+// キーボードは .wk-jump(本物の button)がネイティブに処理し、その click がここへ伝播する。
+// 独自の keydown は置かない(置くと Space で2回発火する)。
 
 // ヒーローCTA: ハッシュを変えずにフォームへスクロール (#startが残ると共有URLと紛らわしいため)
 document.querySelector(".hero-cta").addEventListener("click",e=>{

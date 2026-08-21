@@ -188,7 +188,10 @@ td.nm a:hover{text-decoration:underline}
 td.nm small{display:block;color:var(--muted);font-size:.82em;font-weight:400}
 /* スコアの減点内訳。スコアの数字だけでは「何で引かれたか」が分からず、隣の列を突き合わせる
    必要があった。県・標高の行より一段弱い色にして、山名の読み取りを邪魔しないようにする。 */
-td.nm small.brk{color:#a2708a;font-size:.78em;letter-spacing:.02em}
+/* ★ 縞の上でも AA(4.5:1) を保つこと。以前の #a2708a は白 4.02 / 縞 3.55 で未達だった。
+   --muted(県・標高)より一段弱く見えることが区別の要なので、--muted には潰さず同系を暗くする
+   (#8f5a78 は 白 5.38 / 縞 4.76、--muted の 6.15 / 5.43 より弱い) */
+td.nm small.brk{color:#8f5a78;font-size:.78em;letter-spacing:.02em}
 /* 行全体をクリック可能に(index.htmlの見通し表の行ジャンプと挙動を統一)。
    tr自体にはtabindexを付けない: 山名の<a>が既にキーボードでフォーカスできる本物のリンクで、
    行にも付けると同じ行でTab停止が2回になってしまう(マウス/タッチだけの利便性強化)。
@@ -1243,11 +1246,12 @@ footer a{color:var(--link)}
   function tableHtml(rows,date,caution){
     var tblId="tbl-"+(caution?"caution":"safe");
     var open=rows.length<=FIND_HEAD;
-    var head='<tr><th>#</th><th>山名 / スコア</th>'+
-      (caution?'<th>理由</th>':'')+
-      '<th>指数</th>'+
-      '<th>天気</th><th class="num">日照</th><th class="num">気温</th><th class="num">稜線風</th>'+
-      '<th class="num">降水確率</th><th class="num">降水量</th></tr>';
+    var head='<tr><th scope="col">#</th><th scope="col">山名 / スコア</th>'+
+      (caution?'<th scope="col">理由</th>':'')+
+      '<th scope="col">指数</th>'+
+      '<th scope="col">天気</th><th scope="col" class="num">日照</th>'+
+      '<th scope="col" class="num">気温</th><th scope="col" class="num">稜線風</th>'+
+      '<th scope="col" class="num">降水確率</th><th scope="col" class="num">降水量</th></tr>';
     var body='';
     rows.forEach(function(row,i){body+=rowHtml(row,i,date,caution,i>=FIND_HEAD,open)});
     var html='<div class="tbl'+(caution?' caution':'')+'" id="'+tblId+'"><table><thead>'+head+
