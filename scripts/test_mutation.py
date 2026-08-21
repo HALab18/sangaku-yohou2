@@ -16,10 +16,14 @@
 原本は絶対に書き換えない。一時ディレクトリへ複製し、そこへパッチを当てて実行する。
 
 変異ごとに「どの層が捕まえたか」も出す。
-  表   … references/logic_cases.json の入出力表 (test_logic.py / test_logic.js)
-  乱数 … 乱数総当たり + 不変条件 (test_logic_fuzz.py)
-両方が捕まえるなら表だけでも足りているし、乱数しか捕まえない変異があるなら
-乱数側が実際に守備範囲を広げているということになる。
+  表     … references/logic_cases.json の入出力表 (test_logic.py / test_logic.js)
+  乱数   … 乱数総当たり + 不変条件 (test_logic_fuzz.py)
+  表示   … CLI と Web の表示関数の突き合わせ (test_display.py)
+  山さがし … 日和スコアの性質 (test_find_score.py)
+  障害   … 通信・保存・ゲートの異常系 (test_offline.js)
+  SW     … Service Worker (test_sw.js)
+両方が捕まえるなら表だけでも足りているし、片方しか捕まえない変異があるなら
+その層が実際に守備範囲を広げているということになる。
 
 依存は標準ライブラリのみ。
 """
@@ -55,12 +59,19 @@ COPY = [
     "scripts/gen_find.py",
     "references/logic_cases.json",
     "docs/find.html",
+    "sw.js",
+    "gate.js",
+    "scripts/test_stubs.js",
+    "scripts/test_offline.js",
+    "scripts/test_sw.js",
 ]
 
 LOGIC = "logic.js"
 CLI = "scripts/mountain_weather.py"
 INDEX = "index.html"
 FIND = "scripts/gen_find.py"
+SW = "sw.js"
+GATE = "gate.js"
 
 # (説明, 対象ファイル, 置換前, 置換後)
 # 置換前は「その時点のコードに1回だけ出てくる文字列」であること。
@@ -142,6 +153,54 @@ MUTATIONS = [
     ("find のランク境界を 70 → 71 にずらす",
      FIND, 'function rankOf(v){return v>=70?"a":v>=45?"b":"c"}',
      'function rankOf(v){return v>=71?"a":v>=45?"b":"c"}'),
+    # ---- 通信の異常系。山で最も困る「画面が固まる」型 ----
+    ("主要データのタイムアウトを効かなくする(応答が返らないと永久に待つ)",
+     INDEX, 'const timer=setTimeout(()=>ac.abort(),API_TIMEOUT_MS);',
+     'const timer=setTimeout(()=>{},API_TIMEOUT_MS);'),
+    ("発表時刻の取得の上限を主要データと同じにする(2.28β の固まる事故)",
+     INDEX, 'const META_TIMEOUT_MS=5000;', 'const META_TIMEOUT_MS=20000;'),
+    ("発表時刻の取得の失敗を握らずに投げる(補助表示が予報全体を巻き添えにする)",
+     INDEX, '}catch(e){return null}\n  finally{clearTimeout(timer)}',
+     '}catch(e){throw e}\n  finally{clearTimeout(timer)}'),
+    ("429 の待ちを他のエラーと同じ長さに戻す(無料枠を守れなくなる)",
+     INDEX, '(e.status===429?6000:1500)*a', '1500*a'),
+    ("投げ直しても直らない 4xx も再試行する",
+     INDEX, 'if(r.status!==429&&r.status<500)', 'if(false)'),
+    ("end_date のクランプ再試行を無効化する",
+     INDEX, 'params={...params,end_date:m[1]};clamped=true;a--;continue;',
+     'params={...params};clamped=true;a--;continue;'),
+    ("補完APIの貼り合わせを添字一致に戻す(2本のAPIで期間がずれると全部ずれる)",
+     INDEX, 'base[k]=base.time.map(t=>pos.has(t)&&pos.get(t)<src.length?src[pos.get(t)]:null);',
+     'base[k]=base.time.map((t,i)=>i<src.length?src[i]:null);'),
+    ("キーごと欠けた項目の欠測正規化を外す(生の TypeError になる)",
+     INDEX, 'if(!Array.isArray(data.hourly[k]))data.hourly[k]=new Array(n).fill(null);',
+     'if(false)data.hourly[k]=new Array(n).fill(null);'),
+    # ---- 端末内保存。汚染データと quota ----
+    ("スナップショット索引の「未来の保存時刻」の検査を外す",
+     INDEX, '&&typeof x.p==="string"&&typeof x.t==="number"&&x.t<=now',
+     '&&typeof x.p==="string"&&typeof x.t==="number"'),
+    ("期限切れスナップショットの本体を消さない(領域を食い続ける)",
+     INDEX, 'ok.filter(x=>x.l<today).forEach(x=>snapDrop(snapBodyKey(x.id)));', ''),
+    ("保存に失敗したときの残骸を消さない(圏外で開くと空の表になる)",
+     INDEX, 'snapDrop(snapBodyKey(id)); // 半端な残骸を索引に載せない', ''),
+    ("固定を「切ってから先頭へ移す」順に戻す(押しても何も起きないように見える)",
+     INDEX, 'const x=a[i];x.keep=true;a.splice(i,1);a.unshift(x);', 'const x=a[i];x.keep=true;'),
+    ("ゲートからローカルファイル直開きの検査を外す(fail-closed が崩れる)",
+     GATE, 'return !pwIsLocalFile() && pwIsAgreed() && pwIsAuthed()',
+     'return pwIsAgreed() && pwIsAuthed()'),
+    # ---- Service Worker。オンラインでは表面化しない壊れ方 ----
+    ("SW が別オリジンにも手を出す(API 応答をキャッシュしてしまう)",
+     SW, 'if (new URL(req.url).origin !== self.location.origin) return;', ''),
+    ("SW がキャッシュのキーからフラグメントを落とさない",
+     SW, 'const key = req.url.split("#")[0];', 'const key = req.url;'),
+    ("SW の先読みを addAll に戻す(1つの404で全体が失敗する)",
+     SW, 'Promise.all(SHELL.map(u => c.add(u).catch(() => {})))', 'c.addAll(SHELL)'),
+    ("SW の activate から前版キャッシュの掃除を外す",
+     SW, 'ks.filter(k => k !== CACHE)', 'ks.filter(k => false)'),
+    ("SW が失敗した応答もキャッシュする(壊れた応答を後で返すことになる)",
+     SW, 'if (r && r.ok && r.type === "basic")', 'if (r)'),
+    ("SW をキャッシュ優先に変える(push した修正が端末に届かなくなる)",
+     SW, '  return Promise.race([', '  return cached;\n  return Promise.race(['),
 ]
 
 
@@ -178,6 +237,10 @@ def check_layers(work, have_node):
         caught.append("表示")
     if have_node and run([py, "scripts/test_find_score.py"], work) not in (0, None):
         caught.append("山さがし")
+    if have_node and run(["node", "scripts/test_offline.js"], work) not in (0, None):
+        caught.append("障害")
+    if have_node and run(["node", "scripts/test_sw.js"], work) not in (0, None):
+        caught.append("SW")
     return caught
 
 

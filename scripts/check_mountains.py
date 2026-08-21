@@ -17,11 +17,17 @@
      - 天気の文言・濡れ注意・雨雪判別・積雪表記は logic.js に一本化されておらず
        CLI と index.html に2重に書かれているため、test_display.py で突き合わせる
      - JS 側は Node が必要。無い環境ではスキップし「未検証」と明示する
-  5. 定数の同期とドキュメントの整合性 (scripts/check_consistency.py)
+  5. 圏外・障害時のふるまい (scripts/test_offline.js・scripts/test_sw.js)
+     - 通信が返ってこない・失敗する・localStorage が使えない・Service Worker が
+       古い画面や古い予報を出す、といった「山でいちばん困る壊れ方」を身代わりの
+       環境で注入して確かめる。時間は仮想時計に差し替えるので数秒で終わる
+     - この層の壊れ方はオンラインでは表面化しないものが多く、実機では気づけない
+     - Node が要る。無い環境ではスキップし「未検証」と明示する
+  6. 定数の同期とドキュメントの整合性 (scripts/check_consistency.py)
      - JMA_DAYS・FIND_DAYS・AUTH_VER の ?v=・日本域の範囲・sw.js の CACHE 版など、
        2箇所以上に同じ値を書いている場所を突き合わせる
      - 実装から消えたはずの説明(旧・体感温度の式など)がドキュメントに残っていないか
-  6. Open-Meteo Elevation API による標高の照合
+  7. Open-Meteo Elevation API による標高の照合
      - 座標が山頂から外れていると、その地点のDEM標高がCSVの山頂標高より
        大幅に低くなることを利用して座標ミスを検出する
      - DEMはCopernicus GLO-90 (90m格子) のため、尖った岩峰(槍ヶ岳・剱岳・権現岳等)は
@@ -184,6 +190,30 @@ def check_logic():
     return errors, notes
 
 
+def check_offline():
+    """圏外・障害時のふるまい (scripts/test_offline.js・scripts/test_sw.js)
+
+    通信のタイムアウト・再試行・端末内保存・Service Worker。DEVLOG で最も重い事故が
+    出ている領域で、しかも **オンラインでは表面化しない** 壊れ方が多い
+    (API 応答を SW に入れると「古い予報を、いま取れた予報として」正常に見える画面で描く)。
+
+    アプリ本体は書き換えず、DOM に触らない範囲を目印で切り出して身代わりの環境で回す。
+    """
+    errors, notes = [], []
+    for label, script in (("通信・保存・ゲート", "test_offline.js"),
+                          ("Service Worker", "test_sw.js")):
+        try:
+            r = subprocess.run(['node', str(ROOT / 'scripts' / script)],
+                               capture_output=True, text=True, encoding='utf-8')
+        except (FileNotFoundError, OSError):
+            notes.append(f'Node が無いため{label}({script})は未検証です')
+            continue
+        if r.returncode:
+            errors.append(f'{label}({script})で違反:' + CRLF_INDENT
+                          + (r.stdout or r.stderr).strip().replace(chr(10), CRLF_INDENT))
+    return errors, notes
+
+
 def check_mutation():
     """テスト自体が効いているか (scripts/test_mutation.py)
 
@@ -266,25 +296,25 @@ def main():
     ng = False
 
     fmt = check_format(rows)
-    print(f"\n[1/6] CSV形式: {'OK' if not fmt else f'{len(fmt)}件のエラー'}")
+    print(f"\n[1/7] CSV形式: {'OK' if not fmt else f'{len(fmt)}件のエラー'}")
     for e in fmt:
         print(f"  ✕ {e}")
     ng = ng or bool(fmt)
 
     sync = check_sync(rows)
-    print(f"[2/6] index.html との同期: {'OK' if not sync else f'{len(sync)}件のずれ'}")
+    print(f"[2/7] index.html との同期: {'OK' if not sync else f'{len(sync)}件のずれ'}")
     for e in sync:
         print(f"  ✕ {e}")
     ng = ng or bool(sync)
 
     gen = check_generated()
-    print(f"[3/6] 自動生成ページの同期: {'OK' if not gen else f'{len(gen)}件のずれ'}")
+    print(f"[3/7] 自動生成ページの同期: {'OK' if not gen else f'{len(gen)}件のずれ'}")
     for e in gen:
         print(f"  ✕ {e}")
     ng = ng or bool(gen)
 
     logic, logic_notes = check_logic()
-    print(f"[4/6] 判定・表示・山さがしのスコア (入出力表・乱数・不変条件・表示・find): "
+    print(f"[4/7] 判定・表示・山さがしのスコア (入出力表・乱数・不変条件・表示・find): "
           f"{'OK' if not logic else f'{len(logic)}件の不一致'}")
     for e in logic:
         print(f"  ✕ {e}")
@@ -300,15 +330,24 @@ def main():
             print(f"  ✕ {e}")
         ng = ng or bool(mut)
 
+    off, off_notes = check_offline()
+    print(f"[5/7] 圏外・障害時のふるまい (通信・保存・Service Worker): "
+          f"{'OK' if not off else f'{len(off)}件の違反'}")
+    for e in off:
+        print(f"  ✕ {e}")
+    for e in off_notes:
+        print(f"  ⚠ {e}")
+    ng = ng or bool(off)
+
     cons = check_consistency()
-    print(f"[5/6] 定数同期とドキュメントの整合性: "
+    print(f"[6/7] 定数同期とドキュメントの整合性: "
           f"{'OK' if not cons else f'{len(cons)}件の食い違い'}")
     for e in cons:
         print(f"  ✕ {e}")
     ng = ng or bool(cons)
 
     suspects, warns = check_elevation(rows)
-    print(f"[6/6] DEM標高照合 (Open-Meteo Elevation API): "
+    print(f"[7/7] DEM標高照合 (Open-Meteo Elevation API): "
           f"{'OK' if not suspects and not warns else f'疑い{len(suspects)}件 / 要確認{len(warns)}件'}")
     for e in suspects:
         print(f"  ✕ {e}")

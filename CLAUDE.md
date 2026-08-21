@@ -39,7 +39,10 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `scripts/test_display.py` `scripts/test_display.js` | **表示まわり**の等価性テスト（天気の文言・濡れ注意・雨雪判別・積雪や視程の表記）。判定と違いここは一本化されておらず CLI と index.html に2重に書かれている。index.html は書き換えず、DOM に触らない範囲を目印で切り出して評価する |
 | `scripts/test_find_score.py` `scripts/test_find_score.js` | 山さがしの日和スコア `score()` のテスト。減点方式ゆえ「材料が無い＝100点＝ランクA」に化ける構造なので、値ではなく**壊れ方の向き**を見る。対象は生成物ではなく生成元の `gen_find.py` |
 | `scripts/test_mutation.py` | わざとバグを仕込んで**テストが落ちること**を確かめる。落ちない変異があれば、その範囲についてテストは書いていないのと同じ |
-| `scripts/check_consistency.py` | 2箇所以上に同じ値を書いている場所の突き合わせ（`JMA_DAYS`・`FIND_DAYS`・`AUTH_VER` の `?v=`・日本域の範囲・`sw.js` の `CACHE` 版）と、実装から消えたはずの説明がドキュメントに残っていないかの検査。`check_mountains.py` の `[5/6]` が呼ぶ |
+| `scripts/test_offline.js` | **圏外・障害時**のふるまい（通信のタイムアウト・再試行・`end_date` クランプ・応答の正規化・スナップショット保存・ゲートの fail-closed）。index.html の DOM に触らない範囲を目印で切り出し、`fetch`・`localStorage`・時間を身代わりに差し替えて回す |
+| `scripts/test_sw.js` | `sw.js` のふるまい。**API 応答をキャッシュしていないこと**（規約9）・フラグメント除去・前版キャッシュの掃除・遅い回線での退避。オンラインでは表面化しない壊れ方なので機械で見る |
+| `scripts/test_stubs.js` | 上2つが共有する身代わりの環境（仮想時計・localStorage・目印での切り出し）。時間を差し替えるので 20秒のタイムアウトも 6秒の待ちも即座に検査できる |
+| `scripts/check_consistency.py` | 2箇所以上に同じ値を書いている場所の突き合わせ（`JMA_DAYS`・`FIND_DAYS`・`AUTH_VER` の `?v=`・日本域の範囲・`sw.js` の `CACHE` 版）と、実装から消えたはずの説明がドキュメントに残っていないかの検査。`check_mountains.py` の `[6/7]` が呼ぶ |
 | `scripts/db_*.py gen_*.py check_*.py` | DB保守ツール群（下記パイプライン） |
 
 **公開URL**: https://halab18.github.io/sangaku-yohou2/
@@ -107,7 +110,7 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 2. **mountains.csv は BOM付きUTF-8・CRLF を維持。** Excelでの文字化け防止。`check_mountains.py` が形式を検証する。
 3. **CLIとWebの判定ロジックは同一に保つ。** 判定の実装は **`scripts/mountain_weather.py`(CLI) と `logic.js`(Web) の2箇所だけ**。
    片方だけ閾値やロジックを変えない。基準変更は `references/criteria.md`・CLI・`logic.js`・
-   `references/logic_cases.json`・図解ページを揃え、下記を通すこと（`check_mountains.py` の `[4/5]` が同じ3本を呼ぶ）:
+   `references/logic_cases.json`・図解ページを揃え、下記を通すこと（`check_mountains.py` の `[4/7]` が同じ3本を呼ぶ）:
 
    ```bash
    python scripts/test_logic.py && node scripts/test_logic.js && python scripts/test_logic_fuzz.py
@@ -130,13 +133,13 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 
    **表示まわり（天気の文言・濡れ注意・雨雪判別・積雪や視程の表記）は一本化されておらず、
    CLI と index.html に2重に書かれている。** 片方だけ直さないこと。突き合わせは
-   `python scripts/test_display.py`（`check_mountains.py` の `[4/6]` が呼ぶ）。
+   `python scripts/test_display.py`（`check_mountains.py` の `[4/7]` が呼ぶ）。
    index.html 側は「DOM に触らない範囲」を目印（`const WET_PRECIP=` 〜 `// ---- APIアクセス`）で
    切り出して評価しているので、この範囲に DOM を触るコードを入れないこと。
 4. **CLI本体に第三者パッケージを足さない**（依存ゼロを維持）。保守スクリプト側はOK。
 5. **座標変更・DB編集をしたら必ず `python scripts/check_mountains.py` を通す**
-   （形式・CLI/Web同期・自動生成ページの同期・判定ロジックの等価性・**定数同期とドキュメントの
-   整合性**・DEM照合）。判定やテストを触ったときは `--mutation` も付ける。
+   （形式・CLI/Web同期・自動生成ページの同期・判定ロジックの等価性・**圏外や障害時のふるまい**・
+   **定数同期とドキュメントの整合性**・DEM照合）。判定やテストを触ったときは `--mutation` も付ける。
 6. **`docs/find.html` と `docs/mountains.html` は自動生成物。直接編集しない。**
    修正は `scripts/gen_find.py` / `scripts/gen_mountain_list.py` に入れて再生成する。
    生成物だけ直すと次の再生成で消える（実際に find.html の z-index 修正がこれで失われた）。
@@ -156,6 +159,9 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
    併せて、**API 応答を `sw.js` でキャッシュしてはいけない**（気象データの保存は
    index.html の `pw-snap-v1` 側に限る）。SW に入れると「古い予報を、いま取れた予報として」
    描いてしまい、画面上は完全に正常に見える＝気づけない誤表示になる。
+   この2点（版の更新・API を入れないこと）は `node scripts/test_sw.js` が機械的に見る。
+   通信の障害時と端末内保存は `node scripts/test_offline.js`。どちらも
+   `check_mountains.py` の `[5/7]` が呼ぶ。
 
 ## 山岳DB拡張パイプライン
 
