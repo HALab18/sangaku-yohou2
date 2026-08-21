@@ -19,6 +19,7 @@
   表     … references/logic_cases.json の入出力表 (test_logic.py / test_logic.js)
   乱数   … 乱数総当たり + 不変条件 (test_logic_fuzz.py)
   表示   … CLI と Web の表示関数の突き合わせ (test_display.py)
+  天気コード … 全コードでの日本語表現の性質 (test_weather_codes.py)
   山さがし … 日和スコアの性質 (test_find_score.py)
   障害   … 通信・保存・ゲートの異常系 (test_offline.js)
   SW     … Service Worker (test_sw.js)
@@ -54,6 +55,7 @@ COPY = [
     "scripts/test_logic_fuzz.js",
     "scripts/test_display.py",
     "scripts/test_display.js",
+    "scripts/test_weather_codes.py",
     "scripts/test_find_score.py",
     "scripts/test_find_score.js",
     "scripts/gen_find.py",
@@ -138,6 +140,13 @@ MUTATIONS = [
     ("Web 側の安全オーバーライドから雷を外す(悪天が日代表に昇格しなくなる)",
      INDEX, 'const SAFETY_OVERRIDE=new Set([65,66,67,75,82,85,86,95,96,99]);',
      'const SAFETY_OVERRIDE=new Set([65,66,67,75,82,85,86]);'),
+    # ---- 天気コード → 日本語表現。総当たりでしか出ない性質 ----
+    ("CLI 側の安全オーバーライドを空にする(悪天が日代表に昇格しなくなる)",
+     CLI, 'SAFETY_OVERRIDE = {65, 66, 67, 75, 82, 85, 86, 95, 96, 99}',
+     'SAFETY_OVERRIDE = set()'),
+    ("CLI 側の集約の窓を全時刻に広げる(深夜の悪天が日代表になる)",
+     CLI, 'win = [e for e in entries if WX_WINDOW[0] <= e["hour"] <= WX_WINDOW[1]] or entries',
+     'win = entries'),
     # ---- 山さがしのスコア。減点方式なので「材料が無い→100点=ランクA」に化ける ----
     ("find の欠測ガードを sunJma から sunFrac に戻す(補完日照でガードをすり抜ける)",
      FIND, 'if(sunJma==null&&code==null', 'if(sunFrac==null&&code==null'),
@@ -235,6 +244,8 @@ def check_layers(work, have_node):
         caught.append("乱数")
     if have_node and run([py, "scripts/test_display.py", "--n", "300"], work) not in (0, None):
         caught.append("表示")
+    if run([py, "scripts/test_weather_codes.py"], work) not in (0, None):
+        caught.append("天気コード")
     if have_node and run([py, "scripts/test_find_score.py"], work) not in (0, None):
         caught.append("山さがし")
     if have_node and run(["node", "scripts/test_offline.js"], work) not in (0, None):

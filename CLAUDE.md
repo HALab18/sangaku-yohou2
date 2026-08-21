@@ -39,11 +39,14 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `scripts/test_display.py` `scripts/test_display.js` | **表示まわり**の等価性テスト（天気の文言・濡れ注意・雨雪判別・積雪や視程の表記）。判定と違いここは一本化されておらず CLI と index.html に2重に書かれている。index.html は書き換えず、DOM に触らない範囲を目印で切り出して評価する |
 | `scripts/test_find_score.py` `scripts/test_find_score.js` | 山さがしの日和スコア `score()` のテスト。減点方式ゆえ「材料が無い＝100点＝ランクA」に化ける構造なので、値ではなく**壊れ方の向き**を見る。対象は生成物ではなく生成元の `gen_find.py` |
 | `scripts/test_mutation.py` | わざとバグを仕込んで**テストが落ちること**を確かめる。落ちない変異があれば、その範囲についてテストは書いていないのと同じ |
+| `scripts/test_weather_codes.py` | 天気コード → 日本語表現の**総当たり**。全28コードで文言が出るか・**安全オーバーライドが必ず日代表に昇格するか**・晴れと雷雨が入れ替わらないか・集約の窓(4〜17時)の外の悪天を拾っていないか。`test_display.py` は「一致」しか見ないので、両方とも同じように間違っている場合を捕まえられない |
 | `scripts/test_offline.js` | **圏外・障害時**のふるまい（通信のタイムアウト・再試行・`end_date` クランプ・応答の正規化・スナップショット保存・ゲートの fail-closed）。index.html の DOM に触らない範囲を目印で切り出し、`fetch`・`localStorage`・時間を身代わりに差し替えて回す |
 | `scripts/test_sw.js` | `sw.js` のふるまい。**API 応答をキャッシュしていないこと**（規約9）・フラグメント除去・前版キャッシュの掃除・遅い回線での退避。オンラインでは表面化しない壊れ方なので機械で見る |
 | `scripts/test_stubs.js` | 上2つが共有する身代わりの環境（仮想時計・localStorage・目印での切り出し）。時間を差し替えるので 20秒のタイムアウトも 6秒の待ちも即座に検査できる |
 | `scripts/check_syntax.py` | 構文と公開物の静的検査。Python / JavaScript / **HTML に直接書かれた `<script>`**（index.html の本体2,000行超はここ）の構文、`logic.js`・`gate.js` が **ES5 の範囲**に留まっているか、`.nojekyll`・manifest のアイコンが揃っているか。`check_mountains.py` の `[1/8]` が呼ぶ |
 | `.github/workflows/check.yml` | push / PR ごとに `check_mountains.py --offline` とミューテーションを回す。手元で通し忘れたときの網。通信を伴う DEM 照合だけ外してある |
+| `scripts/check_csp.py` | 外部参照の棚卸し。通信相手が「気象データ・地名・アクセス解析」の3系統から増えていないかを見る（貼り付けたコードに知らないタグが付いてきた、を検出）。あわせて CSP を入れるときの下見（`'unsafe-inline'` を要求している箇所の数と、生成した policy）。`check_mountains.py` の `[1/8]` が呼ぶ |
+| `scripts/test_api_contract.py` | **通信を伴う**。Open-Meteo の応答を**非null件数で数え**、既知の前提（完全な GSM 日には 900/800hPa と `sunshine_duration` が無い・存在しない項目は 400 にならず全 null・予報長を超えると部分日になって尽きる）を固定する。`--online` を付けたときだけ動く。落ちたら**モデルの配信仕様が変わった合図** |
 | `scripts/check_consistency.py` | 2箇所以上に同じ値を書いている場所の突き合わせ（`JMA_DAYS`・`FIND_DAYS`・`AUTH_VER` の `?v=`・日本域の範囲・`sw.js` の `CACHE` 版）と、実装から消えたはずの説明がドキュメントに残っていないかの検査。`check_mountains.py` の `[7/8]` が呼ぶ |
 | `scripts/db_*.py gen_*.py check_*.py` | DB保守ツール群（下記パイプライン） |
 

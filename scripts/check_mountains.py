@@ -2,9 +2,11 @@
 """山岳DB(references/mountains.csv)の健全性チェック
 
 チェック内容:
-  0. 構文と公開物の静的検査 (scripts/check_syntax.py)
+  0. 構文・公開物・外部参照の静的検査 (scripts/check_syntax.py・check_csp.py)
      - Python / JavaScript / HTML に直接書かれた <script> の構文、logic.js と gate.js が
        ES5 の範囲に留まっているか、`.nojekyll` やアイコンが揃っているか
+     - 通信する相手が「気象データ・地名・アクセス解析」の3系統から増えていないか
+       (貼り付けたコードに知らないタグが付いてきた、を検出する)
      - 構文が壊れていると以下の検査結果は当てにならないので最初に見る
   1. CSVの形式 (名前の重複・空欄・緯度経度標高が日本の範囲内か)
   2. index.html 内蔵DB(MOUNTAINS配列)との同期 (CSVと1件ずつ突き合わせ)
@@ -20,6 +22,8 @@
        「100点=ランクA」に化ける構造で、実際に3回同型の事故を起こしている
      - 天気の文言・濡れ注意・雨雪判別・積雪表記は logic.js に一本化されておらず
        CLI と index.html に2重に書かれているため、test_display.py で突き合わせる
+     - 一致だけを見ると「両方とも同じように間違っている」を見逃すので、天気コードは
+       test_weather_codes.py で全28コードの性質(悪天の昇格・取り違え・窓)も見る
      - JS 側は Node が必要。無い環境ではスキップし「未検証」と明示する
   5. 圏外・障害時のふるまい (scripts/test_offline.js・scripts/test_sw.js)
      - 通信が返ってこない・失敗する・localStorage が使えない・Service Worker が
@@ -36,6 +40,12 @@
        大幅に低くなることを利用して座標ミスを検出する
      - DEMはCopernicus GLO-90 (90m格子) のため、尖った岩峰(槍ヶ岳・剱岳・権現岳等)は
        実際の山頂標高より数十m低く出る。差が中程度なら「要確認」に留める
+
+ここに入っていない検査:
+  scripts/test_api_contract.py --online
+    Open-Meteo が「いま何を返しているか」を非null件数で数え、既知の前提
+    (完全なGSM日には 900/800hPa と日照が無い等)が崩れていないかを見る。
+    通信を伴うので毎回は回さない。モデルの配信仕様が変わった疑いがあるときに手で流す。
 
 使い方:
   python scripts/check_mountains.py
@@ -185,6 +195,14 @@ def check_logic():
         errors.append('表示まわり(test_display.py)が CLI と Web で不一致:' + CRLF_INDENT
                       + (dp.stdout or dp.stderr).strip().replace('\n', CRLF_INDENT))
 
+    # 天気コード → 日本語表現の総当たり。一致だけを見ていると「両方とも同じように
+    # 間違っている」を見逃すので、表現そのものが満たすべき性質を全コードで確かめる
+    wc = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_weather_codes.py')],
+                        capture_output=True, text=True, encoding='utf-8')
+    if wc.returncode:
+        errors.append('天気コードの日本語表現(test_weather_codes.py)で違反:' + CRLF_INDENT
+                      + (wc.stdout or wc.stderr).strip().replace(chr(10), CRLF_INDENT))
+
     # 山さがしの日和スコア。減点方式なので「材料が無い→100点=ランクA」に化ける構造で、
     # 実際に3回同型の事故を起こしている。生成物ではなく生成元(gen_find.py)を見る
     fs = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_find_score.py')],
@@ -209,6 +227,21 @@ def check_syntax():
     lines = [x.strip()[1:].strip() for x in (r.stdout or '').splitlines()
              if x.strip().startswith('✕')]
     return lines or [(r.stdout or r.stderr).strip()]
+
+
+def check_external():
+    """外部参照の棚卸し (scripts/check_csp.py)
+
+    このアプリが通信する相手は「気象データ・地名・アクセス解析」の3系統だけで、
+    増えることは通常ありえない。知らないホストが混ざったら、それ自体が異常
+    (貼り付けたコードに広告タグが付いてきた等)。
+    """
+    r = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'check_csp.py')],
+                       capture_output=True, text=True, encoding='utf-8')
+    if not r.returncode:
+        return []
+    return [x.strip()[1:].strip() for x in (r.stdout or '').splitlines()
+            if x.strip().startswith('✕')] or [(r.stdout or r.stderr).strip()]
 
 
 def check_offline():
@@ -318,8 +351,8 @@ def main():
     print(f"山岳DBチェック: {len(rows)}座 ({MOUNTAINS_CSV.name})")
     ng = False
 
-    syn = check_syntax()
-    print(f"\n[1/8] 構文と公開物: {'OK' if not syn else f'{len(syn)}件のエラー'}")
+    syn = check_syntax() + check_external()
+    print(f"\n[1/8] 構文・公開物・外部参照: {'OK' if not syn else f'{len(syn)}件のエラー'}")
     for e in syn:
         print(f"  ✕ {e}")
     ng = ng or bool(syn)
@@ -343,7 +376,7 @@ def main():
     ng = ng or bool(gen)
 
     logic, logic_notes = check_logic()
-    print(f"[5/8] 判定・表示・山さがしのスコア (入出力表・乱数・不変条件・表示・find): "
+    print(f"[5/8] 判定・表示・山さがしのスコア (入出力表・乱数・不変条件・表示・天気コード・find): "
           f"{'OK' if not logic else f'{len(logic)}件の不一致'}")
     for e in logic:
         print(f"  ✕ {e}")
