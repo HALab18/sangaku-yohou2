@@ -37,6 +37,7 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `references/logic_cases.json` `scripts/test_logic.py` `scripts/test_logic.js` | 判定ロジックの等価性テスト。同じ入出力表を CLI(Python) と `logic.js`(Node) で回す |
 | `scripts/test_logic_fuzz.py` `scripts/test_logic_fuzz.js` | 同じ9関数を乱数で総当たりし、Python↔JS の一致と**不変条件**（悪化させて指数が良くならない・欠測が好条件に化けない等）を見る。入力表の生成は Python 側の1箇所だけ |
 | `scripts/test_display.py` `scripts/test_display.js` | **表示まわり**の等価性テスト（天気の文言・濡れ注意・雨雪判別・積雪や視程の表記）。判定と違いここは一本化されておらず CLI と index.html に2重に書かれている。index.html は書き換えず、DOM に触らない範囲を目印で切り出して評価する |
+| `scripts/test_find_score.py` `scripts/test_find_score.js` | 山さがしの日和スコア `score()` のテスト。減点方式ゆえ「材料が無い＝100点＝ランクA」に化ける構造なので、値ではなく**壊れ方の向き**を見る。対象は生成物ではなく生成元の `gen_find.py` |
 | `scripts/test_mutation.py` | わざとバグを仕込んで**テストが落ちること**を確かめる。落ちない変異があれば、その範囲についてテストは書いていないのと同じ |
 | `scripts/check_consistency.py` | 2箇所以上に同じ値を書いている場所の突き合わせ（`JMA_DAYS`・`FIND_DAYS`・`AUTH_VER` の `?v=`・日本域の範囲・`sw.js` の `CACHE` 版）と、実装から消えたはずの説明がドキュメントに残っていないかの検査。`check_mountains.py` の `[5/6]` が呼ぶ |
 | `scripts/db_*.py gen_*.py check_*.py` | DB保守ツール群（下記パイプライン） |
@@ -139,7 +140,9 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 6. **`docs/find.html` と `docs/mountains.html` は自動生成物。直接編集しない。**
    修正は `scripts/gen_find.py` / `scripts/gen_mountain_list.py` に入れて再生成する。
    生成物だけ直すと次の再生成で消える（実際に find.html の z-index 修正がこれで失われた）。
-   `check_mountains.py` の「[3/5] 自動生成ページの同期」がこのずれを検出する。
+   `check_mountains.py` の「[3/6] 自動生成ページの同期」がこのずれを検出する。
+   **テストも生成物ではなく生成元に対して書く**（`scripts/test_find_score.py` は
+   `gen_find.py` の中の JS を切り出して回す）。生成物を見ると、生成元を直し忘れた状態でも通る。
 7. **認証コードの定数は `gate.js` にのみ置く。** index.html や各ページに複製しない
    （複製すると年次更新の漏れで「認証済みなのに弾かれる」事故になる）。
    新しく操作系ページを足すときは `<script src="…/gate.js">` を読み、

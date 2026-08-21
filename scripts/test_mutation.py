@@ -50,6 +50,9 @@ COPY = [
     "scripts/test_logic_fuzz.js",
     "scripts/test_display.py",
     "scripts/test_display.js",
+    "scripts/test_find_score.py",
+    "scripts/test_find_score.js",
+    "scripts/gen_find.py",
     "references/logic_cases.json",
     "docs/find.html",
 ]
@@ -57,6 +60,7 @@ COPY = [
 LOGIC = "logic.js"
 CLI = "scripts/mountain_weather.py"
 INDEX = "index.html"
+FIND = "scripts/gen_find.py"
 
 # (説明, 対象ファイル, 置換前, 置換後)
 # 置換前は「その時点のコードに1回だけ出てくる文字列」であること。
@@ -123,6 +127,21 @@ MUTATIONS = [
     ("Web 側の安全オーバーライドから雷を外す(悪天が日代表に昇格しなくなる)",
      INDEX, 'const SAFETY_OVERRIDE=new Set([65,66,67,75,82,85,86,95,96,99]);',
      'const SAFETY_OVERRIDE=new Set([65,66,67,75,82,85,86]);'),
+    # ---- 山さがしのスコア。減点方式なので「材料が無い→100点=ランクA」に化ける ----
+    ("find の欠測ガードを sunJma から sunFrac に戻す(補完日照でガードをすり抜ける)",
+     FIND, 'if(sunJma==null&&code==null', 'if(sunFrac==null&&code==null'),
+    ("find の稜線風で気圧面0面のときに地上10m風を返す",
+     FIND, 'if(!lv)return null;', 'if(false)return null;'),
+    ("find のスコアに降水確率を足す(表示専用のはずの pprob を減点式に入れる)",
+     FIND, 'if(psum!=null){dPre=Math.min(psum,10)/10*30;s-=dPre}',
+     'if(psum!=null){dPre=Math.min(psum,10)/10*30;s-=dPre}if(pprob!=null)s-=pprob/20;'),
+    ("find の日照から「窓9時間そろっている時だけ」の条件を外す",
+     FIND, 'return (n!=null&&n>=WIN_HOURS)?agg(key,"sum"):null;', 'return agg(key,"sum");'),
+    ("find の冬の風スパンを夏と同じに戻す(冬12m/s が甘く採点される)",
+     FIND, 'var w0=winter?4:6, wSpan=winter?8:12;', 'var w0=6, wSpan=12;'),
+    ("find のランク境界を 70 → 71 にずらす",
+     FIND, 'function rankOf(v){return v>=70?"a":v>=45?"b":"c"}',
+     'function rankOf(v){return v>=71?"a":v>=45?"b":"c"}'),
 ]
 
 
@@ -157,6 +176,8 @@ def check_layers(work, have_node):
         caught.append("乱数")
     if have_node and run([py, "scripts/test_display.py", "--n", "300"], work) not in (0, None):
         caught.append("表示")
+    if have_node and run([py, "scripts/test_find_score.py"], work) not in (0, None):
+        caught.append("山さがし")
     return caught
 
 

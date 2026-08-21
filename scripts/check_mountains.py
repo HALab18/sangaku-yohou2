@@ -7,11 +7,13 @@
   3. 自動生成ページ(docs/find.html・docs/mountains.html)が生成元と一致しているか
      - 生成物を直接編集すると、次に生成スクリプトを流した時点で修正が消える。
        実際に find.html の z-index 修正がこの経路で失われた前例があるため検査する
-  4. 判定と表示の等価性 (入出力表 + 乱数総当たり + 表示まわり)
+  4. 判定・表示・山さがしのスコア (入出力表 + 乱数総当たり + 表示 + find)
      - CLI(scripts/mountain_weather.py) と Web(logic.js) が同じ入力で同じ A/B/C を
        返すかを機械的に確かめる。片方だけ直すと静かにズレるため(CLAUDE.md 規約3)
      - 入出力表だけでは人が思いつかなかった組み合わせが抜けるので、
        乱数総当たりと不変条件(test_logic_fuzz.py)も併せて回す
+     - 山さがしの日和スコア(gen_find.py の score)も見る。減点方式なので「材料が無い」が
+       「100点=ランクA」に化ける構造で、実際に3回同型の事故を起こしている
      - 天気の文言・濡れ注意・雨雪判別・積雪表記は logic.js に一本化されておらず
        CLI と index.html に2重に書かれているため、test_display.py で突き合わせる
      - JS 側は Node が必要。無い環境ではスキップし「未検証」と明示する
@@ -171,6 +173,14 @@ def check_logic():
     if dp.returncode:
         errors.append('表示まわり(test_display.py)が CLI と Web で不一致:' + CRLF_INDENT
                       + (dp.stdout or dp.stderr).strip().replace('\n', CRLF_INDENT))
+
+    # 山さがしの日和スコア。減点方式なので「材料が無い→100点=ランクA」に化ける構造で、
+    # 実際に3回同型の事故を起こしている。生成物ではなく生成元(gen_find.py)を見る
+    fs = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_find_score.py')],
+                        capture_output=True, text=True, encoding='utf-8')
+    if fs.returncode:
+        errors.append('山さがしのスコア(test_find_score.py)で違反:' + CRLF_INDENT
+                      + (fs.stdout or fs.stderr).strip().replace('\n', CRLF_INDENT))
     return errors, notes
 
 
@@ -274,7 +284,7 @@ def main():
     ng = ng or bool(gen)
 
     logic, logic_notes = check_logic()
-    print(f"[4/6] 判定と表示が CLI と Web で一致するか (入出力表・乱数・不変条件・表示): "
+    print(f"[4/6] 判定・表示・山さがしのスコア (入出力表・乱数・不変条件・表示・find): "
           f"{'OK' if not logic else f'{len(logic)}件の不一致'}")
     for e in logic:
         print(f"  ✕ {e}")
