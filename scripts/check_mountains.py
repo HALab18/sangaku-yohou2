@@ -2,6 +2,10 @@
 """山岳DB(references/mountains.csv)の健全性チェック
 
 チェック内容:
+  0. 構文と公開物の静的検査 (scripts/check_syntax.py)
+     - Python / JavaScript / HTML に直接書かれた <script> の構文、logic.js と gate.js が
+       ES5 の範囲に留まっているか、`.nojekyll` やアイコンが揃っているか
+     - 構文が壊れていると以下の検査結果は当てにならないので最初に見る
   1. CSVの形式 (名前の重複・空欄・緯度経度標高が日本の範囲内か)
   2. index.html 内蔵DB(MOUNTAINS配列)との同期 (CSVと1件ずつ突き合わせ)
   3. 自動生成ページ(docs/find.html・docs/mountains.html)が生成元と一致しているか
@@ -35,6 +39,7 @@
 
 使い方:
   python scripts/check_mountains.py
+  python scripts/check_mountains.py --offline    # 通信を伴う DEM 照合を飛ばす (CI 用)
   python scripts/check_mountains.py --mutation   # テスト自体が効いているかも確かめる
                                                  # (判定・テストを触ったときに付ける。12秒ほど)
 
@@ -190,6 +195,22 @@ def check_logic():
     return errors, notes
 
 
+def check_syntax():
+    """構文と公開物の静的検査 (scripts/check_syntax.py)
+
+    これまで `node --check` と `py_compile` を都度手打ちしていたもの。
+    構文が壊れていれば以下の検査結果は当てにならないので、最初に見る。
+    """
+    r = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'check_syntax.py')],
+                       capture_output=True, text=True, encoding='utf-8')
+    if not r.returncode:
+        return []
+    # 個々の食い違いは check_syntax.py 側が ✕ 付きで出しているので、その行だけ拾う
+    lines = [x.strip()[1:].strip() for x in (r.stdout or '').splitlines()
+             if x.strip().startswith('✕')]
+    return lines or [(r.stdout or r.stderr).strip()]
+
+
 def check_offline():
     """圏外・障害時のふるまい (scripts/test_offline.js・scripts/test_sw.js)
 
@@ -291,30 +312,38 @@ def check_elevation(rows):
 
 def main():
     want_mutation = "--mutation" in sys.argv
+    # 通信を伴うのは DEM 照合だけ。CI ではここを飛ばす(無料枠を無駄撃ちしない)
+    offline = "--offline" in sys.argv
     rows = load_rows()
     print(f"山岳DBチェック: {len(rows)}座 ({MOUNTAINS_CSV.name})")
     ng = False
 
+    syn = check_syntax()
+    print(f"\n[1/8] 構文と公開物: {'OK' if not syn else f'{len(syn)}件のエラー'}")
+    for e in syn:
+        print(f"  ✕ {e}")
+    ng = ng or bool(syn)
+
     fmt = check_format(rows)
-    print(f"\n[1/7] CSV形式: {'OK' if not fmt else f'{len(fmt)}件のエラー'}")
+    print(f"[2/8] CSV形式: {'OK' if not fmt else f'{len(fmt)}件のエラー'}")
     for e in fmt:
         print(f"  ✕ {e}")
     ng = ng or bool(fmt)
 
     sync = check_sync(rows)
-    print(f"[2/7] index.html との同期: {'OK' if not sync else f'{len(sync)}件のずれ'}")
+    print(f"[3/8] index.html との同期: {'OK' if not sync else f'{len(sync)}件のずれ'}")
     for e in sync:
         print(f"  ✕ {e}")
     ng = ng or bool(sync)
 
     gen = check_generated()
-    print(f"[3/7] 自動生成ページの同期: {'OK' if not gen else f'{len(gen)}件のずれ'}")
+    print(f"[4/8] 自動生成ページの同期: {'OK' if not gen else f'{len(gen)}件のずれ'}")
     for e in gen:
         print(f"  ✕ {e}")
     ng = ng or bool(gen)
 
     logic, logic_notes = check_logic()
-    print(f"[4/7] 判定・表示・山さがしのスコア (入出力表・乱数・不変条件・表示・find): "
+    print(f"[5/8] 判定・表示・山さがしのスコア (入出力表・乱数・不変条件・表示・find): "
           f"{'OK' if not logic else f'{len(logic)}件の不一致'}")
     for e in logic:
         print(f"  ✕ {e}")
@@ -331,7 +360,7 @@ def main():
         ng = ng or bool(mut)
 
     off, off_notes = check_offline()
-    print(f"[5/7] 圏外・障害時のふるまい (通信・保存・Service Worker): "
+    print(f"[6/8] 圏外・障害時のふるまい (通信・保存・Service Worker): "
           f"{'OK' if not off else f'{len(off)}件の違反'}")
     for e in off:
         print(f"  ✕ {e}")
@@ -340,15 +369,19 @@ def main():
     ng = ng or bool(off)
 
     cons = check_consistency()
-    print(f"[6/7] 定数同期とドキュメントの整合性: "
+    print(f"[7/8] 定数同期とドキュメントの整合性: "
           f"{'OK' if not cons else f'{len(cons)}件の食い違い'}")
     for e in cons:
         print(f"  ✕ {e}")
     ng = ng or bool(cons)
 
-    suspects, warns = check_elevation(rows)
-    print(f"[7/7] DEM標高照合 (Open-Meteo Elevation API): "
-          f"{'OK' if not suspects and not warns else f'疑い{len(suspects)}件 / 要確認{len(warns)}件'}")
+    if offline:
+        suspects, warns = [], []
+        print("[8/8] DEM標高照合: スキップ (--offline。通信を伴うのはここだけ)")
+    else:
+        suspects, warns = check_elevation(rows)
+        print(f"[8/8] DEM標高照合 (Open-Meteo Elevation API): "
+              f"{'OK' if not suspects and not warns else f'疑い{len(suspects)}件 / 要確認{len(warns)}件'}")
     for e in suspects:
         print(f"  ✕ {e}")
     for e in warns:

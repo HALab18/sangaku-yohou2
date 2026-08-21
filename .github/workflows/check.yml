@@ -1,0 +1,39 @@
+# push / PR のたびに、通信を伴わない検査を全部回す。
+#
+# 手元で check_mountains.py を通すのが従来の運用で、それは変えない。ここはその
+# 「通し忘れ」を拾う網で、**別のPCから直したとき**や急いでいるときに効く。
+#
+# 通信するのは DEM 標高照合だけなので --offline で外している(Open-Meteo の無料枠を
+# 守るのがこのアプリの前提で、CI から定期的に叩くのは筋が悪い)。座標やDBを触ったときは
+# 手元で --offline 無しを1回通すこと。
+name: 検査
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # CLI本体・Webアプリは標準ライブラリだけで動く(依存ゼロが売り)。
+      # ここで pip install が要るようになったら、それ自体が壊れた合図。
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # 形式・同期・判定の等価性・表示・山さがし・障害時のふるまい・定数とドキュメント。
+      # 構文の静的検査もこの中の [1/8] で回る。
+      - name: 全体検査 (通信なし)
+        run: python scripts/check_mountains.py --offline
+
+      # テスト自体が効いているか。わざとバグを仕込んで落ちることを確かめる。
+      # 落ちない変異があれば、その範囲についてテストは書いていないのと同じ。
+      - name: テストの有効性 (ミューテーション)
+        run: python scripts/test_mutation.py
