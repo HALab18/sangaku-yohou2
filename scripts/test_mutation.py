@@ -65,6 +65,10 @@ COPY = [
     "sw.js",
     "gate.js",
     "scripts/test_stubs.js",
+    "scripts/test_render.py",
+    "scripts/test_render.js",
+    "references/fixture_forecast.json",
+    "references/golden/render_web.html",
     "scripts/test_offline.js",
     "scripts/test_sw.js",
 ]
@@ -173,6 +177,12 @@ MUTATIONS = [
     ("find のランク境界を 70 → 71 にずらす",
      FIND, 'function rankOf(v){return v>=70?"a":v>=45?"b":"c"}',
      'function rankOf(v){return v>=71?"a":v>=45?"b":"c"}'),
+    # ---- 描画そのもの。関数単位のテストでは表を組み立てる経路が抜けていた ----
+    ("週間表の区切り行の文言を変える(画面だけに出る。関数単位のテストには映らない)",
+     INDEX, "▼ ここから日本域モデル(MSM 約5km)の予報です", "▼ ここから日本域モデルの予報です"),
+    ("CLI 側の稜線風の * 印を落とす(Web と CLI で同じ日の表記が食い違う)",
+     CLI, 'return f"{wdir(wd)} {ws:.1f}m/s" + ("*" if degraded else "")',
+     'return f"{wdir(wd)} {ws:.1f}m/s"'),
     # ---- 通信の異常系。山で最も困る「画面が固まる」型 ----
     ("主要データのタイムアウトを効かなくする(応答が返らないと永久に待つ)",
      INDEX, 'const timer=setTimeout(()=>ac.abort(),API_TIMEOUT_MS);',
@@ -259,6 +269,8 @@ def check_layers(work, have_node):
         caught.append("天気コード")
     if have_node and run([py, "scripts/test_find_score.py"], work) not in (0, None):
         caught.append("山さがし")
+    if have_node and run([py, "scripts/test_render.py"], work) not in (0, None):
+        caught.append("描画")
     if have_node and run(["node", "scripts/test_offline.js"], work) not in (0, None):
         caught.append("障害")
     if have_node and run(["node", "scripts/test_sw.js"], work) not in (0, None):

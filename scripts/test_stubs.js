@@ -114,4 +114,60 @@ function sliceByMarks(src, file, slices) {
   return out;
 }
 
-module.exports = { makeClock, settle, makeStorage, makeChecker, sliceByMarks };
+/* DOM の身代わり。index.html の本体スクリプトは読み込み時に
+ * document.getElementById(...).addEventListener(...) を何十回もするので、これが無いと
+ * 描画の関数を1つ呼ぶことすらできない。
+ *
+ * ★ 本物の DOM を真似るためのものではない。**画面を組み立てる文字列**が CLI と一致するかを
+ *   見るのが目的なので、要素は「innerHTML を覚えるだけの箱」で足りる。
+ *   要素どうしの親子関係も、CSS も、レイアウトも持たない(持たせると、この身代わり自体が
+ *   正しいかを検査する羽目になる)。querySelectorAll は必ず空配列を返す。
+ * ★ 触られたのに用意していないメソッドがあれば、黙って undefined を返さずに落とす。
+ *   静かに素通りすると「描けたつもりで空の表」を検査してしまう。 */
+function makeDom() {
+  const nodes = new Map();
+  const make = (id) => {
+    const el = {
+      id, innerHTML: "", textContent: "", value: "", hidden: false, checked: false,
+      dataset: {}, style: {}, options: [], children: [], tabIndex: -1,
+      classList: {
+        _s: new Set(),
+        add(...c) { c.forEach(x => this._s.add(x)) },
+        remove(...c) { c.forEach(x => this._s.delete(x)) },
+        toggle(c, on) { if (on === undefined) on = !this._s.has(c); on ? this._s.add(c) : this._s.delete(c); return on },
+        contains(c) { return this._s.has(c) },
+      },
+      addEventListener() { }, removeEventListener() { }, focus() { }, blur() { }, click() { },
+      scrollIntoView() { }, appendChild(c) { el.children.push(c); return c },
+      setAttribute(k, v) { el.dataset["attr_" + k] = String(v) },
+      getAttribute(k) { const v = el.dataset["attr_" + k]; return v === undefined ? null : v },
+      removeAttribute(k) { delete el.dataset["attr_" + k] },
+      toggleAttribute() { }, hasAttribute() { return false },
+      closest() { return null }, matches() { return false },
+      // 親を持たせるのは `inp.closest("label")||inp.parentElement` のような書き方のため。
+      // 実際の入れ子は再現しない(共通の箱を1つ返すだけ)。
+      get parentElement() { return get("__parent__") }, get parentNode() { return get("__parent__") },
+      querySelector() { return null }, querySelectorAll() { return [] },
+      getBoundingClientRect() { return { x: 0, y: 0, width: 0, height: 0, top: 0, left: 0 } },
+      get firstChild() { return el.children[0] || null },
+      get scrollWidth() { return 0 }, get clientWidth() { return 0 },
+    };
+    return el;
+  };
+  const get = (id) => {
+    if (!nodes.has(id)) nodes.set(id, make(id));
+    return nodes.get(id);
+  };
+  const document = {
+    getElementById: (id) => get(id),
+    querySelector: (sel) => get("sel:" + sel),
+    querySelectorAll: () => [],
+    createElement: (tag) => make("new:" + tag),
+    addEventListener() { }, removeEventListener() { },
+    documentElement: get("html"), body: get("body"), head: get("head"),
+    readyState: "complete", get activeElement() { return null },
+  };
+  return { document, nodes, el: get };
+}
+
+module.exports = { makeClock, settle, makeStorage, makeChecker, sliceByMarks, makeDom };

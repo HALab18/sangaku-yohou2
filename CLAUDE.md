@@ -39,11 +39,12 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `scripts/test_logic_fuzz.py` `scripts/test_logic_fuzz.js` | 同じ9関数を乱数で総当たりし、Python↔JS の一致と**不変条件**（悪化させて指数が良くならない・欠測が好条件に化けない等）を見る。入力表の生成は Python 側の1箇所だけ |
 | `scripts/test_display.py` `scripts/test_display.js` | **表示まわり**の等価性テスト（天気の文言・濡れ注意・雨雪判別・積雪や視程の表記）。同じ入出力表を CLI(Python) と `display.js`(Node) で回す。あわせて `display.js?v=` と `PW_DISPLAY_VER` の一致、ページ側に再定義が無いことも見る |
 | `scripts/test_find_score.py` `scripts/test_find_score.js` | 山さがしの日和スコア `score()` のテスト。減点方式ゆえ「材料が無い＝100点＝ランクA」に化ける構造なので、値ではなく**壊れ方の向き**を見る。対象は生成物ではなく生成元の `gen_find.py` |
+| `scripts/test_render.py` `scripts/test_render.js` `references/fixture_forecast.json` `references/golden/` | **描画そのもの**。固定した本物の応答1本を CLI と Web の両方に通し、(a) Web が組み立てた表が golden と一致するか (b) 週間表の9列が CLI の markdown と一字一句そろっているか、を見る。Web 側は `index.html` の `run()` を**そのまま**回す（`test_stubs.js` の `makeDom()` を document として渡す）。通信も時刻も固定なので結果は動かない。`--record` で fixture 取り直し、`--bless` で golden 更新（**変わったのが意図どおりだと確かめてから**使うこと） |
 | `scripts/test_mutation.py` | わざとバグを仕込んで**テストが落ちること**を確かめる。落ちない変異があれば、その範囲についてテストは書いていないのと同じ |
 | `scripts/test_weather_codes.py` | 天気コード → 日本語表現の**総当たり**。全28コードで文言が出るか・**安全オーバーライドが必ず日代表に昇格するか**・晴れと雷雨が入れ替わらないか・集約の窓(4〜17時)の外の悪天を拾っていないか。`test_display.py` は「一致」しか見ないので、両方とも同じように間違っている場合を捕まえられない |
 | `scripts/test_offline.js` | **圏外・障害時**のふるまい（通信のタイムアウト・再試行・`end_date` クランプ・応答の正規化・スナップショット保存・ゲートの fail-closed）。index.html の DOM に触らない範囲を目印で切り出し、`fetch`・`localStorage`・時間を身代わりに差し替えて回す |
 | `scripts/test_sw.js` | `sw.js` のふるまい。**API 応答をキャッシュしていないこと**（規約9）・フラグメント除去・前版キャッシュの掃除・遅い回線での退避。オンラインでは表面化しない壊れ方なので機械で見る |
-| `scripts/test_stubs.js` | 上2つが共有する身代わりの環境（仮想時計・localStorage・目印での切り出し）。時間を差し替えるので 20秒のタイムアウトも 6秒の待ちも即座に検査できる |
+| `scripts/test_stubs.js` | 上の各テストが共有する身代わりの環境（仮想時計・localStorage・**DOM**・目印での切り出し）。時間を差し替えるので 20秒のタイムアウトも 6秒の待ちも即座に検査できる。`makeDom()` は本物の DOM を真似ない ── 要素は「innerHTML を覚える箱」で、見た目ではなく**組み立てた文字列**を見るためのもの |
 | `scripts/check_syntax.py` | 構文と公開物の静的検査。Python / JavaScript / **HTML に直接書かれた `<script>`**（index.html の本体2,000行超はここ）の構文、`logic.js`・`gate.js` が **ES5 の範囲**に留まっているか、`.nojekyll`・manifest のアイコンが揃っているか。`check_mountains.py` の `[1/8]` が呼ぶ |
 | `.github/workflows/check.yml` | push / PR ごとに `check_mountains.py --offline` とミューテーションを回す。手元で通し忘れたときの網。通信を伴う DEM 照合だけ外してある |
 | `scripts/check_csp.py` | 外部参照の棚卸し。通信相手が「気象データ・地名・アクセス解析」の3系統から増えていないかを見る（貼り付けたコードに知らないタグが付いてきた、を検出）。あわせて CSP を入れるときの下見（`'unsafe-inline'` を要求している箇所の数と、生成した policy）。`check_mountains.py` の `[1/8]` が呼ぶ |

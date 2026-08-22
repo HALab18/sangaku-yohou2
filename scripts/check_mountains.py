@@ -210,6 +210,14 @@ def check_logic():
     if fs.returncode:
         errors.append('山さがしのスコア(test_find_score.py)で違反:' + CRLF_INDENT
                       + (fs.stdout or fs.stderr).strip().replace('\n', CRLF_INDENT))
+
+    # 描画そのもの。固定した1本の応答から CLI と Web が同じ表を出すか(と golden との一致)。
+    # 関数単位の突き合わせ(test_display)では、表を組み立てる経路がまるごと抜けていた
+    rd = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_render.py')],
+                        capture_output=True, text=True, encoding='utf-8')
+    if rd.returncode:
+        errors.append('描画(test_render.py)で不一致:' + CRLF_INDENT
+                      + (rd.stdout or rd.stderr).strip().replace(chr(10), CRLF_INDENT))
     return errors, notes
 
 
