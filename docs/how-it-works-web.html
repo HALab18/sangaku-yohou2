@@ -20,6 +20,9 @@
   --bg:#f4f6f9;--line:#dee4ee}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
+/* ページ内リンクの滑らかスクロールは「動きを減らす」設定で止める。自動で流れる画面は
+   前庭障害のある人には症状の引き金になる */
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 body{margin:0;background:var(--bg);color:#222;
   font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
   font-size:14px;line-height:1.7}

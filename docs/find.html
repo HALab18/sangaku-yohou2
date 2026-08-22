@@ -193,6 +193,12 @@ footer a{color:var(--link)}
 #totop:hover{background:rgba(220,234,249,.7)}
 #totop .mk{width:20px;height:14px;display:block;margin:0 auto}
 
+/* 「動きを減らす」設定の端末では動きを止める。自動で流れる画面や滑り込む要素は、
+   前庭障害のある人には症状の引き金になる。JS のスクロールは scrollBehavior() 側で見る */
+@media(prefers-reduced-motion:reduce){
+  .find-toggle::after,#totop{transition:none}
+}
+
 @media(min-width:700px){
   header h1{font-size:1.7em}
   main{padding:24px 24px 12px}
@@ -302,6 +308,9 @@ footer a{color:var(--link)}
 
 <script>
 "use strict";
+// 「動きを減らす」設定の端末では瞬時に移動する(index.html と同じ判断)。
+// ★ ここを通さない scrollIntoView / scrollTo を増やさないこと(1つ漏れるとそこだけ流れる)。
+const scrollBehavior=()=>matchMedia("(prefers-reduced-motion:reduce)").matches?"auto":"smooth";
 (function(){
   // 規約同意・認証コードが済んでいなければ、ここで打ち切って案内に差し替える。
   // このページは Open-Meteo を最大50地点×N回まとめて叩くため、
@@ -1111,7 +1120,7 @@ footer a{color:var(--link)}
       var initAll=await initTxt();
       render(rows,date,gotAt,initAll);
       // 結果表示位置までスクロール(表示データが見やすい位置に移動)
-      elResults.scrollIntoView({behavior:"smooth",block:"start"});
+      elResults.scrollIntoView({behavior:scrollBehavior(),block:"start"});
       // 足切り分離した内訳をステータスに出す
       var safeN=rows.filter(function(x){return !isDangerous(x.sc)}).length;
       var cautionN=rows.length-safeN;
@@ -1444,7 +1453,7 @@ footer a{color:var(--link)}
 (function(){
   const btn=document.getElementById("totop");
   if(!btn)return; // 多重防御(ボタンは <main> の外にあるが、消えていても落とさない)
-  btn.addEventListener("click",()=>window.scrollTo({top:0,behavior:"smooth"}));
+  btn.addEventListener("click",()=>window.scrollTo({top:0,behavior:scrollBehavior()}));
   let tick=false;
   addEventListener("scroll",()=>{
     if(tick)return;tick=true;
