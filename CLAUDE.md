@@ -27,6 +27,7 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `sw.js` | Service Worker。**画面(HTML/CSS/JS/アイコン)だけ**をネットワーク優先でキャッシュし、圏外でもアプリが開くようにする。気象データは扱わない（予報の保存は index.html の localStorage スナップショット側） |
 | `logic.js` | 登山指数 A/B/C の判定ロジック（`blockIndex`/`seasonTh`/`feelsLike`/`viewScore`/`interpWind`/`sumOrNull` と各しきい値）。**JS側の判定はここが唯一の置き場**。`index.html`・`docs/find.html` が `<script src>` で読む |
 | `display.js` | 天気の文言・濡れ注意・雨雪判別・積雪や視程の表記（`summarizeDailyWeather`/`dayWeatherPhrase`/`singleCodePhrase`/`wetWarn`/`precipPhase`/`snowCell`/`visTxt`/`timingLabel`/`addPrecipNotes` と語彙 `WMO`/`WMETA`/`SAFETY_OVERRIDE`/`CAT_LABEL` 等）。**JS側の表示はここが唯一の置き場**。`index.html`・`docs/find.html` が `<script src>` で読む。ver 2.46β で3箇所の写しを1つに畳んだ |
+| `theme.css` | 配色。**色の値はここが唯一の置き場**で、明るい配色と暗い配色(`prefers-color-scheme:dark`)の両方をトークン(`--◯◯`)で持つ。全9ページと `gate.js` が `var(--◯◯)` だけを書く。ver 2.47β で 657箇所のベタ書きをここに畳んだ |
 | `gate.js` | 規約同意＋認証コードの共通ゲート。**認証定数(AUTH_VER/SALT/HASH)はここが唯一の置き場**。`index.html`・`docs/find.html`・`docs/point.html` が読み込む |
 | `scripts/mountain_weather.py` | CLI本体。`--name`/`--lat --lon --elev` で予報を出力（`--html`でレポート保存） |
 | `references/mountains.csv` | 内蔵山岳DB（**BOM付きUTF-8・CRLF**）。列: name,yomi,pref,lat,lon,elev |
@@ -48,6 +49,7 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `scripts/check_syntax.py` | 構文と公開物の静的検査。Python / JavaScript / **HTML に直接書かれた `<script>`**（index.html の本体2,000行超はここ）の構文、`logic.js`・`gate.js` が **ES5 の範囲**に留まっているか、`.nojekyll`・manifest のアイコンが揃っているか。`check_mountains.py` の `[1/8]` が呼ぶ |
 | `.github/workflows/check.yml` | push / PR ごとに `check_mountains.py --offline` とミューテーションを回す。手元で通し忘れたときの網。通信を伴う DEM 照合だけ外してある |
 | `scripts/check_csp.py` | 外部参照の棚卸し。通信相手が「気象データ・地名・アクセス解析」の3系統から増えていないかを見る（貼り付けたコードに知らないタグが付いてきた、を検出）。あわせて CSP を入れるときの下見（`'unsafe-inline'` を要求している箇所の数と、生成した policy）。`check_mountains.py` の `[1/8]` が呼ぶ |
+| `scripts/check_contrast.py` | 配色の検査。(1)明るい配色のトークンが暗い配色にも全部あるか (2)文字色と面の47組が**両方の配色で** WCAG AA を満たすか (3)ページ側の `<style>` に色のベタ書きが増えていないか (4)面のトークン(`--slate`/`--night`/`--surface*`)を `color:` に使っていないか。**暗い配色のときだけ読めない**壊れ方は、明るい配色で作業しているかぎり画面を見ても気づけない。`check_mountains.py` の `[1/8]` が呼ぶ |
 | `scripts/test_api_contract.py` | **通信を伴う**。Open-Meteo の応答を**非null件数で数え**、既知の前提（完全な GSM 日には 900/800hPa と `sunshine_duration` が無い・存在しない項目は 400 にならず全 null・予報長を超えると部分日になって尽きる）を固定する。`--online` を付けたときだけ動く。落ちたら**モデルの配信仕様が変わった合図** |
 | `scripts/check_consistency.py` | 2箇所以上に同じ値を書いている場所の突き合わせ（`JMA_DAYS`・`FIND_DAYS`・`AUTH_VER` の `?v=`・日本域の範囲・`sw.js` の `CACHE` 版）と、実装から消えたはずの説明がドキュメントに残っていないかの検査。`check_mountains.py` の `[7/8]` が呼ぶ |
 | `scripts/db_*.py gen_*.py check_*.py` | DB保守ツール群（下記パイプライン） |
@@ -189,6 +191,20 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
    この2点（版の更新・API を入れないこと）は `node scripts/test_sw.js` が機械的に見る。
    通信の障害時と端末内保存は `node scripts/test_offline.js`。どちらも
    `check_mountains.py` の `[6/8]` が呼ぶ。
+
+10. **色の値を `theme.css` の外に書かない。** ページ側(`index.html`・`docs/*.html`・
+    生成元の `gen_*.py`・`gate.js`)は `var(--◯◯)` だけを書く。直接 `#4276b5` と書くと
+    **暗い配色で差し替わらず取り残される** ── しかも明るい配色で作業しているかぎり
+    画面を見ても気づけない。色が足りないときは、まず `theme.css` に**用途の名前で**
+    トークンを足し、**明・暗の両方に書く**（片方だけだと、書かなかった側で前の値が残る）。
+
+    **「面」と「文字」のトークンを取り違えないこと。** `--night`/`--slate`/`--bg`/`--surface*`
+    は面で、暗い配色でも暗いまま。文字に使うと暗い配色で地に沈む（実際に `h3` が 2.06:1 に
+    なっていた）。文字には `--head`/`--head-2`/`--muted`/`--on-night` を使う。
+    面の `--slate` と罫の `--rule` も別物（明るい配色では同じ値だが、罫は地から浮かせる）。
+
+    `theme.css` を変えたら `--pw-theme-ver` と全ページの `?v=` を同時に上げる（規約8と同じ形）。
+    検査は `python scripts/check_contrast.py`（`check_mountains.py` の `[1/8]` が呼ぶ）。
 
 ## 山岳DB拡張パイプライン
 

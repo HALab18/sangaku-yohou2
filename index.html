@@ -10,7 +10,14 @@
 <link rel="icon" type="image/png" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1e2d4a">
+<!-- ブラウザのUI(アドレスバー)の色も配色に合わせる -->
+<meta name="theme-color" media="(prefers-color-scheme:light)" content="#1e2d4a">
+<meta name="theme-color" media="(prefers-color-scheme:dark)" content="#101725">
+<!-- 配色(明るい配色と、端末が夜モードのときの暗い配色)。色の値はここが唯一の置き場で、
+     各ページの <style> は var(--◯◯) しか書かない。?v= は theme.css の --pw-theme-ver と
+     同じ値にする(古い版がキャッシュに残ると「画面は新しいのに配色だけ旧版」になる)。
+     一致は scripts/check_contrast.py が機械的に見ている。 -->
+<link rel="stylesheet" href="theme.css?v=247">
 <!-- 規約同意・認証コードの判定を集約した共通ゲート (認証コードの定数もここにのみ置く)。
      ?v= は gate.js の PW_AUTH_VER と同じ値にする。付けないと、認証コードを年次更新した際に
      古い gate.js がキャッシュに残った端末で「新コードを入れたのに弾かれる」事故になる。
@@ -37,30 +44,27 @@
   gtag('config', 'G-B4FYN1EJ2S', {page_location: location.origin + location.pathname});
 </script>
 <style>
-/* --muted: 補足文字の共通色。白 6.2:1 / 表の偶数行 #eef1f6 5.5:1 / ページ背景 #f4f6f9 5.7:1 で
-   いずれも WCAG AA(4.5:1) を満たす。以前の #6b7280 は偶数行で 4.27:1、#999 は 2.85:1 で未達だった
-   (CAPE・視程・取得日時など、実データを載せている文字なので薄すぎると読めない) */
-:root{--muted:#5a6270;
-  --night:#1e2d4a;--night-d:#16223c;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
-  --btn:#4276b5;--btn-d:#3a68a3;--sel:#dceaf9;
-  --bg:#f4f6f9;--line:#dee4ee;--field:#c9d2e0}
+/* ★ 色の値をここに書かないこと。全部 theme.css のトークン(--◯◯)を var() で参照する。
+   明るい配色と暗い配色(端末の夜モード)の両方が theme.css の1箇所で決まっており、
+   ここに直接色を書くと**暗い配色のときだけ差し替わらず取り残される**
+   (明るい配色で作業しているかぎり、画面を見ても気づけない壊れ方)。
+   残してよいベタ書きの数と理由は scripts/check_contrast.py の ALLOW にある。 */
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 /* ページ内リンクの滑らかスクロールは「動きを減らす」設定で止める。自動で流れる画面は
    前庭障害のある人には症状の引き金になる。JS 側の scrollIntoView も scrollBehavior() で揃える */
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
-body{margin:0;color:#222;
+body{margin:0;color:var(--text);
   /* 背景: ロゴマークの山を細かく規則的に敷いたパターン(ごく淡く) */
   background-color:var(--bg);
-  background-image:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2084%2060'%3E%3Cg%20transform='translate(29%2021)%20scale(0.342)'%3E%3Cpath%20d='M4%2048L28%208%2040%2027%2050%2014%2072%2048Z'%20fill='none'%20stroke='%23e9edf4'%20stroke-width='7'%20stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2084%2060'%3E%3Cg%20transform='translate(29%2021)%20scale(0.342)'%3E%3Cpath%20d='M4%2048L28%208%2040%2027%2050%2014%2072%2048Z'%20fill='none'%20stroke='%23e9edf4'%20stroke-width='7'%20stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E");
+  background-image:var(--pat),var(--pat);
   background-position:0 0,42px 30px;background-size:84px 60px,84px 60px;
   font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
   font-size:14px;line-height:1.6}
 
 /* ---- 山モチーフ共通(ロゴマークの小型アイコン) ---- */
 .mk{display:inline-block;flex:none}
-.mtdiv{display:flex;align-items:center;gap:14px;max-width:560px;margin:26px auto;color:#b7c3d8}
+.mtdiv{display:flex;align-items:center;gap:14px;max-width:560px;margin:26px auto;color:var(--field)}
 .mtdiv::before,.mtdiv::after{content:"";flex:1;height:1px;background:var(--line)}
 .mtdiv .mk{width:24px;height:16px}
 
@@ -70,7 +74,7 @@ body{margin:0;color:#222;
    ★ clip / left:-9999px ではなく transform で外へ出す(clip 系は iOS の読み上げで
      位置を見失う報告がある)。ヒーローが濃紺なので、出るときは白地・紺文字にする。 */
 .skip{position:absolute;top:0;left:0;z-index:100;margin:10px;padding:10px 16px;
-  background:#fff;color:var(--night);border:2px solid var(--link);border-radius:8px;
+  background:var(--surface);color:var(--head);border:2px solid var(--link);border-radius:8px;
   font-weight:700;font-size:.92em;text-decoration:none;transform:translateY(-250%)}
 .skip:focus{transform:none}
 /* 飛び先。tabindex="-1" だけだと Chrome が枠を出さないので、着いたことが分かるようにする */
@@ -80,39 +84,39 @@ main:focus-visible,#out:focus-visible{outline:2px solid var(--link);outline-offs
 /* 背景を実写に差し替える場合: .hero-bg(svg) を削除し、下記1行を .hero に追加
    background:url(icons/hero.jpg) center/cover no-repeat var(--night); */
 .hero{position:relative;min-height:92vh;min-height:92svh;display:flex;justify-content:center;
-  color:#fff;text-align:center;overflow:hidden;background:var(--night);padding:0 20px}
+  color:var(--on-night);text-align:center;overflow:hidden;background:var(--night);padding:0 20px}
 .hero-bg{position:absolute;inset:0;width:100%;height:100%}
 .hero::after{content:"";position:absolute;inset:0;background:
   linear-gradient(180deg,rgba(13,20,38,.5) 0%,rgba(13,20,38,.22) 42%,rgba(13,20,38,.68) 100%)}
 .hero-inner{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;
   width:100%;max-width:640px;padding:max(10svh,56px) 0 max(4.5svh,28px)}
 .logomark{width:74px;height:auto;margin-bottom:12px;filter:drop-shadow(0 2px 10px rgba(0,0,0,.4))}
-h1{margin:0;font-size:2.15em;font-weight:800;letter-spacing:.05em;color:#fff;
+h1{margin:0;font-size:2.15em;font-weight:800;letter-spacing:.05em;color:var(--on-night);
   text-shadow:0 2px 14px rgba(0,0,0,.45)}
-.tagline{margin:12px 0 0;font-size:1.02em;font-weight:600;color:#eef2f9;
+.tagline{margin:12px 0 0;font-size:1.02em;font-weight:600;color:var(--on-night);
   text-shadow:0 1px 8px rgba(0,0,0,.55)}
-.hero-sub{margin:14px 0 0;font-size:.85em;color:#c9d3e5;line-height:2;
+.hero-sub{margin:14px 0 0;font-size:.85em;color:var(--on-night-2);line-height:2;
   text-shadow:0 1px 6px rgba(0,0,0,.55)}
 .hero-cta{margin-top:auto;padding-top:30px;display:flex;flex-direction:column;align-items:center;
-  color:#fff;text-decoration:none;font-weight:700;font-size:.95em;letter-spacing:.08em}
+  color:var(--on-night);text-decoration:none;font-weight:700;font-size:.95em;letter-spacing:.08em}
 .hero-cta .btnface{padding:13px 36px;border-radius:999px;background:rgba(255,255,255,.13);
   border:1.5px solid rgba(255,255,255,.6);backdrop-filter:blur(3px);transition:background .2s}
-.hero-cta .mk{width:20px;height:14px;margin-right:9px;vertical-align:-2px;color:#fff}
+.hero-cta .mk{width:20px;height:14px;margin-right:9px;vertical-align:-2px;color:var(--on-night)}
 .hero-cta:hover .btnface,.hero-cta:focus-visible .btnface{background:rgba(255,255,255,.3)}
 /* 副次ボタン: 主目的の「予報をチェックする」より控えめな配色で find.html への入口 */
-.hero-find{margin-top:10px;color:#c9d3e5;text-decoration:none;font-weight:600;font-size:.85em;letter-spacing:.06em}
+.hero-find{margin-top:10px;color:var(--on-night-2);text-decoration:none;font-weight:600;font-size:.85em;letter-spacing:.06em}
 .hero-find .btnface{display:inline-block;padding:9px 26px;border-radius:999px;background:rgba(255,255,255,.05);
   border:1px solid rgba(255,255,255,.32);backdrop-filter:blur(3px);transition:background .2s}
 .hero-find:hover .btnface,.hero-find:focus-visible .btnface{background:rgba(255,255,255,.16)}
 /* 三次ボタン: 気象庁リンク集への入口。上2つより一段小さく・淡くして主従を崩さない。
    幅は3つが逆三角形に見えるよう横paddingで詰める(209→166→124px)。文字数を変えたら測り直すこと */
-.hero-weather{margin-top:8px;color:#a3aec4;text-decoration:none;font-weight:600;
+.hero-weather{margin-top:8px;color:var(--on-night-3);text-decoration:none;font-weight:600;
   font-size:.72em;letter-spacing:.04em}
 .hero-weather .btnface{display:inline-block;padding:6px 28px;border-radius:999px;
   background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.22);
   backdrop-filter:blur(3px);transition:background .2s}
 .hero-weather:hover .btnface,.hero-weather:focus-visible .btnface{background:rgba(255,255,255,.12)}
-.chev{color:#fff;font-size:1.5em;line-height:1;margin-top:6px;animation:bob 1.8s ease-in-out infinite}
+.chev{color:var(--on-night);font-size:1.5em;line-height:1;margin-top:6px;animation:bob 1.8s ease-in-out infinite}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
 @media(prefers-reduced-motion:reduce){.chev{animation:none}}
 
@@ -125,35 +129,35 @@ main{max-width:1080px;margin:0 auto;padding:26px 14px 8px}
    AA(4.5:1) に届いていなかった。「控えめに置く」のは畳んである(details)ことで足りており、
    薄さで畳む必要はない。免責は読ませる前提の文章なので、読めない色は機能を損ねる。 */
 .terms{color:var(--muted);font-size:.8em;line-height:1.75;margin-bottom:12px;
-  border:1px solid var(--line);border-radius:10px;background:#fafbfd}
+  border:1px solid var(--line);border-radius:10px;background:var(--surface-soft)}
 .terms summary{list-style:none;cursor:pointer;padding:10px 13px;font-weight:600;color:var(--muted);
   display:flex;align-items:center;gap:7px;user-select:none}
 .terms summary::-webkit-details-marker{display:none}
-.terms summary::before{content:"▸";color:#b9bec6;transition:transform .15s}
+.terms summary::before{content:"▸";color:var(--muted);transition:transform .15s}
 .terms[open] summary::before{transform:rotate(90deg)}
 .terms .tbody{padding:2px 14px 12px}
 .terms p{margin:0 0 8px}
 .terms a{color:var(--muted)}
 
 /* 同意チェック */
-.gate{background:#fff;border:1.5px solid #b9c5da;border-radius:12px;padding:13px 14px;
-  margin-bottom:14px;box-shadow:0 1px 3px rgba(30,45,74,.06)}
+.gate{background:var(--surface);border:1.5px solid var(--line-2);border-radius:12px;padding:13px 14px;
+  margin-bottom:14px;box-shadow:0 1px 3px var(--shadow-s)}
 .gate label{display:flex;align-items:flex-start;gap:10px;font-size:.88em;font-weight:600;
-  color:#444;cursor:pointer;margin:0}
-.gate input[type=checkbox]{width:20px;height:20px;margin-top:1px;flex:none;accent-color:var(--night)}
+  color:var(--text-2);cursor:pointer;margin:0}
+.gate input[type=checkbox]{width:20px;height:20px;margin-top:1px;flex:none;accent-color:var(--btn)}
 .gate small{display:block;font-weight:400;color:var(--muted)}
 .gate a{color:var(--link)}
 
 /* 認証コード (コード本体はソースに置かずハッシュ照合。scripts/gen_auth_hash.py 参照) */
-#authgate .ahead{font-weight:700;color:#444;font-size:.92em}
+#authgate .ahead{font-weight:700;color:var(--text-2);font-size:.92em}
 #authgate .authrow{display:flex;flex-direction:row;gap:8px;margin:9px 0 7px}
-#authgate input{flex:1;min-width:0;border:1.5px solid #b9c5da;border-radius:8px;
+#authgate input{flex:1;min-width:0;border:1.5px solid var(--line-2);border-radius:8px;
   padding:9px 12px;font-size:16px;letter-spacing:.12em;font-family:inherit}
 #authgate input:focus{outline:2px solid var(--sky);border-color:var(--sky)}
-#authgate button{flex:none;background:var(--night);color:#fff;border:0;border-radius:8px;
+#authgate button{flex:none;background:var(--night);color:var(--on-night);border:0;border-radius:8px;
   padding:0 18px;font-weight:600;font-size:.92em;cursor:pointer;font-family:inherit}
 #authgate button:disabled{opacity:.5;cursor:default}
-#authgate .authmsg{color:#a03415;font-size:.85em;font-weight:600;margin:0 0 5px}
+#authgate .authmsg{color:var(--bad-fg);font-size:.85em;font-weight:600;margin:0 0 5px}
 #authgate small{display:block;font-weight:400;color:var(--muted);line-height:1.6}
 
 #appwrap{opacity:.4;pointer-events:none;filter:grayscale(60%);transition:opacity .2s,filter .2s}
@@ -166,58 +170,58 @@ main{max-width:1080px;margin:0 auto;padding:26px 14px 8px}
 
 /* フォームカード (右上にロゴマークの透かし) */
 .formcard{border-radius:14px;padding:18px 16px 20px;
-  background:#fff url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2076%2052'%3E%3Cpath%20d='M4%2048L28%208%2040%2027%2050%2014%2072%2048Z'%20fill='none'%20stroke='%23e8eef7'%20stroke-width='5'%20stroke-linejoin='round'/%3E%3Cpath%20d='M21.5%2019L28%208l6.5%2011-3.3-3.4-3.2%204-3.2-4Z'%20fill='%23e8eef7'/%3E%3Cpath%20d='M45.8%2020.5L50%2014l4.2%206.5-2.2-2.3-2%202.6-2-2.6Z'%20fill='%23e8eef7'/%3E%3C/svg%3E") no-repeat right 16px top 14px/54px 37px;
-  box-shadow:0 2px 12px rgba(30,45,74,.10);scroll-margin-top:12px}
+  background:var(--surface) var(--wm) no-repeat right 16px top 14px/54px 37px;
+  box-shadow:0 2px 12px var(--shadow);scroll-margin-top:12px}
 form{display:flex;flex-direction:column;gap:14px}
-.f{display:flex;flex-direction:column;gap:5px;font-size:.82em;font-weight:600;color:#556;margin:0}
+.f{display:flex;flex-direction:column;gap:5px;font-size:.82em;font-weight:600;color:var(--muted);margin:0}
 .lrow{display:flex;align-items:baseline;gap:5px 10px;flex-wrap:wrap}
 .llabel{white-space:nowrap}
 .lrow .listlink{color:var(--link);font-weight:600;text-decoration:none;white-space:nowrap}
 .lrow .listlink:hover{text-decoration:underline}
 input,select{font-size:16px;padding:11px 12px;border:1.5px solid var(--field);border-radius:10px;
-  background:#fff;width:100%;font-family:inherit}
-input:focus,select:focus{outline:2px solid var(--night);outline-offset:1px}
+  background:var(--surface);width:100%;font-family:inherit}
+input:focus,select:focus{outline:2px solid var(--link);outline-offset:1px}
 /* 山名入力欄: 左脇に小さな山アイコン、右に消去(×)ボタンぶんの余白 */
 #mname{padding-left:41px;padding-right:34px;
-  background:#fff url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2076%2052'%3E%3Cpath%20d='M4%2048L28%208%2040%2027%2050%2014%2072%2048Z'%20fill='none'%20stroke='%23a9b6cc'%20stroke-width='7'%20stroke-linejoin='round'/%3E%3Cpath%20d='M21.5%2019L28%208l6.5%2011-3.3-3.4-3.2%204-3.2-4Z'%20fill='%23a9b6cc'/%3E%3Cpath%20d='M45.8%2020.5L50%2014l4.2%206.5-2.2-2.3-2%202.6-2-2.6Z'%20fill='%23a9b6cc'/%3E%3C/svg%3E") no-repeat 13px 50%/19px 13px}
+  background:var(--surface) var(--mtico) no-repeat 13px 50%/19px 13px}
 /* 消去(×)ボタン。目立たせすぎない: 最近見た山の .rcx と同じ配色・ホバー挙動 */
 .mname-wrap{position:relative}
 .mclear{position:absolute;right:4px;top:50%;transform:translateY(-50%);
   padding:9px 8px;border:0;background:none;color:var(--muted);font-size:16px;line-height:1;cursor:pointer}
-.mclear:hover{color:#a03415}
+.mclear:hover{color:var(--bad-fg)}
 .frow{display:flex;gap:12px}
 .frow>.f{flex:1;min-width:0}
 /* 開始日selectと表示間隔segは横並びなので同一の固定高さで揃える(selectのネイティブ描画差を吸収) */
 .frow select,.frow .seg{height:48px}
-.seg{display:flex;border:1.5px solid var(--field);border-radius:10px;overflow:hidden;background:#fff}
+.seg{display:flex;border:1.5px solid var(--field);border-radius:10px;overflow:hidden;background:var(--surface)}
 .seg label{flex:1;margin:0;position:relative}
 .seg input{position:absolute;opacity:0;width:0;height:0}
 .seg span{display:flex;justify-content:center;align-items:center;height:100%;padding:0 2px;
-  font-size:14px;font-weight:600;color:#667;cursor:pointer;transition:background .15s}
+  font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;transition:background .15s}
 .seg label+label span{border-left:1.5px solid var(--field)}
-.seg input:checked+span{background:var(--sel);color:var(--night);font-weight:700}
+.seg input:checked+span{background:var(--sel);color:var(--sel-fg);font-weight:700}
 .seg input:focus-visible+span{outline:2px solid var(--btn);outline-offset:-3px}
 
 button{font-size:15px;padding:8px 22px;border:0;border-radius:8px;background:var(--btn);
-  color:#fff;font-weight:700;cursor:pointer;font-family:inherit}
+  color:var(--on-night);font-weight:700;cursor:pointer;font-family:inherit}
 button:hover{background:var(--btn-d)}
-button:disabled{background:#9aa7bd;cursor:wait}
+button:disabled{background:var(--btn-off);cursor:wait}
 #go{width:100%;padding:14px;font-size:16px;border-radius:12px;letter-spacing:.15em;
-  box-shadow:0 3px 10px rgba(74,126,194,.35)}
-#go .mk{width:19px;height:13px;margin-right:8px;vertical-align:-1.5px;color:#fff}
+  box-shadow:0 3px 10px var(--shadow)}
+#go .mk{width:19px;height:13px;margin-right:8px;vertical-align:-1.5px;color:var(--on-night)}
 /* 現在地ボタン: 山名検索(主ボタン)に対するセカンダリの控えめな外観 */
 #gps{width:100%;padding:11px;font-size:15px;border-radius:12px;margin-top:-4px;
-  background:#fff;color:var(--link);border:1.5px solid var(--field)}
+  background:var(--surface);color:var(--link);border:1.5px solid var(--field)}
 #gps:hover{background:var(--sel)}
-#gps:disabled{background:#fff;color:#9aa7bd}
+#gps:disabled{background:var(--surface);color:var(--btn-off)}
 .listlink .mk{width:14px;height:10px;margin-right:4px;vertical-align:-.5px}
 /* 「天気で山さがし」からの遷移時に予報カード先頭に出す戻りボタン。
    プレーンリンクだと見落とされやすいので、ピル型の塗りボタン(--btn 系)にして目立たせる。 */
 .backfind{margin:0 0 14px}
 .backfind.bottom{margin:20px 0 4px}
-.backfind a{display:inline-block;padding:9px 22px;background:var(--btn);color:#fff;
+.backfind a{display:inline-block;padding:9px 22px;background:var(--btn);color:var(--on-night);
   border-radius:999px;font-size:.9em;font-weight:700;text-decoration:none;
-  box-shadow:0 2px 6px rgba(30,45,74,.14)}
+  box-shadow:0 2px 6px var(--shadow)}
 .backfind a:hover{background:var(--btn-d)}
 .hint{color:var(--muted);font-size:.8em;text-align:center;margin:12px 0 0}
 .hint a{color:var(--link)}
@@ -226,11 +230,11 @@ button:disabled{background:#9aa7bd;cursor:wait}
 .mfield{position:relative}
 #sugg{position:absolute;top:100%;left:0;z-index:20;min-width:100%;width:max-content;max-width:80vw;
   max-height:min(280px,45vh);overflow-y:auto;overscroll-behavior:contain;
-  background:#fff;border:1px solid #ccc;border-radius:8px;
-  box-shadow:0 6px 18px rgba(0,0,0,.18);margin-top:4px;font-weight:400}
+  background:var(--surface);border:1px solid var(--field);border-radius:8px;
+  box-shadow:0 6px 18px var(--shadow-l);margin-top:4px;font-weight:400}
 #sugg div{display:flex;justify-content:space-between;gap:14px;padding:9px 12px;cursor:pointer;
-  font-size:14px;color:#222}
-#sugg div:hover{background:#e8eef7}
+  font-size:14px;color:var(--text)}
+#sugg div:hover{background:var(--surface-4)}
 /* ★ --muted を使う。以前の #888 は白地で 3.54:1。県名と標高は同名の山を見分ける材料なので、
    読めないと候補を選び間違える */
 #sugg small{color:var(--muted);white-space:nowrap}
@@ -240,11 +244,11 @@ button:disabled{background:#9aa7bd;cursor:wait}
 #sugg .rcheadrow:hover{background:none}
 /* 最近見た山 (未入力時だけ先頭に出す履歴。見出しは data-n を持たないので選択されない) */
 #sugg .rchead{display:block;padding:6px 12px 4px;font-size:11.5px;color:var(--muted);
-  font-weight:700;letter-spacing:.04em;background:#f4f6f9;cursor:default}
-#sugg .rchead:hover{background:#f4f6f9}
+  font-weight:700;letter-spacing:.04em;background:var(--bg);cursor:default}
+#sugg .rchead:hover{background:var(--bg)}
 #sugg .rc.rclast,
 /* ピン群と履歴群の境目。ピンは期限なしで先頭に固まるので、どこまでがピンかを線で示す */
-#sugg .rc.rcpinlast{border-bottom:1px solid var(--line,#dee4ee)}
+#sugg .rc.rcpinlast{border-bottom:1px solid var(--line)}
 /* ボタンが2つ並ぶぶん、履歴行は隙間を詰める(通常候補の gap:14px より狭い) */
 #sugg .rc{gap:8px}
 /* 長い山名(カムイエクウチカウシ山など)が折り返して行だけ2段になるのを防ぐ。
@@ -255,49 +259,48 @@ button:disabled{background:#9aa7bd;cursor:wait}
 #sugg .rc small{margin-left:auto;flex:0 999 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 /* 圏外でも開ける山の印。山名のすぐ後ろに小さく添えるだけ(押せるものではない) */
 #sugg .rcoff{margin-left:5px;font-size:11px;opacity:.85}
-#sugg .rc.pinned{background:#f7faff}
-#sugg .rc.pinned:hover{background:#e8eef7}
+#sugg .rc.pinned{background:var(--surface-soft)}
+#sugg .rc.pinned:hover{background:var(--surface-4)}
 /* ×・📌は指で押せる大きさを確保する。行タップとの誤爆を避けるため履歴行にだけ出す。
    負マージンで行の padding へ食い込ませ、見た目の行高(約40px)は通常候補と揃えたまま */
 #sugg .rcx,#sugg .rcp{flex:0 0 auto;margin:-9px 0;padding:9px 7px;border:0;background:none;
   color:var(--muted);font-size:15px;line-height:1;cursor:pointer}
 #sugg .rcx{margin-right:-6px;padding-right:10px}
-#sugg .rcx:hover{color:#a03415}
+#sugg .rcx:hover{color:var(--bad-fg)}
 /* 未ピンの📌も出しておく(淡く)。押せることが分からないと機能に気づけない */
 #sugg .rcp{font-size:13px;opacity:.3;filter:grayscale(1)}
 #sugg .rc.pinned .rcp{opacity:1;filter:none}
 #sugg .rcp:hover{opacity:.75}
 #sugg .rc.pinned .rcp:hover{opacity:.75}
 
-#status{margin:12px auto;font-size:.95em;color:#5b6b8a;font-weight:600}
-#status.err{color:#a03415;font-weight:600}
+#status{margin:12px auto;font-size:.95em;color:var(--muted);font-weight:600}
+#status.err{color:var(--bad-fg);font-weight:600}
 /* 状態アイコン: 取得中=青い山が明滅 / エラー=赤い山 */
 #status:not(:empty)::before{content:"";display:inline-block;width:18px;height:12px;
   margin-right:7px;vertical-align:-1px;
-  background:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2076%2052'%3E%3Cpath%20d='M4%2048L28%208%2040%2027%2050%2014%2072%2048Z'%20fill='none'%20stroke='%235b87c5'%20stroke-width='7'%20stroke-linejoin='round'/%3E%3Cpath%20d='M21.5%2019L28%208l6.5%2011-3.3-3.4-3.2%204-3.2-4Z'%20fill='%235b87c5'/%3E%3Cpath%20d='M45.8%2020.5L50%2014l4.2%206.5-2.2-2.3-2%202.6-2-2.6Z'%20fill='%235b87c5'/%3E%3C/svg%3E") no-repeat center/contain;
+  background:var(--skyico) no-repeat center/contain;
   animation:mkpulse 1.2s ease-in-out infinite}
-#status.err::before{animation:none;
-  background-image:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2076%2052'%3E%3Cpath%20d='M4%2048L28%208%2040%2027%2050%2014%2072%2048Z'%20fill='none'%20stroke='%23a03415'%20stroke-width='7'%20stroke-linejoin='round'/%3E%3Cpath%20d='M21.5%2019L28%208l6.5%2011-3.3-3.4-3.2%204-3.2-4Z'%20fill='%23a03415'/%3E%3Cpath%20d='M45.8%2020.5L50%2014l4.2%206.5-2.2-2.3-2%202.6-2-2.6Z'%20fill='%23a03415'/%3E%3C/svg%3E")}
+#status.err::before{animation:none;background-image:var(--errico)}
 @keyframes mkpulse{0%,100%{opacity:1}50%{opacity:.3}}
 @media(prefers-reduced-motion:reduce){#status:not(:empty)::before{animation:none}}
-.cands{background:#fff;border-radius:10px;padding:12px 14px;margin:10px auto;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.cands button{display:block;width:100%;text-align:left;background:#eef2f8;color:#222;
+.cands{background:var(--surface);border-radius:10px;padding:12px 14px;margin:10px auto;box-shadow:0 1px 3px var(--shadow-s)}
+.cands button{display:block;width:100%;text-align:left;background:var(--surface-4);color:var(--text);
   font-weight:400;margin:6px 0;padding:8px 12px}
-.cands button:hover{background:#dde6f2}
+.cands button:hover{background:var(--hover)}
 
 /* 結果表示 */
 #out{scroll-margin-top:10px}
 /* 見出し: 左バーの代わりにロゴマークの山アイコン */
-h2{color:var(--night);font-size:1.08em;margin:20px 0 8px;display:flex;align-items:flex-start;gap:8px}
+h2{color:var(--head);font-size:1.08em;margin:20px 0 8px;display:flex;align-items:flex-start;gap:8px}
 h2::before{content:"";flex:none;width:20px;height:14px;margin-top:.32em;
-  background:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2076%2052'%3E%3Cpath%20d='M4%2048L28%208%2040%2027%2050%2014%2072%2048Z'%20fill='none'%20stroke='%235b87c5'%20stroke-width='7'%20stroke-linejoin='round'/%3E%3Cpath%20d='M21.5%2019L28%208l6.5%2011-3.3-3.4-3.2%204-3.2-4Z'%20fill='%235b87c5'/%3E%3Cpath%20d='M45.8%2020.5L50%2014l4.2%206.5-2.2-2.3-2%202.6-2-2.6Z'%20fill='%235b87c5'/%3E%3C/svg%3E") no-repeat center/contain}
-ul.meta{margin:0 0 8px;padding-left:1.2em;color:#555;font-size:.9em}
+  background:var(--skyico) no-repeat center/contain}
+ul.meta{margin:0 0 8px;padding-left:1.2em;color:var(--text-3);font-size:.9em}
 .tbl{max-height:75vh;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin:6px 0 4px}
 /* 横スクロールの手がかり。表は 375px 幅で 768〜941px あり、実測で 55〜63% が画面外に出る
    (このアプリの要である稜線風・降水量がそこに入る)。「まだ右に続く」が分からないと、
    そもそもスクロールされない。
    ★ 背景グラデーション方式(background-attachment:local の定番)はここでは効かない。
-     td が不透明(background:#fff / 偶数行 #eef1f6)なので、コンテナの背景はセルに隠れる。
+     td が不透明(--surface / 偶数行 --surface-2)なので、コンテナの背景はセルに隠れる。
      そこで mask で描画結果ごと右端をフェードさせる。付け外しは markScrollables()。 */
 .tbl.xscroll{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);
   mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent)}
@@ -309,29 +312,29 @@ table{border-collapse:collapse;white-space:nowrap;width:100%}
      tr:nth-child(even) で当たっている。thead を入れるとデータ行の番号が1つずれて
      縞が反転する。さらに下の .wk-sep は縞と詳細度をわざと揃えて source 順で勝たせてあり、
      その均衡も崩れる。属性セレクタなら構造を変えずに同じ結果になる。 */
-th[scope=col]{background:var(--slate);color:#fff;padding:6px 9px;font-weight:600;font-size:.9em;position:sticky;top:0;z-index:2}
-td,th[scope=row]{padding:5px 9px;border-bottom:1px solid var(--line);text-align:center;background:#fff;
+th[scope=col]{background:var(--slate);color:var(--on-night);padding:6px 9px;font-weight:600;font-size:.9em;position:sticky;top:0;z-index:2}
+td,th[scope=row]{padding:5px 9px;border-bottom:1px solid var(--line);text-align:center;background:var(--surface);
   font-weight:400;font-size:1em}
-tr:nth-child(even) td,tr:nth-child(even) th[scope=row]{background:#eef1f6}
+tr:nth-child(even) td,tr:nth-child(even) th[scope=row]{background:var(--surface-2)}
 /* スマホ対策: ヘッダ行(上)と先頭列(左=日付/時刻)をスクロール時に固定 */
 th[scope=col]:first-child{left:0;z-index:3}
-td:first-child,th[scope=row]{position:sticky;left:0;z-index:1;background:#fff}
-tr:nth-child(even) td:first-child,tr:nth-child(even) th[scope=row]{background:#eef1f6}
+td:first-child,th[scope=row]{position:sticky;left:0;z-index:1;background:var(--surface)}
+tr:nth-child(even) td:first-child,tr:nth-child(even) th[scope=row]{background:var(--surface-2)}
 th[scope=col]:first-child,td:first-child,th[scope=row]{box-shadow:inset -1px 0 0 var(--line)}
 .b{display:inline-block;min-width:2.6em;padding:1px 7px;border-radius:10px;font-weight:700;font-size:.92em}
-.b-a{background:#d8efe1;color:#1c5b3f}.b-b{background:#fdeec9;color:#7b5e00}.b-c{background:#f9d9cf;color:#a03415}
-.v-ex{color:#1c5b3f;font-weight:700}.v-ok{color:#2d6a4f}.v-so{color:#7b5e00}.v-ng{color:#a03415}
-.sat{color:#1857a4;font-weight:600}.sun{color:#c0392b;font-weight:600}
+.b-a{background:var(--ok-bg);color:var(--ok-fg)}.b-b{background:var(--warn-bg);color:var(--warn-fg)}.b-c{background:var(--bad-bg);color:var(--bad-fg)}
+.v-ex{color:var(--ok-fg);font-weight:700}.v-ok{color:var(--v-ok)}.v-so{color:var(--warn-fg)}.v-ng{color:var(--bad-fg)}
+.sat{color:var(--sat);font-weight:600}.sun{color:var(--sun);font-weight:600}
 .ew{display:inline-block;margin-left:4px;padding:1px 6px;border-radius:8px;
-  background:#f9d9cf;color:#a03415;font-weight:700;font-size:.85em;
+  background:var(--bad-bg);color:var(--bad-fg);font-weight:700;font-size:.85em;
   white-space:nowrap;vertical-align:middle}
 .ew .ewi{font-size:1.3em;line-height:1;vertical-align:-.15em;margin-right:1px}
 /* 指数の降格理由・濡れ注意・雨雪の別。数値の読み取りを邪魔しないよう小さく下段に置く。
    色は .ew と同系にして「注意を促す情報」であることを揃える。 */
-.dr{display:block;font-size:.76em;color:#a03415;font-weight:700;margin-top:2px;line-height:1.3;white-space:nowrap}
+.dr{display:block;font-size:.76em;color:var(--bad-fg);font-weight:700;margin-top:2px;line-height:1.3;white-space:nowrap}
 /* その日を冬山・残雪期の基準で判定したことを示す印。夏側には付けない(全日に付くと区別にならない) */
-.wmode{display:inline-block;margin-left:5px;padding:0 5px;border-radius:8px;background:#dde9f5;
-  color:#23477a;font-size:.76em;font-weight:700;vertical-align:middle;white-space:nowrap}
+.wmode{display:inline-block;margin-left:5px;padding:0 5px;border-radius:8px;background:var(--info-bg);
+  color:var(--info-fg);font-size:.76em;font-weight:700;vertical-align:middle;white-space:nowrap}
 /* 稜線風の degraded 印(900hPa/800hPa欠測)。find の .altm と同じ「控えめだが見える」トーン。
    ★ 色は --muted から外さないこと。以前は #8a94a8 だったが、表の偶数行 #eef1f6 の上では
      2.70:1 しかなく AA(4.5:1)に届いていなかった。この印は「GSM 期間は風を弱めに見積もる」
@@ -341,15 +344,15 @@ th[scope=col]:first-child,td:first-child,th[scope=row]{box-shadow:inset -1px 0 0
    .dgd と同じグレー系に寄せ、「データの素性」の側だと分かるトーンにする。
    ★ 文言に「粗い」を使わない: 印もこの下の区切り行も、事実(どのモデル由来か)を伝えるもので
      予報の良し悪しではない。「粗い」は精度が低い・当てにならないという印象を余計に与える。 */
-.mdlm{display:inline-block;margin-left:4px;padding:0 4px;border-radius:8px;background:#eceff4;
+.mdlm{display:inline-block;margin-left:4px;padding:0 4px;border-radius:8px;background:var(--chip-bg);
   color:var(--muted);font-size:.74em;font-weight:700;vertical-align:middle;white-space:nowrap}
 /* 週間表の中で「ここから予報が粗くなる」ことを示す区切り行。行そのものは押せない。
    セレクタに tr と :first-child を足してあるのは詳細度をそろえるため。上の縞
    `tr:nth-child(even) td` / `tr:nth-child(even) td:first-child` に対して `.wk-sep td` だけ
    だと詳細度が足りず、区切り行が偶数番目に来た日だけ縞に負けて背景が変わる
    (同点まで上げたうえで、後ろに書いてあることで勝たせている)。 */
-tr.wk-sep td,tr.wk-sep td:first-child{border-top:2px solid #b9c2d0;background:#f6f8fb;
-  color:#5b6472;font-size:.78em;font-weight:700;padding:3px 8px;letter-spacing:.02em;
+tr.wk-sep td,tr.wk-sep td:first-child{border-top:2px solid var(--sep-line);background:var(--sep-bg);
+  color:var(--sep-fg);font-size:.78em;font-weight:700;padding:3px 8px;letter-spacing:.02em;
   /* ★ 中央寄せにしない。この行は表の全幅(colspan)なので、スマホのように表が画面より広いと
      中央＝画面の外になり、横スクロールしないと文言が読めない。左端なら初期表示で見える
      (スクロールした先でも見え続けるのは下の .wk-sepin 側で倒している)。
@@ -380,14 +383,14 @@ tr.wk-sep.wk-sep-top td{border-top:0}
    文字色はアイコンより濃い同系色にして白/薄灰の行背景でもコントラストを確保する */
 .lt{display:inline-flex;align-items:center;gap:3px;font-weight:600;white-space:nowrap}
 .lt svg{width:1.9em;height:1.15em;flex:none}
-.lt-0{color:#7b6a00}.lt-1{color:#8a5a00}.lt-2{color:#8f4212}.lt-3{color:#a03415}
+.lt-0{color:var(--lt-0)}.lt-1{color:var(--lt-1)}.lt-2{color:var(--lt-2)}.lt-3{color:var(--lt-3)}
 .ltnum{display:block;font-size:.76em;color:var(--muted);margin-top:2px;line-height:1.3;cursor:help}
 /* 景色(眺望)列: 発雷リスクと同じ2段構成。上段=アイコン+記号+ラベル / 下段=視程を小さく併記。
    視程は単独の列にはせず、景色を読むための補足情報として置く。svg は 1.5em=21px */
 .vw{display:inline-flex;align-items:center;gap:3px;font-weight:600;white-space:nowrap}
 .vw svg{width:1.5em;height:1.5em;flex:none}
 .vwnum{display:block;font-size:.76em;color:var(--muted);margin-top:2px;line-height:1.3}
-.ewnote{background:#f9d9cf;border-left:5px solid #a03415;padding:8px 12px;
+.ewnote{background:var(--bad-bg);border-left:5px solid var(--bad-fg);padding:8px 12px;
   border-radius:0 6px 6px 0;margin:6px 0 14px;font-size:.9em}
 /* 凡例末尾の「詳しく」リンク。理由・実測値は解説ページ側に置き、ここは短い事実だけにする */
 .ewnote a.more,.notice a.more{color:inherit;text-decoration:underline;white-space:nowrap}
@@ -396,8 +399,8 @@ tr.wk-sep.wk-sep-top td{border-top:0}
 .notice.leg{margin:6px 0 14px;padding:8px 12px}
 /* 末尾の免責。ページで最も重要な注意なので、参考情報の凡例と同じ強さで置かない。
    赤ベタは使わない(指数C・⚠バッジの色と競合させると両方が弱まる) */
-.notice.strong{border-left-width:7px;border-left-color:var(--night);color:#26324a;
-  font-weight:600;background:#e6ecf6}
+.notice.strong{border-left-width:7px;border-left-color:var(--head);color:var(--head);
+  font-weight:600;background:var(--surface-3)}
 /* 予報の確度 ◎/○/△。指数(A/B/C)の隣に置くので、色は付けず記号だけで示す。
    色を付けると「確度が低い=危険」と読まれるが、確度は危険度ではなくモデルの揃い方 */
 .agr{text-align:center;font-weight:600;white-space:nowrap}
@@ -405,45 +408,45 @@ tr.wk-sep.wk-sep-top td{border-top:0}
    ★ 説明を畳むのは見た目の都合ではない。実測(375px)で週間表 442px に対し凡例が 321px あり、
      データとほぼ同量の説明が常時ぶら下がっていた。危険情報(⚠夕方/⚠夜間)だけは畳まない。 */
 .agrdet,.legend{margin:6px 0 14px}
-.agrdet summary,.legend summary{cursor:pointer;padding:8px 12px;font-weight:600;color:#44506b;
-  background:#edf2f9;border-left:5px solid var(--slate);border-radius:0 6px 6px 0;
+.agrdet summary,.legend summary{cursor:pointer;padding:8px 12px;font-weight:600;color:var(--head-2);
+  background:var(--surface-3);border-left:5px solid var(--rule);border-radius:0 6px 6px 0;
   font-size:.9em;user-select:none}
 .agrdet[open] summary{border-radius:0 6px 0 0;margin-bottom:6px}
-.agrdet .ewnote{background:#edf2f9;border-left-color:var(--slate);color:#44506b}
+.agrdet .ewnote{background:var(--surface-3);border-left-color:var(--rule);color:var(--head-2)}
 .legend[open] summary{border-radius:0 6px 0 0}
 /* 折りたたみの中は素のテキストにする。開いた時点で「これは説明」と分かっているので、
    色枠を重ねても視覚ノイズが増えるだけ(赤は危険=指数C・⚠ の意味に限って使う) */
-.legend .tbody{padding:9px 12px 10px;background:#f7f9fc;border-left:5px solid var(--slate);
+.legend .tbody{padding:9px 12px 10px;background:var(--surface-soft);border-left:5px solid var(--rule);
   border-radius:0 0 6px 0;font-size:.9em;line-height:1.65}
 .legend .tbody p{margin:0 0 8px}
 .legend .tbody p:last-child{margin:0}
 .legend .tbody a.more{color:var(--link);text-decoration:underline;white-space:nowrap}
 /* オフライン(保存済み予報)であることの明示。数字は取得時のままなので、
    予報表のどれよりも先に目に入る強さにしておく */
-.offnote{background:#fdeec2;border-left:5px solid #b8791a;color:#5c4310;padding:10px 12px;
+.offnote{background:var(--off-bg);border-left:5px solid var(--off-line);color:var(--off-fg);padding:10px 12px;
   border-radius:0 6px 6px 0;margin:0 0 14px;font-size:.92em;line-height:1.6}
 /* 保存から1日以上経った予報。黄色のままだと「少し古い」と同じ強さで読まれるので警告色に上げる */
-.offnote.offstale{background:#f9d9cf;border-left-color:#a03415;color:#5c1e0d}
+.offnote.offstale{background:var(--bad-bg);border-left-color:var(--bad-fg);color:var(--stale-fg)}
 /* 端末内への保存と「圏外用に固定」 */
 .snaprow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;
-  margin:0 0 14px;font-size:.85em;color:#555}
-.snaprow em{font-style:normal;color:#a03415}
+  margin:0 0 14px;font-size:.85em;color:var(--text-3)}
+.snaprow em{font-style:normal;color:var(--bad-fg)}
 .snapkeep{padding:6px 12px;font-size:.95em;border-radius:8px;
-  background:#fff;color:var(--link);border:1.5px solid var(--field)}
-.snapkeep:hover{background:#eef2f8}
+  background:var(--surface);color:var(--link);border:1.5px solid var(--field)}
+.snapkeep:hover{background:var(--surface-4)}
 .snapkeep[aria-pressed="true"]{background:var(--sel);border-color:var(--sky)}
 /* 10日間の見通し: 8日目以降の行と開閉ボタン。
    tr に display を指定する作者スタイルは無いが、意図を残すため [hidden] を明示する */
 .wk-more[hidden]{display:none}
 .wk-toggle{width:100%;padding:9px;font-size:.92em;font-weight:600;border-radius:10px;
-  margin:2px 0 12px;background:#fff;color:var(--link);border:1.5px solid var(--field)}
-.wk-toggle:hover{background:#eef2f8}
+  margin:2px 0 12px;background:var(--surface);color:var(--link);border:1.5px solid var(--field)}
+.wk-toggle:hover{background:var(--surface-4)}
 .wk-toggle::after{content:"▾";margin-left:6px;display:inline-block;transition:transform .15s}
 .wk-toggle[aria-expanded="true"]::after{transform:rotate(180deg)}
 /* 見通し表の行→詳細予報へのジャンプ。行をタップ/クリックすると該当日の詳細に移動する */
 .wk-row{cursor:pointer}
 .wk-row:hover td,.wk-row:hover th[scope=row],
-.wk-row:has(:focus-visible) td,.wk-row:has(:focus-visible) th[scope=row]{background:#dde6f2}
+.wk-row:has(:focus-visible) td,.wk-row:has(:focus-visible) th[scope=row]{background:var(--hover)}
 .wk-row:has(:focus-visible){outline:2px solid var(--link);outline-offset:-2px}
 /* 日付セルの中の「詳細へ」ボタン。行そのものに role="button" を付けると tr の役割(行)を
    上書きして表の構造ごと消えるので、本物の button を1つ置いてそこに名前を持たせる。
@@ -455,10 +458,10 @@ tr.wk-sep.wk-sep-top td{border-top:0}
    ボタン自身の輪郭は :has() と無関係に必ず出す */
 .wk-jump:focus-visible{outline:2px solid var(--link);outline-offset:2px;border-radius:3px}
 .detail-day{scroll-margin-top:10px}
-@keyframes detailFlash{0%,100%{background:transparent}30%,70%{background:#fdeec2}}
+@keyframes detailFlash{0%,100%{background:transparent}30%,70%{background:var(--flash)}}
 .detail-flash{animation:detailFlash 1.4s ease-in-out}
 @media(prefers-reduced-motion:reduce){.detail-flash{animation:none}}
-.notice{background:#edf2f9;border-left:5px solid var(--slate);color:#44506b;padding:10px 12px;
+.notice{background:var(--surface-3);border-left:5px solid var(--rule);color:var(--head-2);padding:10px 12px;
   border-radius:0 6px 6px 0;margin:18px 0;font-size:.9em}
 /* ★ --muted を使う。以前の #888 はページ背景 #f4f6f9 の上で 3.27:1 しかなかった */
 footer{color:var(--muted);font-size:.82em;margin-top:8px;text-align:center}
@@ -469,12 +472,12 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 #totop .mk{width:20px;height:14px;display:block;margin:0 auto}
 #totop{position:fixed;right:16px;bottom:max(16px,env(safe-area-inset-bottom));z-index:30;
   width:46px;height:46px;border-radius:50%;padding:0;font-size:16px;line-height:1;
-  background:rgba(244,246,249,.4);color:var(--slate);border:1px solid rgba(72,96,140,.35);
+  background:var(--glass);color:var(--head);border:1px solid var(--glass-line);
   backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
-  box-shadow:0 2px 8px rgba(30,45,74,.15);
+  box-shadow:0 2px 8px var(--shadow);
   opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity .25s,transform .25s}
 #totop.show{opacity:1;transform:none;pointer-events:auto}
-#totop:hover{background:rgba(220,234,249,.7)}
+#totop:hover{background:var(--glass-hover)}
 
 @media(min-width:700px){
   h1{font-size:2.7em}
@@ -730,7 +733,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <div class="mtdiv" aria-hidden="true"><svg class="mk"><use href="#mkico"/></svg></div>
 
 <footer>
-<p>PeakWeather Ver.2.46β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.47β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 

@@ -6,7 +6,37 @@
 <title>天気の良い山をさがす — PeakWeather</title>
 <meta name="description" content="エリアと日付を指定すると、その日にコンディションの良さそうな山を晴天度でランキング表示。気になる山をタップするとその山頂・稜線の詳しい気象予報へ。">
 <link rel="icon" type="image/png" href="../icons/favicon-32.png">
-<meta name="theme-color" content="#1e2d4a">
+<!-- ブラウザのUI(アドレスバー)の色も配色に合わせる -->
+<meta name="theme-color" media="(prefers-color-scheme:light)" content="#1e2d4a">
+<meta name="theme-color" media="(prefers-color-scheme:dark)" content="#101725">
+<!-- 配色(明るい配色と、端末が夜モードのときの暗い配色)。色の値はここが唯一の置き場で、
+     各ページの <style> は var(--◯◯) しか書かない。?v= は theme.css の --pw-theme-ver と
+     同じ値にする(古い版がキャッシュに残ると「画面は新しいのに配色だけ旧版」になる)。
+     一致は scripts/check_contrast.py が機械的に見ている。 -->
+<link rel="stylesheet" href="../theme.css?v=247">
+<!-- このファイルは scripts/gen_find.py により index.html から自動生成されます。直接編集しないでください
+     (直接編集すると次回の再生成で消えます。修正は必ず scripts/gen_find.py 側に入れること) -->
+<script src="../gate.js?v=2026b"></script>
+<!-- 登山指数 A/B/C の判定ロジック。index.html と共有する唯一の実装。
+     ?v= は logic.js の PW_LOGIC_VER と同じ値にする(古い版がキャッシュに残ると
+     「画面は新しいのに判定だけ旧版」という気づけない状態になる)。 -->
+<script src="../logic.js?v=235"></script>
+<!-- 天気の文言・注記の時間帯表現。index.html と共有する唯一の実装。
+     ?v= は display.js の PW_DISPLAY_VER と同じ値にする。 -->
+<script src="../display.js?v=246"></script>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-B4FYN1EJ2S');
+</script>
+<style> は var(--◯◯) しか書かない。?v= は theme.css の --pw-theme-ver と
+     同じ値にする(古い版がキャッシュに残ると「画面は新しいのに配色だけ旧版」になる)。
+     一致は scripts/check_contrast.py が機械的に見ている。 -->
+<link rel="stylesheet" href="../theme.css?v=247">
 <!-- このファイルは scripts/gen_find.py により index.html から自動生成されます。直接編集しないでください
      (直接編集すると次回の再生成で消えます。修正は必ず scripts/gen_find.py 側に入れること) -->
 <script src="../gate.js?v=2026b"></script>
@@ -31,41 +61,45 @@
    ページ背景 5.7:1 でいずれも WCAG AA(4.5:1) を満たす。
    以前の #8a94a8 は 3.05:1、footer の #888 は 3.27:1 で未達だった
    (順位・減点の内訳・日照の * 印は実データなので、薄すぎると読めない) */
-:root{--muted:#5a6270;
-  --night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
-  --btn:#4276b5;--bg:#f4f6f9;--line:#dee4ee;--field:#c9d2e0}
+/* ★ 色の値をここに書かないこと。全部 theme.css のトークンを var() で参照する。
+   ここに :root{--night:…} を書き戻すと theme.css より後に来るため上書きになり、
+   **暗い配色が丸ごと効かなくなる**(明るい配色では正常に見えるので気づけない)。 */
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:#222;
+body{margin:0;background:var(--bg);color:var(--text);
   font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
   font-size:14px;line-height:1.6}
 
-header{background:var(--night);color:#fff;text-align:center;padding:30px 20px 0;position:relative}
-header .back{position:absolute;left:14px;top:12px;color:#c9d3e5;font-size:.82em;text-decoration:none}
-header .back:hover{color:#fff}
+header{background:var(--night);color:var(--on-night);text-align:center;padding:30px 20px 0;position:relative}
+header .back{position:absolute;left:14px;top:12px;color:var(--on-night-2);font-size:.82em;text-decoration:none}
+header .back:hover{color:var(--on-night)}
 header h1{margin:0;font-size:1.45em;font-weight:800;letter-spacing:.04em}
-header .sub{margin:8px 0 0;font-size:.85em;color:#c9d3e5}
+header .sub{margin:8px 0 0;font-size:.85em;color:var(--on-night-2)}
 .ridge{display:block;width:100%;height:44px;margin-top:18px}
+/* 山稜の切り抜きは「ヘッダの下の地面」なので、地の色に追従させる。
+   SVG の fill="#f4f6f9" は theme.css が読めなかったときの控えで、通常はこちらが勝つ
+   (これが無いと、暗い配色でヘッダの下に明るい帯が1本残る)。 */
+.ridge path{fill:var(--bg)}
 
 main{max-width:860px;margin:0 auto;padding:18px 14px 8px}
 
-.searchcard{background:#fff;border-radius:14px;padding:14px 16px;
-  box-shadow:0 2px 12px rgba(30,45,74,.10)}
+.searchcard{background:var(--surface);border-radius:14px;padding:14px 16px;
+  box-shadow:0 2px 12px var(--shadow)}
 .searchcard .row{display:flex;flex-wrap:wrap;gap:12px}
 /* min-width:0 は flex 子要素のデフォルト(auto)を無効にして親幅を尊重させる */
-.searchcard label{display:flex;flex-direction:column;gap:5px;font-size:.82em;font-weight:600;color:#556;flex:1 1 150px;min-width:0}
+.searchcard label{display:flex;flex-direction:column;gap:5px;font-size:.82em;font-weight:600;color:var(--muted);flex:1 1 150px;min-width:0}
 .searchcard select,.searchcard input{font-size:16px;padding:11px 12px;border:1.5px solid var(--field);border-radius:10px;
-  background:#fff;width:100%;max-width:100%;min-width:0;font-family:inherit}
+  background:var(--surface);width:100%;max-width:100%;min-width:0;font-family:inherit}
 .searchcard select:focus,.searchcard input:focus{outline:2px solid var(--night);outline-offset:1px}
-.searchcard .go{margin-top:12px;width:100%;background:var(--btn);color:#fff;border:0;border-radius:10px;
+.searchcard .go{margin-top:12px;width:100%;background:var(--btn);color:var(--on-night);border:0;border-radius:10px;
   padding:13px;font-size:1.02em;font-weight:700;font-family:inherit;cursor:pointer}
-.searchcard .go:hover{background:#3768a3}
-.searchcard .go:disabled{background:#9fb2cd;cursor:default}
-.hint{margin:10px 0 0;font-size:.8em;color:#5b6b8a}
+.searchcard .go:hover{background:var(--btn)}
+.searchcard .go:disabled{background:var(--btn-off);cursor:default}
+.hint{margin:10px 0 0;font-size:.8em;color:var(--muted)}
 
 #status{margin:14px 0 0;font-size:.9em;font-weight:600;min-height:1.2em}
-#status.err{color:#b3261e}
+#status.err{color:var(--bad-fg)}
 
-.notice{background:#edf2f9;border-left:5px solid var(--slate);color:#44506b;padding:10px 12px;
+.notice{background:var(--surface-3);border-left:5px solid var(--rule);color:var(--head-2);padding:10px 12px;
   border-radius:0 6px 6px 0;margin:16px 0;font-size:.86em}
 .notice a{color:var(--link)}
 
@@ -82,12 +116,12 @@ main{max-width:860px;margin:0 auto;padding:18px 14px 8px}
 .tbl.xscroll.at-end{-webkit-mask-image:none;mask-image:none}
 table{border-collapse:collapse;width:100%}
 /* ヘッダはページ縦スクロール時に画面上端に固定し、どの列を見ているか分かるようにする(index.htmlと同じ挙動) */
-th{background:var(--slate);color:#fff;padding:6px 8px;font-weight:600;font-size:.86em;white-space:nowrap;position:sticky;top:0;z-index:2}
-td{padding:8px;border-bottom:1px solid var(--line);text-align:center;background:#fff;white-space:nowrap}
+th{background:var(--slate);color:var(--on-night);padding:6px 8px;font-weight:600;font-size:.86em;white-space:nowrap;position:sticky;top:0;z-index:2}
+td{padding:8px;border-bottom:1px solid var(--line);text-align:center;background:var(--surface);white-space:nowrap}
 /* 数値だけの列(日照・気温・稜線風・降水確率・降水量)は右揃え+tabular-numsで桁を揃える。
    見出し(th)も同じ寄せにして、値と見出しがずれないようにする。 */
 th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
-tr:nth-child(even) td{background:#eef1f6}
+tr:nth-child(even) td{background:var(--surface-2)}
 /* 山名列: max-width を超える極端に長い山名(カムイエクウチカウシヤマ 等)は改行を許容する。
    word-break:keep-all を外し、overflow-wrap:anywhere で任意位置で折り返せるようにする。
    短い山名は max-width に収まるため改行されない。td共通の white-space:nowrap は normal に戻す。 */
@@ -102,20 +136,20 @@ td.nm .scb{font-weight:800;font-size:1.05em;font-variant-numeric:tabular-nums;fl
    詳細ページと同じ意味の値だと分かるようにする。 */
 .abc{display:inline-block;min-width:1.5em;text-align:center;border-radius:4px;
      padding:1px 4px;font-weight:800;font-size:.9em}
-.abc-a{background:#d8efe1;color:#1c5b3f}
-.abc-b{background:#fdeec9;color:#7b5e00}
-.abc-c{background:#f9d9cf;color:#a03415}
-.abcr{display:block;font-size:.72em;color:#a03415;font-weight:700;margin-top:2px;white-space:nowrap}
+.abc-a{background:var(--ok-bg);color:var(--ok-fg)}
+.abc-b{background:var(--warn-bg);color:var(--warn-fg)}
+.abc-c{background:var(--bad-bg);color:var(--bad-fg)}
+.abcr{display:block;font-size:.72em;color:var(--bad-fg);font-weight:700;margin-top:2px;white-space:nowrap}
 /* 一覧の初期表示を上位FIND_HEAD件に畳む開閉ボタン(index.htmlのwk-toggleと同じ考え方) */
 .find-more[hidden]{display:none}
 .find-toggle{width:100%;padding:9px;font-size:.92em;font-weight:600;border-radius:10px;
-  margin:2px 0 14px;background:#fff;color:var(--link);border:1.5px solid var(--line)}
-.find-toggle:hover{background:#eef2f8}
+  margin:2px 0 14px;background:var(--surface);color:var(--link);border:1.5px solid var(--line)}
+.find-toggle:hover{background:var(--surface-4)}
 .find-toggle::after{content:"▾";margin-left:6px;display:inline-block;transition:transform .15s}
 .find-toggle[aria-expanded="true"]::after{transform:rotate(180deg)}
-td.nm .scb.rank-a{color:#1f7a34}
-td.nm .scb.rank-b{color:#b26b00}
-td.nm .scb.rank-c{color:#b3261e}
+td.nm .scb.rank-a{color:var(--ok-fg)}
+td.nm .scb.rank-b{color:var(--warn-fg)}
+td.nm .scb.rank-c{color:var(--bad-fg)}
 /* スマホで横スクロール時にどの山を見ているか分かるよう、ランク列(#)と山名列を左端に固定する
    (index.htmlの日付列 sticky-left と同じ考え方)。ランク列を固定幅にして山名列の left オフセット
    を予測可能にした。角の交差セル(th)は元々 z-index:2、tdは z-index:1 で thの下に潜る。 */
@@ -127,12 +161,12 @@ td.rank,td.nm{z-index:1}
    横スクロール時に天気以降の列ヘッダが山名/ランク列の下に潜るようにする(index.htmlと同方式)。 */
 th:first-child,th:nth-child(2){z-index:3}
 /* 偶数行の背景色が透けないよう明示 (sticky で親の背景が引き継がれないため) */
-tr:nth-child(even) td.rank,tr:nth-child(even) td.nm{background:#eef1f6}
+tr:nth-child(even) td.rank,tr:nth-child(even) td.nm{background:var(--surface-2)}
 /* 指数Cの行は背景色で警告する(スコア順位に関わらず要注意〜不適であることに気づけるように)。
    td個別に背景を敷く tr:nth-child(even) td / sticky列の背景指定と同じ specificity になるよう
    td.rank/td.nm も明示し、上記2つのルールより後方に置くことで確実に上書きする */
-tr.row-c td{background:#fbe0da}
-tr.row-c td.rank,tr.row-c td.nm{background:#fbe0da}
+tr.row-c td{background:var(--bad-bg)}
+tr.row-c td.rank,tr.row-c td.nm{background:var(--bad-bg)}
 /* 山名列の右端に境界線 (横スクロール時に固定範囲の右端が視認しやすい) */
 th:nth-child(2),td.nm{box-shadow:inset -1px 0 0 var(--line)}
 td.nm a{color:var(--link);font-weight:700;text-decoration:none}
@@ -143,41 +177,41 @@ td.nm small{display:block;color:var(--muted);font-size:.82em;font-weight:400}
 /* ★ 縞の上でも AA(4.5:1) を保つこと。以前の #a2708a は白 4.02 / 縞 3.55 で未達だった。
    --muted(県・標高)より一段弱く見えることが区別の要なので、--muted には潰さず同系を暗くする
    (#8f5a78 は 白 5.38 / 縞 4.76、--muted の 6.15 / 5.43 より弱い) */
-td.nm small.brk{color:#8f5a78;font-size:.78em;letter-spacing:.02em}
+td.nm small.brk{color:var(--muted-2);font-size:.78em;letter-spacing:.02em}
 /* 行全体をクリック可能に(index.htmlの見通し表の行ジャンプと挙動を統一)。
    tr自体にはtabindexを付けない: 山名の<a>が既にキーボードでフォーカスできる本物のリンクで、
    行にも付けると同じ行でTab停止が2回になってしまう(マウス/タッチだけの利便性強化)。
    sticky列(td.rank/td.nm)は個別の背景色指定があるため明示的に上書きする */
 tr[data-href]{cursor:pointer}
-tr[data-href]:hover td,tr[data-href]:hover td.rank,tr[data-href]:hover td.nm{background:#dde6f2}
+tr[data-href]:hover td,tr[data-href]:hover td.rank,tr[data-href]:hover td.nm{background:var(--hover)}
 /* 結果ブロックの見出しと注記 (メイン表 / 足切り表を分ける) */
-h3.results-h{margin:18px 0 4px;font-size:1em;color:var(--night);font-weight:700}
-h3.results-h.caution{color:#b26b00}
-h3.results-h .rcount{color:#556;font-weight:500;font-size:.9em;margin-left:6px}
-.rnote{margin:4px 0 0;font-size:.82em;color:#5b6b8a}
-.rnote.caution{color:#b26b00;background:#fff8e6;border-left:4px solid #b26b00;padding:6px 10px;border-radius:0 4px 4px 0}
+h3.results-h{margin:18px 0 4px;font-size:1em;color:var(--head);font-weight:700}
+h3.results-h.caution{color:var(--warn-fg)}
+h3.results-h .rcount{color:var(--muted);font-weight:500;font-size:.9em;margin-left:6px}
+.rnote{margin:4px 0 0;font-size:.82em;color:var(--muted)}
+.rnote.caution{color:var(--warn-fg);background:var(--warn-bg);border-left:4px solid var(--off-line);padding:6px 10px;border-radius:0 4px 4px 0}
 .rnote a{color:var(--link)}
 /* 表の下に置く「各列の意味」凡例。ユーザーが「気温が2つあるが説明がない」等で
    迷わないよう、列ごとの意味と単位・対象時間帯を短い1行で列挙する。
    ★ 既定で畳む。実測(375px)でこの凡例は 631px あり、表(509px)より背が高かった。
      毎回読むものではないので、開きたい人だけ開く形にする(index.html の「表の見方」と同じ)。 */
-.legend{background:#fff;border:1px solid var(--line);border-radius:8px;margin:14px 0 6px;font-size:.85em;color:#44506b}
-.legend>summary{cursor:pointer;padding:10px 14px;font-size:.95em;color:var(--night);
+.legend{background:var(--surface);border:1px solid var(--line);border-radius:8px;margin:14px 0 6px;font-size:.85em;color:var(--head-2)}
+.legend>summary{cursor:pointer;padding:10px 14px;font-size:.95em;color:var(--head);
   font-weight:700;user-select:none}
 .legend .tbody{padding:0 14px 12px}
 .legend dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 10px}
-.legend dt{font-weight:700;color:var(--night);white-space:nowrap}
+.legend dt{font-weight:700;color:var(--head);white-space:nowrap}
 .legend dd{margin:0}
 .legend .rk{display:inline-block;padding:1px 7px;border-radius:10px;font-weight:700;font-size:.85em;margin-right:4px}
-.legend .rk-a{background:#d8efe1;color:#1c5b3f}
-.legend .rk-b{background:#fdeec9;color:#7b5e00}
-.legend .rk-c{background:#f9d9cf;color:#a03415}
+.legend .rk-a{background:var(--ok-bg);color:var(--ok-fg)}
+.legend .rk-b{background:var(--warn-bg);color:var(--warn-fg)}
+.legend .rk-c{background:var(--bad-bg);color:var(--bad-fg)}
 /* 足切り表: 見出し帯をオレンジ系にして通常表と視覚的に差別化 */
-.tbl.caution table th{background:#b26b00}
-td.reason{color:#b26b00;font-weight:700;font-size:.85em;white-space:nowrap;text-align:left}
+.tbl.caution table th{background:var(--off-line)}
+td.reason{color:var(--warn-fg);font-weight:700;font-size:.85em;white-space:nowrap;text-align:left}
 /* 天気アイコン: index.html と同じSVG(#wx-sun 等)を参照。emoji のOS依存表示ズレを回避 */
 .wxico{width:1.9em;height:1.9em;display:block;margin:0 auto 2px}
-.wxlbl{color:#556;font-size:.82em}
+.wxlbl{color:var(--muted);font-size:.82em}
 /* 代表天気から降格した短時間の降水の注記 (index.html の .wxnote と同趣旨。表幅が狭いので一段小さく) */
 .wxnote{display:block;font-size:.72em;color:var(--muted);margin-top:2px;line-height:1.25}
 /* 日照が気象庁モデル外(別モデルで補完)であることの印。数値の読み取りを邪魔しない小さな * にする */
@@ -190,10 +224,10 @@ footer a{color:var(--link)}
 
 #totop{position:fixed;right:16px;bottom:max(16px,env(safe-area-inset-bottom));z-index:30;
   opacity:0;transform:translateX(100%);transition:all .2s;pointer-events:none;
-  background:rgba(220,234,249,.5);color:var(--night);border:0;border-radius:100px;
+  background:var(--glass);color:var(--head);border:0;border-radius:100px;
   padding:10px;cursor:pointer;font-weight:600;font-size:.82em}
 #totop.show{opacity:1;transform:none;pointer-events:auto}
-#totop:hover{background:rgba(220,234,249,.7)}
+#totop:hover{background:var(--glass-hover)}
 #totop .mk{width:20px;height:14px;display:block;margin:0 auto}
 
 /* 「動きを減らす」設定の端末では動きを止める。自動で流れる画面や滑り込む要素は、
@@ -327,12 +361,12 @@ const scrollBehavior=()=>matchMedia("(prefers-reduced-motion:reduce)").matches?"
   // 計算できないので、無言で「指数の列だけ空の表」を出させない。
   if(typeof pwGuardPage!=="function"||typeof blockIndex!=="function"){
     document.querySelector("main").innerHTML=
-      '<div style="max-width:560px;margin:26px auto;padding:22px 18px;background:#fff;'+
-      'border:1px solid #dee4ee;border-radius:12px;text-align:center;line-height:1.8">'+
-      '<p style="margin:0 0 12px;color:#44506b">ページの読み込みに失敗しました。'+
+      '<div style="max-width:560px;margin:26px auto;padding:22px 18px;background:var(--surface,#fff);'+
+      'border:1px solid var(--line,#dee4ee);border-radius:12px;text-align:center;line-height:1.8">'+
+      '<p style="margin:0 0 12px;color:var(--head-2,#44506b)">ページの読み込みに失敗しました。'+
       'お手数ですが、トップページから開き直してください。</p>'+
-      '<a href="../index.html" style="display:inline-block;padding:12px 26px;background:#4276b5;'+
-      'color:#fff;border-radius:10px;font-weight:700;text-decoration:none">PeakWeather トップページへ</a></div>';
+      '<a href="../index.html" style="display:inline-block;padding:12px 26px;background:var(--btn,#4276b5);'+
+      'color:var(--on-night,#fff);border-radius:10px;font-weight:700;text-decoration:none">PeakWeather トップページへ</a></div>';
     return;
   }
   if(!pwGuardPage())return;

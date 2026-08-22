@@ -72,12 +72,12 @@ function pwBlockLocalFile(){
     '</div>';
   var st = document.createElement("style");
   st.textContent =
-    ".pwgate-localblock{position:fixed;inset:0;z-index:2147483647;background:#f4f6fb;" +
+    ".pwgate-localblock{position:fixed;inset:0;z-index:2147483647;background:var(--bg,#f4f6fb);" +
       "display:flex;align-items:center;justify-content:center;padding:20px}" +
-    ".pwgate-localblock-card{max-width:520px;padding:26px 22px;background:#fff;" +
-      "border:1px solid #dee4ee;border-radius:12px;text-align:center;line-height:1.8}" +
-    ".pwgate-localblock-card h2{margin:8px 0 12px;font-size:1.1em;color:#1e2d4a}" +
-    ".pwgate-localblock-card p{margin:10px 0;font-size:.92em;color:#44506b;text-align:left}" +
+    ".pwgate-localblock-card{max-width:520px;padding:26px 22px;background:var(--surface,#fff);" +
+      "border:1px solid var(--line,#dee4ee);border-radius:12px;text-align:center;line-height:1.8}" +
+    ".pwgate-localblock-card h2{margin:8px 0 12px;font-size:1.1em;color:var(--head,#1e2d4a)}" +
+    ".pwgate-localblock-card p{margin:10px 0;font-size:.92em;color:var(--head-2,#44506b);text-align:left}" +
     ".pwgate-localblock-card p.pwgate-act{text-align:center}";
   document.head.appendChild(st);
   document.body.appendChild(ov);
@@ -117,16 +117,16 @@ function pwGuardPage(opts){
     '</div>';
   var st = document.createElement("style");
   st.textContent =
-    ".pwgate-block{max-width:560px;margin:26px auto;padding:22px 18px;background:#fff;" +
-      "border:1px solid #dee4ee;border-radius:12px;text-align:center;line-height:1.8}" +
+    ".pwgate-block{max-width:560px;margin:26px auto;padding:22px 18px;background:var(--surface,#fff);" +
+      "border:1px solid var(--line,#dee4ee);border-radius:12px;text-align:center;line-height:1.8}" +
     ".pwgate-icon{font-size:2em;line-height:1}" +
-    ".pwgate-block h2{margin:8px 0 12px;font-size:1.1em;color:#1e2d4a;border:0;padding:0}" +
-    ".pwgate-block p{margin:10px 0;font-size:.9em;color:#44506b;text-align:left}" +
-    ".pwgate-btn{display:inline-block;margin:8px auto 0;padding:12px 26px;background:#4276b5;" +
-      "color:#fff;border-radius:10px;font-weight:700;text-decoration:none}" +
-    ".pwgate-btn:hover{background:#3a68a3}" +
+    ".pwgate-block h2{margin:8px 0 12px;font-size:1.1em;color:var(--head,#1e2d4a);border:0;padding:0}" +
+    ".pwgate-block p{margin:10px 0;font-size:.9em;color:var(--head-2,#44506b);text-align:left}" +
+    ".pwgate-btn{display:inline-block;margin:8px auto 0;padding:12px 26px;background:var(--btn,#4276b5);" +
+      "color:var(--on-night,#fff);border-radius:10px;font-weight:700;text-decoration:none}" +
+    ".pwgate-btn:hover{background:var(--btn-d,#3a68a3)}" +
     ".pwgate-block p.pwgate-act{text-align:center}" +
-    ".pwgate-sub{font-size:.82em!important;color:#8a94a8!important}";
+    ".pwgate-sub{font-size:.82em!important;color:var(--muted,#8a94a8)!important}";
   document.head.appendChild(st);
   return false;
 }

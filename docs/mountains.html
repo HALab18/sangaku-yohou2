@@ -6,7 +6,29 @@
 <title>対応している山の一覧 — PeakWeather</title>
 <meta name="description" content="PeakWeather が内蔵データベースで対応している全604座の一覧。山名をタップすると山頂・稜線の気象予報を表示します。">
 <link rel="icon" type="image/png" href="../icons/favicon-32.png">
-<meta name="theme-color" content="#1e2d4a">
+<!-- ブラウザのUI(アドレスバー)の色も配色に合わせる -->
+<meta name="theme-color" media="(prefers-color-scheme:light)" content="#1e2d4a">
+<meta name="theme-color" media="(prefers-color-scheme:dark)" content="#101725">
+<!-- 配色(明るい配色と、端末が夜モードのときの暗い配色)。色の値はここが唯一の置き場で、
+     各ページの <style> は var(--◯◯) しか書かない。?v= は theme.css の --pw-theme-ver と
+     同じ値にする(古い版がキャッシュに残ると「画面は新しいのに配色だけ旧版」になる)。
+     一致は scripts/check_contrast.py が機械的に見ている。 -->
+<link rel="stylesheet" href="../theme.css?v=247">
+<!-- このファイルは scripts/gen_mountain_list.py により index.html から自動生成されます。直接編集しないでください
+     (直接編集すると次回の再生成で消えます。修正は必ず scripts/gen_mountain_list.py 側に入れること) -->
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-B4FYN1EJ2S');
+</script>
+<style> は var(--◯◯) しか書かない。?v= は theme.css の --pw-theme-ver と
+     同じ値にする(古い版がキャッシュに残ると「画面は新しいのに配色だけ旧版」になる)。
+     一致は scripts/check_contrast.py が機械的に見ている。 -->
+<link rel="stylesheet" href="../theme.css?v=247">
 <!-- このファイルは scripts/gen_mountain_list.py により index.html から自動生成されます。直接編集しないでください
      (直接編集すると次回の再生成で消えます。修正は必ず scripts/gen_mountain_list.py 側に入れること) -->
 <!-- Google tag (gtag.js) -->
@@ -19,54 +41,59 @@
   gtag('config', 'G-B4FYN1EJ2S');
 </script>
 <style>
-:root{--night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
-  --btn:#4276b5;--bg:#f4f6f9;--line:#dee4ee;--field:#c9d2e0}
+/* ★ 色の値をここに書かないこと。全部 theme.css のトークンを var() で参照する。
+   ここに :root{--night:…} を書き戻すと theme.css より後に来るため上書きになり、
+   **暗い配色が丸ごと効かなくなる**(明るい配色では正常に見えるので気づけない)。 */
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:#222;
+body{margin:0;background:var(--bg);color:var(--text);
   font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
   font-size:14px;line-height:1.6}
 
 /* ヘッダー (本体ヒーローの縮小版) */
-header{background:var(--night);color:#fff;text-align:center;padding:30px 20px 0;position:relative}
-header .back{position:absolute;left:14px;top:12px;color:#c9d3e5;font-size:.82em;text-decoration:none}
-header .back:hover{color:#fff}
+header{background:var(--night);color:var(--on-night);text-align:center;padding:30px 20px 0;position:relative}
+header .back{position:absolute;left:14px;top:12px;color:var(--on-night-2);font-size:.82em;text-decoration:none}
+header .back:hover{color:var(--on-night)}
 header h1{margin:0;font-size:1.45em;font-weight:800;letter-spacing:.06em}
-header .sub{margin:8px 0 0;font-size:.85em;color:#c9d3e5}
+header .sub{margin:8px 0 0;font-size:.85em;color:var(--on-night-2)}
 .ridge{display:block;width:100%;height:44px;margin-top:18px}
+/* 山稜の切り抜きは「ヘッダの下の地面」なので、地の色に追従させる。
+   SVG の fill="#f4f6f9" は theme.css が読めなかったときの控えで、通常はこちらが勝つ
+   (これが無いと、暗い配色でヘッダの下に明るい帯が1本残る)。 */
+.ridge path{fill:var(--bg)}
 
 main{max-width:860px;margin:0 auto;padding:18px 14px 8px}
 
 /* 検索 (本体フォームカードと同デザイン) */
-.searchcard{background:#fff;border-radius:14px;padding:14px 16px;
-  box-shadow:0 2px 12px rgba(30,45,74,.10);position:sticky;top:8px;z-index:10}
-.searchcard label{display:flex;flex-direction:column;gap:5px;font-size:.82em;font-weight:600;color:#556}
+.searchcard{background:var(--surface);border-radius:14px;padding:14px 16px;
+  box-shadow:0 2px 12px var(--shadow);position:sticky;top:8px;z-index:10}
+.searchcard label{display:flex;flex-direction:column;gap:5px;font-size:.82em;font-weight:600;color:var(--muted)}
 .searchcard input{font-size:16px;padding:11px 12px;border:1.5px solid var(--field);border-radius:10px;
-  background:#fff;width:100%;font-family:inherit}
+  background:var(--surface);width:100%;font-family:inherit}
 .searchcard input:focus{outline:2px solid var(--night);outline-offset:1px}
-#hits{margin:8px 0 0;font-size:.82em;color:#5b6b8a;font-weight:600}
+#hits{margin:8px 0 0;font-size:.82em;color:var(--muted);font-weight:600}
 
-.notice{background:#edf2f9;border-left:5px solid var(--slate);color:#44506b;padding:10px 12px;
+.notice{background:var(--surface-3);border-left:5px solid var(--rule);color:var(--head-2);padding:10px 12px;
   border-radius:0 6px 6px 0;margin:18px 0;font-size:.9em}
 .notice a{color:var(--link)}
 
 /* 地域セクション (本体の見出し・表と同デザイン) */
-h2{color:var(--night);font-size:1.08em;margin:24px 0 8px;border-left:5px solid var(--sky);padding-left:8px}
-h2 .cnt{color:#8a94a8;font-size:.85em;font-weight:600}
+h2{color:var(--head);font-size:1.08em;margin:24px 0 8px;border-left:5px solid var(--sky);padding-left:8px}
+h2 .cnt{color:var(--muted);font-size:.85em;font-weight:600}
 .tbl{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:6px 0 4px}
 table{border-collapse:collapse;width:100%}
-th{background:var(--slate);color:#fff;padding:6px 9px;font-weight:600;font-size:.9em}
-td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:center;background:#fff}
-tr:nth-child(even) td{background:#eef1f6}
+th{background:var(--slate);color:var(--on-night);padding:6px 9px;font-weight:600;font-size:.9em}
+td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:center;background:var(--surface)}
+tr:nth-child(even) td{background:var(--surface-2)}
 td.nm{text-align:left}
 td.nm a{color:var(--link);font-weight:600;text-decoration:none}
 td.nm a:hover{text-decoration:underline}
-td.nm small{display:block;color:#8a94a8;font-size:.82em;font-weight:400}
+td.nm small{display:block;color:var(--muted);font-size:.82em;font-weight:400}
 td.el{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 tr[hidden]{display:none}
 tr[data-href]{cursor:pointer}
-tr[data-href]:hover td{background:#dde6f2}
+tr[data-href]:hover td{background:var(--hover)}
 
-footer{color:#888;font-size:.82em;margin-top:26px;border-top:1px solid var(--line);padding-top:10px;padding-bottom:16px}
+footer{color:var(--muted);font-size:.82em;margin-top:26px;border-top:1px solid var(--line);padding-top:10px;padding-bottom:16px}
 footer a{color:var(--link)}
 
 @media(min-width:700px){

@@ -23,6 +23,7 @@
   山さがし … 日和スコアの性質 (test_find_score.py)
   障害   … 通信・保存・ゲートの異常系 (test_offline.js)
   SW     … Service Worker (test_sw.js)
+  配色   … 明・暗2つの配色とコントラスト比 (check_contrast.py)
 両方が捕まえるなら表だけでも足りているし、片方しか捕まえない変異があるなら
 その層が実際に守備範囲を広げているということになる。
 
@@ -68,10 +69,18 @@ COPY = [
     "scripts/test_render.py",
     "scripts/test_render.js",
     "references/fixture_forecast.json",
+    # ★ 山名DB。無いと test_render.py の CLI 側が山名を引けず、逆ジオコーダへ通信しに行って
+    #   必ず失敗する = 描画の層がどの変異でも「検出した」と嘘の報告をする(実際にそうなっていた)
+    "references/mountains.csv",
     "references/golden/render_web.html",
     "scripts/test_offline.js",
     "scripts/test_sw.js",
-]
+    "theme.css",
+    "scripts/check_contrast.py",
+    "scripts/gen_mountain_list.py",
+] + ["docs/{}.html".format(n) for n in
+     ("find", "find-score", "history", "how-it-works", "how-it-works-web",
+      "mountains", "point", "terms", "weather-links")]
 
 LOGIC = "logic.js"
 CLI = "scripts/mountain_weather.py"
@@ -80,6 +89,7 @@ DISPLAY = "display.js"
 FIND = "scripts/gen_find.py"
 SW = "sw.js"
 GATE = "gate.js"
+THEME = "theme.css"
 
 # (説明, 対象ファイル, 置換前, 置換後)
 # 置換前は「その時点のコードに1回だけ出てくる文字列」であること。
@@ -231,6 +241,15 @@ MUTATIONS = [
      SW, 'if (r && r.ok && r.type === "basic")', 'if (r)'),
     ("SW をキャッシュ優先に変える(push した修正が端末に届かなくなる)",
      SW, '  return Promise.race([', '  return cached;\n  return Promise.race(['),
+    # ---- 配色。明るい配色で作業しているかぎり、画面を見ても気づけない壊れ方 ----
+    ("暗い配色から --muted の定義を落とす(暗い地に暗い補足文字が残る)",
+     THEME, '  --muted:#a7b1c3;\n  --muted-2:#b795a8;', '  --muted-2:#b795a8;'),
+    ("暗い配色の補足文字を地に近づける(読めなくなる)",
+     THEME, '  --muted:#a7b1c3;', '  --muted:#3a4356;'),
+    ("index.html に色をベタ書きで戻す(暗い配色で差し替わらなくなる)",
+     INDEX, 'body{margin:0;color:var(--text);', 'body{margin:0;color:#222;'),
+    ("theme.css の読み込みを旧版のままにする(配色だけキャッシュに残る)",
+     INDEX, 'theme.css?v=247', 'theme.css?v=246'),
 ]
 
 
@@ -275,6 +294,8 @@ def check_layers(work, have_node):
         caught.append("障害")
     if have_node and run(["node", "scripts/test_sw.js"], work) not in (0, None):
         caught.append("SW")
+    if run([py, "scripts/check_contrast.py"], work) not in (0, None):
+        caught.append("配色")
     return caught
 
 

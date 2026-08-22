@@ -6,7 +6,13 @@
 <title>座標を指定して予報を取得 — PeakWeather</title>
 <meta name="description" content="国土地理院の地理院地図などで調べた緯度経度を貼り付けると、その地点の山岳気象予報を表示します。">
 <link rel="icon" type="image/png" href="../icons/favicon-32.png">
-<meta name="theme-color" content="#1e2d4a">
+<meta name="theme-color" media="(prefers-color-scheme:light)" content="#1e2d4a">
+<meta name="theme-color" media="(prefers-color-scheme:dark)" content="#101725">
+<!-- 配色(明るい配色と、端末が夜モードのときの暗い配色)。色の値はここが唯一の置き場で、
+     各ページの <style> は var(--◯◯) しか書かない。?v= は theme.css の --pw-theme-ver と
+     同じ値にする(古い版がキャッシュに残ると「画面は新しいのに配色だけ旧版」になる)。
+     一致は scripts/check_contrast.py が機械的に見ている。 -->
+<link rel="stylesheet" href="../theme.css?v=247">
 <script src="../gate.js?v=2026b"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
@@ -21,64 +27,68 @@
 /* --muted: 補足文字の共通色(index.html / gen_find.py と同じ値)。白 6.2:1 /
    ページ背景 #f4f6f9 5.7:1 で WCAG AA(4.5:1) を満たす。以前この画面は
    .hint が #999(2.85:1)、footer が #888(3.27:1) で未達だった */
-:root{--muted:#5a6270;
-  --night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
-  --btn:#4276b5;--btn-d:#3a68a3;--sel:#dceaf9;--bg:#f4f6f9;--line:#dee4ee;--field:#c9d2e0}
+/* ★ 色の値をここに書かないこと。全部 theme.css のトークンを var() で参照する。
+   ここに :root{--night:…} を書き戻すと theme.css より後に来るため上書きになり、
+   **暗い配色が丸ごと効かなくなる**(明るい配色では正常に見えるので気づけない)。 */
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 /* ページ内リンクの滑らかスクロールは「動きを減らす」設定で止める。自動で流れる画面は
    前庭障害のある人には症状の引き金になる */
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
-body{margin:0;background:var(--bg);color:#222;
+body{margin:0;background:var(--bg);color:var(--text);
   font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
   font-size:14px;line-height:1.7}
 
-header{background:var(--night);color:#fff;text-align:center;padding:30px 20px 0;position:relative}
-header .back{position:absolute;left:14px;top:12px;color:#c9d3e5;font-size:.82em;text-decoration:none}
-header .back:hover{color:#fff}
+header{background:var(--night);color:var(--on-night);text-align:center;padding:30px 20px 0;position:relative}
+header .back{position:absolute;left:14px;top:12px;color:var(--on-night-2);font-size:.82em;text-decoration:none}
+header .back:hover{color:var(--on-night)}
 header h1{margin:0;font-size:1.45em;font-weight:800;letter-spacing:.06em}
-header .sub{margin:8px 0 0;font-size:.85em;color:#c9d3e5}
+header .sub{margin:8px 0 0;font-size:.85em;color:var(--on-night-2)}
 .ridge{display:block;width:100%;height:40px;margin-top:18px}
+/* 山稜の切り抜きは「ヘッダの下の地面」なので、地の色に追従させる。
+   SVG の fill="#f4f6f9" は theme.css が読めなかったときの控えで、通常はこちらが勝つ
+   (これが無いと、暗い配色でヘッダの下に明るい帯が1本残る)。 */
+.ridge path{fill:var(--bg)}
 @media(min-width:700px){header h1{font-size:1.7em}}
 
 main{max-width:640px;margin:0 auto;padding:18px 14px 8px}
-h2{color:var(--night);font-size:1.05em;margin:22px 0 8px;border-left:5px solid var(--sky);padding-left:10px}
+h2{color:var(--head);font-size:1.05em;margin:22px 0 8px;border-left:5px solid var(--sky);padding-left:10px}
 p{margin:8px 0}
 a{color:var(--link)}
 
-.notice{background:#edf2f9;border-left:5px solid var(--slate);color:#44506b;padding:10px 12px;
+.notice{background:var(--surface-3);border-left:5px solid var(--rule);color:var(--head-2);padding:10px 12px;
   border-radius:0 6px 6px 0;margin:14px 0;font-size:.92em}
 .notice ol{margin:6px 0 0;padding-left:1.3em}
 .notice li{margin:4px 0}
 .notice .gsilink{display:inline-block;margin-top:8px;font-weight:700}
 
-.formcard{background:#fff;border-radius:14px;padding:18px 16px 20px;
-  box-shadow:0 2px 12px rgba(30,45,74,.10);margin:16px 0}
+.formcard{background:var(--surface);border-radius:14px;padding:18px 16px 20px;
+  box-shadow:0 2px 12px var(--shadow);margin:16px 0}
 form{display:flex;flex-direction:column;gap:14px}
-.f{display:flex;flex-direction:column;gap:5px;font-size:.82em;font-weight:600;color:#556;margin:0}
+.f{display:flex;flex-direction:column;gap:5px;font-size:.82em;font-weight:600;color:var(--muted);margin:0}
 input,select{font-size:16px;padding:11px 12px;border:1.5px solid var(--field);border-radius:10px;
-  background:#fff;width:100%;font-family:inherit}
+  background:var(--surface);width:100%;font-family:inherit}
 input:focus,select:focus{outline:2px solid var(--night);outline-offset:1px}
 .frow{display:flex;gap:12px}
 .frow>.f{flex:1;min-width:0}
-.seg{display:flex;border:1.5px solid var(--field);border-radius:10px;overflow:hidden;background:#fff}
+.seg{display:flex;border:1.5px solid var(--field);border-radius:10px;overflow:hidden;background:var(--surface)}
 .seg label{flex:1;margin:0;position:relative}
 .seg input{position:absolute;opacity:0;width:0;height:0}
 .seg span{display:flex;justify-content:center;align-items:center;padding:11px 2px;
-  font-size:14px;font-weight:600;color:#667;cursor:pointer;transition:background .15s}
+  font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;transition:background .15s}
 .seg label+label span{border-left:1.5px solid var(--field)}
-.seg input:checked+span{background:var(--sel);color:var(--night);font-weight:700}
+.seg input:checked+span{background:var(--sel);color:var(--head);font-weight:700}
 .seg input:focus-visible+span{outline:2px solid var(--btn);outline-offset:-3px}
 .hint{color:var(--muted);font-size:.8em;margin:0}
 
 button{font-size:16px;padding:14px;border:0;border-radius:12px;background:var(--btn);
-  color:#fff;font-weight:700;cursor:pointer;font-family:inherit;width:100%;letter-spacing:.1em;
-  box-shadow:0 3px 10px rgba(74,126,194,.35)}
+  color:var(--on-night);font-weight:700;cursor:pointer;font-family:inherit;width:100%;letter-spacing:.1em;
+  box-shadow:0 3px 10px var(--shadow)}
 button:hover{background:var(--btn-d)}
-button:disabled{background:#9aa7bd;cursor:wait}
+button:disabled{background:var(--btn-off);cursor:wait}
 
-#status{margin:4px 2px 0;font-size:.92em;color:#5b6b8a;font-weight:600;min-height:1.4em}
-#status.err{color:#a03415}
+#status{margin:4px 2px 0;font-size:.92em;color:var(--muted);font-weight:600;min-height:1.4em}
+#status.err{color:var(--bad-fg)}
 
 footer{color:var(--muted);font-size:.82em;margin-top:26px;border-top:1px solid var(--line);padding-top:10px;padding-bottom:16px}
 footer a{color:var(--link)}
@@ -160,12 +170,12 @@ footer a{color:var(--link)}
 // 認証定数は複製せず「判定できない = 通さない」で倒す(定数の置き場は gate.js のみ)。
 if(typeof pwGuardPage!=="function"){
   document.querySelector("main").innerHTML=
-    '<div style="max-width:560px;margin:26px auto;padding:22px 18px;background:#fff;'+
-    'border:1px solid #dee4ee;border-radius:12px;text-align:center;line-height:1.8">'+
-    '<p style="margin:0 0 12px;color:#44506b">ページの読み込みに失敗しました。'+
+    '<div style="max-width:560px;margin:26px auto;padding:22px 18px;background:var(--surface,#fff);'+
+    'border:1px solid var(--line,#dee4ee);border-radius:12px;text-align:center;line-height:1.8">'+
+    '<p style="margin:0 0 12px;color:var(--head-2,#44506b)">ページの読み込みに失敗しました。'+
     'お手数ですが、トップページから開き直してください。</p>'+
-    '<a href="../index.html" style="display:inline-block;padding:12px 26px;background:#4276b5;'+
-    'color:#fff;border-radius:10px;font-weight:700;text-decoration:none">PeakWeather トップページへ</a></div>';
+    '<a href="../index.html" style="display:inline-block;padding:12px 26px;background:var(--btn,#4276b5);'+
+    'color:var(--on-night,#fff);border-radius:10px;font-weight:700;text-decoration:none">PeakWeather トップページへ</a></div>';
   return;
 }
 if(!pwGuardPage())return;

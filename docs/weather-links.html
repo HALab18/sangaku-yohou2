@@ -6,7 +6,13 @@
 <title>気象情報リンク — PeakWeather</title>
 <meta name="description" content="雨雲・雷レーダー、今後の雨、60時間先までの雨雲予想、天気図、気象警報・注意報、天気分布予報。登山の判断に使う実況・警報の情報へ、現在地を指定してすぐアクセスできます。">
 <link rel="icon" type="image/png" href="../icons/favicon-32.png">
-<meta name="theme-color" content="#1e2d4a">
+<meta name="theme-color" media="(prefers-color-scheme:light)" content="#1e2d4a">
+<meta name="theme-color" media="(prefers-color-scheme:dark)" content="#101725">
+<!-- 配色(明るい配色と、端末が夜モードのときの暗い配色)。色の値はここが唯一の置き場で、
+     各ページの <style> は var(--◯◯) しか書かない。?v= は theme.css の --pw-theme-ver と
+     同じ値にする(古い版がキャッシュに残ると「画面は新しいのに配色だけ旧版」になる)。
+     一致は scripts/check_contrast.py が機械的に見ている。 -->
+<link rel="stylesheet" href="../theme.css?v=247">
 <!-- gate.js は読み込まない。ゲートの目的は Open-Meteo の無料枠を守ることで(gate.js 冒頭)、
      このページは外部サイトへのリンク集で Open-Meteo を一切叩かない。docs/point.html がゲート対象なのは
      「index.html を素通しで動かす入口になる」ためで、こちらはその経路も持たない。
@@ -27,24 +33,28 @@
    白 6.2:1 / ページ背景 #f4f6f9 5.7:1 と WCAG AA(4.5:1) を満たす。以前の #7a8398 は 3.4:1、
    footer の #888 は 3.27:1 で未達だった。--field はセカンダリなボタンの枠色。
    値を変えるときは index.html 側と揃えること(共有CSSを持たない方式なので手で揃える)。 */
-:root{--muted:#5a6270;
-  --night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
-  --btn:#4276b5;--btn-d:#3a68a3;--sel:#dceaf9;--bg:#f4f6f9;--line:#dee4ee;--field:#c9d2e0}
+/* ★ 色の値をここに書かないこと。全部 theme.css のトークンを var() で参照する。
+   ここに :root{--night:…} を書き戻すと theme.css より後に来るため上書きになり、
+   **暗い配色が丸ごと効かなくなる**(明るい配色では正常に見えるので気づけない)。 */
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 /* ページ内リンクの滑らかスクロールは「動きを減らす」設定で止める。自動で流れる画面は
    前庭障害のある人には症状の引き金になる */
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
-body{margin:0;background:var(--bg);color:#222;
+body{margin:0;background:var(--bg);color:var(--text);
   font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
   font-size:14px;line-height:1.7}
 
-header{background:var(--night);color:#fff;text-align:center;padding:30px 20px 0;position:relative}
-header .back{position:absolute;left:14px;top:12px;color:#c9d3e5;font-size:.82em;text-decoration:none}
-header .back:hover{color:#fff}
+header{background:var(--night);color:var(--on-night);text-align:center;padding:30px 20px 0;position:relative}
+header .back{position:absolute;left:14px;top:12px;color:var(--on-night-2);font-size:.82em;text-decoration:none}
+header .back:hover{color:var(--on-night)}
 header h1{margin:0;font-size:1.45em;font-weight:800;letter-spacing:.06em}
-header .sub{margin:8px 0 0;font-size:.85em;color:#c9d3e5}
+header .sub{margin:8px 0 0;font-size:.85em;color:var(--on-night-2)}
 .ridge{display:block;width:100%;height:44px;margin-top:18px}
+/* 山稜の切り抜きは「ヘッダの下の地面」なので、地の色に追従させる。
+   SVG の fill="#f4f6f9" は theme.css が読めなかったときの控えで、通常はこちらが勝つ
+   (これが無いと、暗い配色でヘッダの下に明るい帯が1本残る)。 */
+.ridge path{fill:var(--bg)}
 @media(min-width:700px){header h1{font-size:1.7em}}
 
 main{max-width:640px;margin:0 auto;padding:18px 14px 8px}
@@ -54,29 +64,29 @@ a{color:var(--link)}
 /* 現在地ボタン: 押した時だけ1回測位し、座標対応リンクの href を書き換える。
    index.html の #gps と同じ「セカンダリの控えめな外観」に揃える */
 #geo{width:100%;padding:12px;font-size:15px;border-radius:12px;border:1.5px solid var(--field);
-  background:#fff;color:var(--link);font-weight:700;cursor:pointer;font-family:inherit;margin-top:14px}
+  background:var(--surface);color:var(--link);font-weight:700;cursor:pointer;font-family:inherit;margin-top:14px}
 #geo:hover{background:var(--sel)}
 #geo:disabled{color:var(--muted);cursor:wait}
 #geostatus{margin:6px 2px 0;font-size:.86em;color:var(--muted);font-weight:600;min-height:1.4em}
-#geostatus.err{color:#a03415}
+#geostatus.err{color:var(--bad-fg)}
 
-.linklist{background:#fff;border-radius:14px;box-shadow:0 2px 12px rgba(30,45,74,.10);
+.linklist{background:var(--surface);border-radius:14px;box-shadow:0 2px 12px var(--shadow);
   margin:14px 0;overflow:hidden}
 .linkitem{display:flex;align-items:center;gap:14px;padding:15px 16px;
   border-bottom:1px solid var(--line);text-decoration:none;color:inherit}
 .linkitem:last-child{border-bottom:0}
-.linkitem:hover,.linkitem:focus-visible{background:#f7f9fc}
-.li-icon{width:40px;height:40px;border-radius:50%;background:var(--sel);color:var(--night);
+.linkitem:hover,.linkitem:focus-visible{background:var(--surface-soft)}
+.li-icon{width:40px;height:40px;border-radius:50%;background:var(--sel);color:var(--head);
   display:flex;align-items:center;justify-content:center;flex:none;font-size:19px}
 .li-body{flex:1;min-width:0}
-.li-title{display:block;font-weight:700;font-size:.95em;color:#222}
+.li-title{display:block;font-weight:700;font-size:.95em;color:var(--text)}
 .li-desc{display:block;font-size:.8em;color:var(--muted);line-height:1.6}
 /* 現在地が反映されたリンクにだけ出す印。既定は非表示 */
 .li-here{display:none;font-size:.78em;color:var(--btn);font-weight:700}
 .linkitem.here .li-here{display:block}
 .li-go{flex:none;font-size:.78em;font-weight:700;color:var(--link)}
 
-.notice{background:#edf2f9;border-left:5px solid var(--slate);color:#44506b;padding:10px 12px;
+.notice{background:var(--surface-3);border-left:5px solid var(--rule);color:var(--head-2);padding:10px 12px;
   border-radius:0 6px 6px 0;margin:16px 0;font-size:.86em}
 
 footer{color:var(--muted);font-size:.82em;margin-top:26px;border-top:1px solid var(--line);

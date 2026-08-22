@@ -5,7 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>仕組み解説 — PeakWeather</title>
 <link rel="icon" type="image/png" href="../icons/favicon-32.png">
-<meta name="theme-color" content="#1e2d4a">
+<meta name="theme-color" media="(prefers-color-scheme:light)" content="#1e2d4a">
+<meta name="theme-color" media="(prefers-color-scheme:dark)" content="#101725">
+<!-- 配色(明るい配色と、端末が夜モードのときの暗い配色)。色の値はここが唯一の置き場で、
+     各ページの <style> は var(--◯◯) しか書かない。?v= は theme.css の --pw-theme-ver と
+     同じ値にする(古い版がキャッシュに残ると「画面は新しいのに配色だけ旧版」になる)。
+     一致は scripts/check_contrast.py が機械的に見ている。 -->
+<link rel="stylesheet" href="../theme.css?v=247">
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -16,32 +22,37 @@
   gtag('config', 'G-B4FYN1EJ2S');
 </script>
 <style>
-:root{--night:#1e2d4a;--slate:#48608c;--sky:#5b87c5;--link:#2b5fa3;
-  --bg:#f4f6f9;--line:#dee4ee}
+/* ★ 色の値をここに書かないこと。全部 theme.css のトークンを var() で参照する。
+   ここに :root{--night:…} を書き戻すと theme.css より後に来るため上書きになり、
+   **暗い配色が丸ごと効かなくなる**(明るい配色では正常に見えるので気づけない)。 */
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 /* ページ内リンクの滑らかスクロールは「動きを減らす」設定で止める。自動で流れる画面は
    前庭障害のある人には症状の引き金になる */
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
-body{margin:0;background:var(--bg);color:#222;
+body{margin:0;background:var(--bg);color:var(--text);
   font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
   font-size:14px;line-height:1.7}
-header{background:var(--night);color:#fff;text-align:center;padding:30px 20px 0;position:relative}
-header .back{position:absolute;left:14px;top:12px;color:#c9d3e5;font-size:.82em;text-decoration:none}
-header .back:hover{color:#fff}
+header{background:var(--night);color:var(--on-night);text-align:center;padding:30px 20px 0;position:relative}
+header .back{position:absolute;left:14px;top:12px;color:var(--on-night-2);font-size:.82em;text-decoration:none}
+header .back:hover{color:var(--on-night)}
 header h1{margin:0;font-size:1.45em;font-weight:800;letter-spacing:.06em}
-header .sub{margin:8px 0 0;font-size:.85em;color:#c9d3e5}
+header .sub{margin:8px 0 0;font-size:.85em;color:var(--on-night-2)}
 .ridge{display:block;width:100%;height:40px;margin-top:18px}
+/* 山稜の切り抜きは「ヘッダの下の地面」なので、地の色に追従させる。
+   SVG の fill="#f4f6f9" は theme.css が読めなかったときの控えで、通常はこちらが勝つ
+   (これが無いと、暗い配色でヘッダの下に明るい帯が1本残る)。 */
+.ridge path{fill:var(--bg)}
 main{max-width:860px;margin:0 auto;padding:18px 14px 8px}
-h2{color:var(--night);font-size:1.08em;margin:24px 0 10px;border-left:5px solid var(--sky);padding-left:10px}
-h3{color:var(--night);font-size:.98em;margin:14px 0 6px;font-weight:700}
+h2{color:var(--head);font-size:1.08em;margin:24px 0 10px;border-left:5px solid var(--sky);padding-left:10px}
+h3{color:var(--head);font-size:.98em;margin:14px 0 6px;font-weight:700}
 p{margin:8px 0}
-.card{background:#fff;border-radius:12px;padding:16px 18px;margin:12px 0;
-  box-shadow:0 2px 8px rgba(30,45,74,.08)}
+.card{background:var(--surface);border-radius:12px;padding:16px 18px;margin:12px 0;
+  box-shadow:0 2px 8px var(--shadow-s)}
 .tbl{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:10px 0}
-table{border-collapse:collapse;width:100%;white-space:nowrap;background:#fff}
-th{background:var(--slate);color:#fff;padding:7px 10px;font-size:.9em;font-weight:600;text-align:center}
-td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:center;background:#fff}
+table{border-collapse:collapse;width:100%;white-space:nowrap;background:var(--surface)}
+th{background:var(--slate);color:var(--on-night);padding:7px 10px;font-size:.9em;font-weight:600;text-align:center}
+td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:center;background:var(--surface)}
 /* 文字列の列(左寄せ・.lbl/.desc)と数値の列(右寄せ・.num)を使い分け、
    バッジ・記号だけの短い列は中央寄せのまま残す。右寄せ列の直後に来る
    左寄せ列は詰まって見えるため、.desc側の左パディングを広めに取っている。 */
@@ -49,30 +60,39 @@ th.lbl,td.lbl{text-align:left}
 th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 th.desc,td.desc{text-align:left;white-space:normal;padding-left:16px}
 table.left th,table.left td{text-align:left;padding-left:16px}
-tr:nth-child(even) td{background:#eef1f6}
+tr:nth-child(even) td{background:var(--surface-2)}
 .b{display:inline-block;min-width:2.6em;padding:2px 8px;border-radius:10px;font-weight:700;font-size:.85em}
-.b-a{background:#d8efe1;color:#1c5b3f}.b-b{background:#fdeec9;color:#7b5e00}
-.b-c{background:#f9d9cf;color:#a03415}
+.b-a{background:var(--ok-bg);color:var(--ok-fg)}.b-b{background:var(--warn-bg);color:var(--warn-fg)}
+.b-c{background:var(--bad-bg);color:var(--bad-fg)}
 /* 発雷リスクの4段階(稲妻の本数+色)。index.html の詳細表と同じ配色 */
 .lt{font-weight:700;white-space:nowrap}
-.lt-0{color:#7b6a00}.lt-1{color:#8a5a00}.lt-2{color:#8f4212}.lt-3{color:#a03415}
+.lt-0{color:var(--lt-0)}.lt-1{color:var(--lt-1)}.lt-2{color:var(--lt-2)}.lt-3{color:var(--bad-fg)}
 /* 景色(眺望)の凡例。アプリ本体と同じアイコン・同じ判定色 */
 .vw{display:inline-flex;align-items:center;gap:4px;font-weight:700;white-space:nowrap}
 .vw svg{width:1.5em;height:1.5em;flex:none}
-.v-ex{color:#1c5b3f}.v-ok{color:#2d6a4f}.v-so{color:#7b5e00}.v-ng{color:#a03415}
-.notice{background:#fde3d3;border-left:5px solid #a03415;padding:10px 12px;
-  border-radius:0 6px 6px 0;margin:14px 0;font-size:.9em;color:#44506b}
-.point{background:#edf2f9;border-left:5px solid var(--slate);padding:10px 12px;
-  border-radius:0 6px 6px 0;margin:14px 0;font-size:.9em;color:#44506b}
+.v-ex{color:var(--ok-fg)}.v-ok{color:var(--v-ok)}.v-so{color:var(--warn-fg)}.v-ng{color:var(--bad-fg)}
+.notice{background:var(--bad-bg);border-left:5px solid var(--bad-fg);padding:10px 12px;
+  border-radius:0 6px 6px 0;margin:14px 0;font-size:.9em;color:var(--head-2)}
+.point{background:var(--surface-3);border-left:5px solid var(--rule);padding:10px 12px;
+  border-radius:0 6px 6px 0;margin:14px 0;font-size:.9em;color:var(--head-2)}
 figure{margin:14px 0;text-align:center}
 figure svg{max-width:100%;height:auto}
-figcaption{font-size:.85em;color:#777;margin-top:4px}
-code{background:#e8ecf4;padding:2px 6px;border-radius:4px;font-size:.9em;color:#2b5fa3}
+figcaption{font-size:.85em;color:var(--muted);margin-top:4px}
+code{background:var(--surface-3);padding:2px 6px;border-radius:4px;font-size:.9em;color:var(--link)}
 a{color:var(--link);text-decoration:none}
 a:hover{text-decoration:underline}
-footer{color:#888;font-size:.82em;margin-top:26px;border-top:1px solid var(--line);padding-top:10px;padding-bottom:16px}
+footer{color:var(--muted);font-size:.82em;margin-top:26px;border-top:1px solid var(--line);padding-top:10px;padding-bottom:16px}
 footer a{color:var(--link)}
 @media(min-width:700px){header h1{font-size:1.7em}}
+
+/* 図解は色を焼き込んだ SVG(白地に濃い文字・線が100本近い)。暗い配色でも
+   **図版として明るい面のまま**置く ── 印刷物の図と同じ扱いにする。
+   1つずつ色を差し替えると図の意味(実線/破線・寒色/暖色)が崩れるうえ、
+   差し替え漏れが必ず残るので、面ごと明るいままにするほうが確実に読める。
+   角を丸めて余白を付け、地から浮いた「図版」に見えるようにしてある。 */
+@media(prefers-color-scheme:dark){
+  figure svg{background:#f4f6f9;border-radius:10px;padding:6px}
+}
 </style>
 </head>
 <body>

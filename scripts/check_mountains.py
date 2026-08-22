@@ -2,7 +2,8 @@
 """山岳DB(references/mountains.csv)の健全性チェック
 
 チェック内容:
-  0. 構文・公開物・外部参照の静的検査 (scripts/check_syntax.py・check_csp.py)
+  0. 構文・公開物・外部参照・配色の静的検査
+     (scripts/check_syntax.py・check_csp.py・check_contrast.py)
      - Python / JavaScript / HTML に直接書かれた <script> の構文、logic.js と gate.js が
        ES5 の範囲に留まっているか、`.nojekyll` やアイコンが揃っているか
      - 通信する相手が「気象データ・地名・アクセス解析」の3系統から増えていないか
@@ -252,6 +253,23 @@ def check_external():
             if x.strip().startswith('✕')] or [(r.stdout or r.stderr).strip()]
 
 
+def check_contrast():
+    """配色の検査 (scripts/check_contrast.py)
+
+    色の値は theme.css の1箇所に集めてあり、ページ側は var(--◯◯) しか書かない。
+    ここでは (1)明るい配色にあるトークンが暗い配色にも全部あるか (2)文字と面の
+    コントラスト比が明暗の両方で AA を満たすか (3)ページ側に色のベタ書きが
+    増えていないか を見る。**暗い配色のときだけ読めない**という壊れ方は、
+    明るい配色で作業しているかぎり画面を見ても気づけない。
+    """
+    r = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'check_contrast.py')],
+                       capture_output=True, text=True, encoding='utf-8')
+    if not r.returncode:
+        return []
+    return [x.strip()[3:].strip() for x in (r.stdout or '').splitlines()
+            if x.strip().startswith('NG')] or [(r.stdout or r.stderr).strip()]
+
+
 def check_offline():
     """圏外・障害時のふるまい (scripts/test_offline.js・scripts/test_sw.js)
 
@@ -359,8 +377,8 @@ def main():
     print(f"山岳DBチェック: {len(rows)}座 ({MOUNTAINS_CSV.name})")
     ng = False
 
-    syn = check_syntax() + check_external()
-    print(f"\n[1/8] 構文・公開物・外部参照: {'OK' if not syn else f'{len(syn)}件のエラー'}")
+    syn = check_syntax() + check_external() + check_contrast()
+    print(f"\n[1/8] 構文・公開物・外部参照・配色: {'OK' if not syn else f'{len(syn)}件のエラー'}")
     for e in syn:
         print(f"  ✕ {e}")
     ng = ng or bool(syn)
