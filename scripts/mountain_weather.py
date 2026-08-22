@@ -120,6 +120,17 @@ def wcode(code):
     return WMO_CODES.get(int(code), f"code{int(code)}")
 
 
+def r0(v):
+    """表示用の整数丸め。**JS の Math.round と同じ向き(四捨五入)**にそろえる。
+
+    Python の f"{v:.0f}" と round() は**偶数丸め**なので、ちょうど .5 のときだけ
+    index.html と1ズレる(視程 12km/13km、積雪 64cm/65cm など)。表示は CLI と Web で
+    2重に書かれている以上、丸めの向きまで合わせないと突き合わせが成立しない。
+    ★ 小数1桁(.1f)の側は直さなくてよい: ちょうど中間の値は (2k+1)/20 で、1/20 は
+      2進で表せないため**厳密なタイが原理的に発生しない**。ズレるのは整数の丸めだけ。"""
+    return math.floor(v + 0.5)
+
+
 def wind_cell(wd, ws, degraded=False):
     """風向 風速の表示文字列。degraded(900hPa/800hPa両欠測)なら末尾に `*` を付け、
     やや弱めに出ている可能性を示す(index.html の windCell と同じ扱い)。"""
@@ -747,9 +758,11 @@ def lightning_cell(cape, cin):
         return "-"
     lv, label = lt["lv"], lt["label"]
     # CIN は API が絶対値で返すが、慣例に合わせて負値表記で見せる(0 は素の 0)
-    num = f"CAPE {cape:.0f}"
+    num = f"CAPE {r0(cape)}"
     if cin is not None:
-        num += f" / CIN {0 if abs(cin) < 0.5 else -abs(cin):.0f}"
+        # 丸めてから符号を付ける。付けてから丸めると -0.5 が "-0" になる(実際そうなっていた)
+        a = r0(abs(cin))
+        num += f" / CIN {0 if a == 0 else -a}"
     return f"{'⚡' * (lv + 1)} {label} ({num})"
 
 
@@ -894,7 +907,7 @@ def vis_text(vis):
     """視程の表記。1km以上はkm・未満はmで丸める"""
     if vis is None:
         return None
-    return f"{vis / 1000:.0f}km" if vis >= 1000 else f"{vis:.0f}m"
+    return f"{r0(vis / 1000)}km" if vis >= 1000 else f"{r0(vis)}m"
 
 
 def view_cell(vw, note, vis=None):
@@ -1065,8 +1078,16 @@ def model_switch(h, times, dates):
     return ms[gi - 1][0], ms[gi][0]
 
 
-def fnum(v, fmt="{:.0f}", none="-"):
+def fnum(v, fmt, none="-"):
+    """小数を伴う表示。**整数に丸める用途では使わない**(fint を使うこと)。
+    書式の既定値をあえて置いていないのは、"{:.0f}" が偶数丸めで Web とズレるため。"""
     return none if v is None else fmt.format(v)
+
+
+def fint(v, none="-"):
+    """整数で見せる値。丸めの向きを Web とそろえるため必ずここを通す。
+    fnum(v, "{:.0f}") と書くと偶数丸めに戻ってしまう(r0 の説明を参照)。"""
+    return none if v is None else str(r0(v))
 
 
 PAST_DAYS = 3  # 直近実況(モデル解析値)として遡る日数
@@ -1084,9 +1105,9 @@ def snow_cell(depth_m, sf_cm):
     """積雪列の表示。「85cm(+12)」= 積雪深85cm・新雪12cm"""
     if depth_m is None and sf_cm is None:
         return "-"
-    txt = "-" if depth_m is None else f"{depth_m * 100:.0f}cm"
+    txt = "-" if depth_m is None else f"{r0(depth_m * 100)}cm"
     if sf_cm is not None and sf_cm >= 0.5:
-        txt += f"(+{sf_cm:.0f})"
+        txt += f"(+{r0(sf_cm)})"
     return txt
 
 
@@ -1137,7 +1158,7 @@ def print_past_summary(rows, has_snow, elev):
         snow_c = f" {snow_cell(r['depth'], r['sf'])} |" if has_snow else ""
         wx_txt = phrase_text(r.get("phrase")) or wcode(r["code"])
         print(f"| {r['date'].strftime('%m/%d')}({wj}) | {wx_txt}{wx_note_text(r.get('notes'))} "
-              f"| {fnum(r['tmin'], '{:.0f}')}〜{fnum(r['tmax'], '{:.0f}')}℃ "
+              f"| {fint(r['tmin'])}〜{fint(r['tmax'])}℃ "
               f"| {wind_cell(r['wd'], r['ws'], r.get('degraded'))} "
               f"| {fnum(r['pr'], '{:.1f}')}mm |{snow_c}")
     print("- ※モデル解析値であり観測所の実測ではありません。現地の最新情報を優先してください")
@@ -1219,7 +1240,7 @@ def print_detail_day(data, date, elev, has_snow=False, step=3):
         rh_all = h.get("relative_humidity_2m") or []
         rh = rh_all[i0] if i0 < len(rh_all) else None
         feel = feels_like(temp, ws, rh)
-        cl = f'{fnum(h["cloud_cover_low"][i0])}/{fnum(h["cloud_cover_mid"][i0])}/{fnum(h["cloud_cover_high"][i0])}%'
+        cl = f'{fint(h["cloud_cover_low"][i0])}/{fint(h["cloud_cover_mid"][i0])}/{fint(h["cloud_cover_high"][i0])}%'
         vis_all = h.get("visibility") or []
         vis = min((vis_all[i] for i in block if i < len(vis_all) and vis_all[i] is not None), default=None)
         vw = view_score(elev, h["cloud_cover_low"][i0], h["cloud_cover_mid"][i0],
@@ -1243,8 +1264,8 @@ def print_detail_day(data, date, elev, has_snow=False, step=3):
             sf_blk = sum(sfh_all[i] or 0 for i in block if i < len(sfh_all))
             snow_c = f" {snow_cell(depth, sf_blk)} |"
         print(f"| {start_h:02d}時 | {idx_cell(bi, reason)} | {wcode(h['weather_code'][i0])} | {vw_txt} | {fnum(temp, '{:.1f}')}℃ "
-              f"| {feel_c} | {wind_cell(wd, ws, degraded)} | {fnum(gust, '{:.0f}')}m/s "
-              f"| {pr_c} | {fnum(prob)}% | {lightning_cell(cape, cin)} | {cl} |{snow_c}")
+              f"| {feel_c} | {wind_cell(wd, ws, degraded)} | {fint(gust)}m/s "
+              f"| {pr_c} | {fint(prob)}% | {lightning_cell(cape, cin)} | {cl} |{snow_c}")
     if day_degraded:
         print(f"- {wind_label(elev)}の `*` は、900hPa/800hPaのデータが無い時間帯(全球モデル=GSM の時間帯)"
               "のため、稜線風がやや弱めに出ている可能性があります(実測でおおむね-1.2m/s程度)。"
@@ -1444,9 +1465,9 @@ def print_daily_summary(rows, title, has_snow=False, elev=None):
         global_m = " 全球" if r.get("model") == "GSM" else ""
         print(f"| {r['date'].strftime('%m/%d')}({wj}){global_m} | {mark} | {r.get('agree') or '-'} "
               f"| {wx_txt}{wx_note_text(r.get('notes'))} "
-              f"| {r['view']} | {fnum(r['tmin'], '{:.0f}')}〜{fnum(r['tmax'], '{:.0f}')}℃ "
+              f"| {r['view']} | {fint(r['tmin'])}〜{fint(r['tmax'])}℃ "
               f"| {wind_cell(r['wd'], r['ws'], r.get('degraded'))} "
-              f"| {fnum(r['pr'], '{:.1f}')}mm | {fnum(r['prob'])}% |{snow_c}")
+              f"| {fnum(r['pr'], '{:.1f}')}mm | {fint(r['prob'])}% |{snow_c}")
     gsm = [r for r in rows if r.get("model") == "GSM"]
     if gsm:
         # 境目の日付は行そのものから出す(「N日目から」の決め打ちは切替がモデルのラン時刻で
@@ -1505,8 +1526,8 @@ def print_daily_summary(rows, title, has_snow=False, elev=None):
 def signed_c(v):
     """上空気温の表記。寒気は符号が意味を持つので +/- を明示する。
     丸めてから符号を付けないと -0.4℃ が "-0℃" になる。"""
-    r = round(v)
-    return "0℃" if r == 0 else f"{r:+.0f}℃"
+    r = r0(v)
+    return "0℃" if r == 0 else f"{r:+d}℃"
 
 
 UPPER_LEVELS = [("temperature_850hPa", "850hPa(約1500m)"),
@@ -1628,8 +1649,8 @@ def print_model_compare(cmp_hourly, rows, start, end):
                 continue
             pr_txt = f"{sum(precs):.1f}mm" if precs else "-"
             wind_txt = f"{max(winds):.1f}m/s" if winds else "-"
-            cloud_txt = f"{sum(clouds) / len(clouds):.0f}%" if clouds else "-"
-            print(f"| {date.strftime('%m/%d')} | {CMP_LABELS[m]} | {min(temps):.0f}〜{max(temps):.0f}℃ "
+            cloud_txt = f"{r0(sum(clouds) / len(clouds))}%" if clouds else "-"
+            print(f"| {date.strftime('%m/%d')} | {CMP_LABELS[m]} | {r0(min(temps))}〜{r0(max(temps))}℃ "
                   f"| {pr_txt} | {wind_txt} | {cloud_txt} |")
         date += dt.timedelta(days=1)
 
@@ -1828,16 +1849,16 @@ def main():
                           [today + dt.timedelta(days=i)
                            for i in range((fetch_end - today).days + 1)])
         print(f"## {label} の山岳気象予報")
-        print(f"- 地点: 北緯{lat:.4f} 東経{lon:.4f} / 標高 {elev:.0f}m ({src})")
+        print(f"- 地点: 北緯{lat:.4f} 東経{lon:.4f} / 標高 {r0(elev)}m ({src})")
         if elev < LOW_ELEV_M:
             print(f"- 地上風(10m): 標高{LOW_ELEV_M}m未満のため、表示している風はほぼ地上10mの風です"
-                  f"(登山指数・体感温度もこの値で判定) / 気温は標高{elev:.0f}m面の値")
+                  f"(登山指数・体感温度もこの値で判定) / 気温は標高{r0(elev)}m面の値")
         elif elev < BLEND_ELEV_M:
             print(f"- 稜線風: 標高{BLEND_ELEV_M}m未満のため、地上10mの風と上空約{BLEND_ELEV_M}m"
-                  f"(925hPa)の風を標高で内挿して算出 / 気温は標高{elev:.0f}m面の値")
+                  f"(925hPa)の風を標高で内挿して算出 / 気温は標高{r0(elev)}m面の値")
         else:
             print(f"- 稜線風: 気象庁モデルの気圧面風(925〜600hPa)と地上10m風のうち、その時刻に値が"
-                  f"ある高度から山頂標高に線形補間して算出 / 気温は標高{elev:.0f}m面の値")
+                  f"ある高度から山頂標高に線形補間して算出 / 気温は標高{r0(elev)}m面の値")
         gsm_from = f"{sw[1]:%m/%d}以降" if sw else "GSM期間"
         print(f"- ⚠ {gsm_from}は気圧面が2面(900/800hPa)減るため、稜線風をやや弱めに見積もる傾向が"
               "あります(実測: 標高1950〜3010mで平均 -1.2m/s)。指数の風閾値の刻みに対して"

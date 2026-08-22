@@ -65,6 +65,9 @@ TEMPLATE = r"""<!doctype html>
      ?v= は logic.js の PW_LOGIC_VER と同じ値にする(古い版がキャッシュに残ると
      「画面は新しいのに判定だけ旧版」という気づけない状態になる)。 -->
 <script src="../logic.js?v=235"></script>
+<!-- 天気の文言・注記の時間帯表現。index.html と共有する唯一の実装。
+     ?v= は display.js の PW_DISPLAY_VER と同じ値にする。 -->
+<script src="../display.js?v=246"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -401,48 +404,23 @@ const scrollBehavior=()=>matchMedia("(prefers-reduced-motion:reduce)").matches?"
   // 山の所属県リスト。県境をまたぐ山は各県に属するものとして数え・絞り込む(例: 栗駒山→岩手/宮城/秋田)
   function prefsOf(m){return m.pref.split("・");}
 
-  var WMO={0:"快晴",1:"晴れ",2:"晴れ時々曇り",3:"曇り",45:"霧",48:"着氷性の霧",
-   51:"霧雨",53:"霧雨",55:"霧雨(強)",56:"着氷性霧雨",57:"着氷性霧雨(強)",
-   61:"雨(弱)",63:"雨",65:"雨(強)",66:"着氷性の雨",67:"着氷性の雨(強)",
-   71:"雪(弱)",73:"雪",75:"雪(強)",77:"霧雪",80:"にわか雨",81:"にわか雨",82:"にわか雨(強)",
-   85:"にわか雪",86:"にわか雪(強)",95:"雷雨",96:"雷雨(雹)",99:"雷雨(激しい雹)"};
-  function wlabel(c){return c==null?"-":(WMO[c]||("code"+c))}
-
-  // ---- 代表天気モデル (index.html の WMETA / SAFETY_OVERRIDE と同一の値) ----
+  // 天気コード→日本語(WMO)と wcode() は display.js。かつてここにも写しがあり、
+  // 51 と 80 が「(弱)」の抜けた別の文字列になっていた(ver 2.46β で統合時に判明)。
+  // ---- 代表天気モデル ----
   // 7:00〜15:59の weather_code を単純な max で潰すと、9時間中1時間の霧雨が6時間の快晴を乗っ取り
   // 「雨アイコンなのに日照100%」という不整合が出る。index.html の summarizeDailyWeather と同じ
-  // 「カテゴリ別の時間数で多数決 / 強い悪天だけは1時間でも昇格」で代表を決める。
-  // 値を変えるときは index.html:WMETA と scripts/mountain_weather.py:WMETA も必ず揃えること。
-  var WMETA={0:["clear",0],1:["clear",1],2:["partly",2],3:["cloudy",3],
-   45:["fog",4],48:["fog",4],51:["drizzle",5],53:["drizzle",5],55:["drizzle",6],
-   56:["drizzle",6],57:["drizzle",6],
-   61:["rain",7],63:["rain",8],65:["rain",9],66:["rain",9],67:["rain",9],
-   71:["snow",7],73:["snow",8],75:["snow",10],77:["snow",7],
-   80:["showers",7],81:["showers",8],82:["showers",10],85:["snowshowers",9],86:["snowshowers",10],
-   95:["thunder",11],96:["thunder",12],99:["thunder",12]};
-  function wcat(c){return WMETA[c]?WMETA[c][0]:"unknown"}
-  function wsev(c){return WMETA[c]?WMETA[c][1]:0}
-  // 窓内に1時間でもあれば無条件で代表に昇格する悪天(安全側)。多数決で潰させない。
-  var SAFETY_OVERRIDE={65:1,66:1,67:1,75:1,82:1,85:1,86:1,95:1,96:1,99:1};
-  var PRECIP_CATS={fog:1,drizzle:1,rain:1,showers:1,snow:1,snowshowers:1,thunder:1};
-  var CAT_LABEL={fog:"霧",drizzle:"霧雨",rain:"雨",showers:"にわか雨",
-   snow:"雪",snowshowers:"にわか雪",thunder:"雷雨"};
+  // 考え方(安全オーバーライド → カテゴリ多数決)を、find の窓(7:00〜15:59)に当てて使う。
+  // ★ 語彙(WMETA / WCAT / WSEV / SAFETY_OVERRIDE / PRECIP_CATS / CAT_LABEL /
+  //   TOD_ORDER / timeOfDay / timingLabel)は **display.js が唯一の置き場**。
+  //   ver 2.46β まではここにも丸ごと写しがあり、一致はコメントだけが守っていた。
+  //   ここに再定義しないこと(後勝ちで display.js の実装を潰す。test_display.js が検出する)。
   var CAT_ICON={fog:"wx-fog",drizzle:"wx-rain",rain:"wx-rain",showers:"wx-rain",
    snow:"wx-snow",snowshowers:"wx-snow",thunder:"wx-thunder"};
   // 代表が降水系になった日に「晴れていた時間帯」を添えるための表示名。
   // clear/partly はどちらも「晴れ」にまとめる (index.html の WBASE と同じ畳み方)。
   var FAIR_LABEL={clear:"晴れ",partly:"晴れ",cloudy:"曇り"};
-  // 注記の時間帯表現。find の窓は 7:00〜15:59 なので実際に出るのは 朝/昼前/昼過ぎ/夕方 の4つ。
-  var TOD_ORDER=["明け方","朝","昼前","昼過ぎ","夕方"];
-  function timeOfDay(h){return h<=6?"明け方":h<=9?"朝":h<=11?"昼前":h<=14?"昼過ぎ":"夕方"}
-  function timingLabel(hours){
-    var seen={},labels=[],i,l;
-    for(i=0;i<hours.length;i++){l=timeOfDay(hours[i]);if(!seen[l]){seen[l]=1;labels.push(l)}}
-    labels.sort(function(a,b){return TOD_ORDER.indexOf(a)-TOD_ORDER.indexOf(b)});
-    if(labels.length>=4)return "日中";
-    if(labels.length>=2)return labels[0]+"〜"+labels[labels.length-1];
-    return labels[0];
-  }
+  // 注記の時間帯表現 timingLabel() / timeOfDay() / TOD_ORDER も display.js。
+  // find の窓は 7:00〜15:59 なので実際に出るのは 朝/昼前/昼過ぎ/夕方 の4つ。
   // win=[{hour,code}] (7:00〜15:59) → {code,cat,hours,notes,fair}。窓が空なら null。
   // notes: 代表にならなかった降水の注記 [{h:開始時,t:"昼過ぎに霧雨"}] を時刻順に。
   // fair : 代表が降水系のとき、最も長かった晴れ/曇りの注記 {h,t}。それ以外は null。
@@ -452,22 +430,22 @@ const scrollBehavior=()=>matchMedia("(prefers-reduced-motion:reduce)").matches?"
     if(!win.length)return null;
     var catHours={},i,cat;
     for(i=0;i<win.length;i++){
-      cat=wcat(win[i].code);
+      cat=WCAT(win[i].code);
       if(!catHours[cat])catHours[cat]=[];
       catHours[cat].push(win[i].hour);
     }
     function note(hours,text){return {h:Math.min.apply(null,hours),t:text}}
     // 代表コードが決まったら、注記を組み立てて返す
     function finish(code){
-      var rc=wcat(code),notes=[],fair=null,c2;
+      var rc=WCAT(code),notes=[],fair=null,c2;
       // 代表以外の降水カテゴリを注記に降格
       for(c2 in catHours){
-        if(c2===rc||!PRECIP_CATS[c2])continue;
+        if(c2===rc||!PRECIP_CATS.has(c2))continue;
         notes.push(note(catHours[c2],timingLabel(catHours[c2])+"に"+CAT_LABEL[c2]));
       }
       notes.sort(function(a,b){return a.h-b.h});
       // 代表が降水系なら、最も長かった晴れ/曇りも拾っておく(1時間だけなら雑音なので出さない)
-      if(PRECIP_CATS[rc]){
+      if(PRECIP_CATS.has(rc)){
         var byLabel={},fl;
         for(c2 in catHours){
           fl=FAIR_LABEL[c2]; if(!fl)continue;
@@ -482,26 +460,26 @@ const scrollBehavior=()=>matchMedia("(prefers-reduced-motion:reduce)").matches?"
     // 第1層: 安全オーバーライド(強雨・大雪・雷などは1時間でも代表に昇格。最重症を採る)
     var ov=null;
     for(i=0;i<win.length;i++){
-      if(!SAFETY_OVERRIDE[win[i].code])continue;
-      if(!ov||wsev(win[i].code)>wsev(ov))ov=win[i].code;
+      if(!SAFETY_OVERRIDE.has(win[i].code))continue;
+      if(!ov||WSEV(win[i].code)>WSEV(ov))ov=win[i].code;
     }
     if(ov!=null)return finish(ov);
     // 第2層: カテゴリ別の時間数で多数決(同数なら最大重症度が高い方)
     var repCat=null,repCount=-1,repSev=-1;
     for(cat in catHours){
       var cnt=catHours[cat].length,sev=-1;
-      for(i=0;i<win.length;i++)if(wcat(win[i].code)===cat&&wsev(win[i].code)>sev)sev=wsev(win[i].code);
+      for(i=0;i<win.length;i++)if(WCAT(win[i].code)===cat&&WSEV(win[i].code)>sev)sev=WSEV(win[i].code);
       if(cnt>repCount||(cnt===repCount&&sev>repSev)){repCat=cat;repCount=cnt;repSev=sev}
     }
     // 代表カテゴリの中で最頻のコード(同数なら重症度が高い方)を代表コードに
     var codeCount={},k;
     for(i=0;i<win.length;i++){
-      if(wcat(win[i].code)!==repCat)continue;
+      if(WCAT(win[i].code)!==repCat)continue;
       codeCount[win[i].code]=(codeCount[win[i].code]||0)+1;
     }
     var repCode=null,best=-1,bestSev=-1;
     for(k in codeCount){
-      var cd=+k,cc=codeCount[k],sv=wsev(cd);
+      var cd=+k,cc=codeCount[k],sv=WSEV(cd);
       if(cc>best||(cc===best&&sv>bestSev)){repCode=cd;best=cc;bestSev=sv}
     }
     return finish(repCode);
@@ -529,7 +507,7 @@ const scrollBehavior=()=>matchMedia("(prefers-reduced-motion:reduce)").matches?"
       var cat=rep.cat;
       // 霧雨だけは「コードは出るが実質降っていない」ケースがあるので降水量で裏取りする
       var drizzleDry=(cat==="drizzle"&&!(s.psum!=null&&s.psum>=0.1));
-      if(PRECIP_CATS[cat]&&!drizzleDry)
+      if(PRECIP_CATS.has(cat)&&!drizzleDry)
         // 「晴れていた時間帯」の注記はここでだけ添える(下の日照率ラベルなら文言が重複するため)
         return {ic:CAT_ICON[cat], lb:CAT_LABEL[cat],
                 nt:noteTexts(rep.fair?notes.concat([rep.fair]):notes)};
@@ -552,7 +530,7 @@ const scrollBehavior=()=>matchMedia("(prefers-reduced-motion:reduce)").matches?"
     if(c===45||c===48)return {ic:"wx-fog",     lb:"霧",          nt:nt};
     if(c===3)         return {ic:"wx-cloud",   lb:"曇り",        nt:nt};
     if(c===2)         return {ic:"wx-suncloud",lb:"晴れ時々曇り", nt:nt};
-    return             {ic:"wx-sun",     lb:wlabel(c),     nt:nt};
+    return             {ic:"wx-sun",     lb:wcode(c),     nt:nt};
   }
 
   var elRegion=document.getElementById("region"),elPref=document.getElementById("pref"),

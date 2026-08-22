@@ -1,15 +1,14 @@
 "use strict";
-/* 表示まわり(Web側)の実行係。index.html を書き換えずに、中の関数だけを取り出して呼ぶ。
+/* 表示まわり(Web側)の実行係。display.js の関数をそのまま呼ぶ。
  *
- * 天気の文言・「濡れ注意」の印・雨雪判別・積雪表示は、CLI(mountain_weather.py)と
- * index.html に**同じものが2重に書かれている**。判定ロジック(logic.js)と違って
- * 一本化されていないので、片方だけ直すと静かにズレる。実際に「表示間隔を1時間に
+ * 天気の文言・「濡れ注意」の印・雨雪判別・積雪や視程の表記は、CLI(mountain_weather.py)と
+ * display.js に**同じものが2重に書かれている**。言語が違う以上この1組は消せないので、
+ * 片方だけ直したときに落ちるよう、機械で突き合わせる。実際に「表示間隔を1時間に
  * 変えると濡れ注意の印が消える」という壊れ方をした前例がある。
  *
- * これらは index.html のインライン script の中にあり、Node から普通には読めない。
- * かといってページ全体を評価すると document を触る行で落ちる。そこで
- * **DOM に触らない範囲だけを目印で切り出して**関数として評価する。
- * index.html は1文字も変えない(アプリ側の版上げもリリースも要らない)。
+ * ver 2.46β までは index.html のインライン script から**目印で切り出して**評価していた。
+ * display.js に出したのでその仕掛けは要らなくなった(切り出しは、index.html のどこに
+ * コードを書けるかという制約も生んでいた)。
  *
  *     node scripts/test_display.js <入力JSON> <出力JSON>
  *
@@ -20,34 +19,44 @@ const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
 
-// 切り出す範囲の目印。ここから下は DOM に触らない定数と純粋な関数だけが並んでいる。
-// 目印が見つからない/複数ある場合はコードが動いた合図なので、黙って通さず止める
-// (空振りしたまま「一致しました」と言うと、この仕掛け自体が嘘になる)。
-const START = "const WET_PRECIP=";
-const END = "// ---- APIアクセス";
-
-function slicePureSource() {
-  const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
-  for (const [label, mark] of [["開始", START], ["終了", END]]) {
-    const n = html.split(mark).length - 1;
-    if (n !== 1) {
-      throw new Error(`index.html の切り出し${label}の目印「${mark}」が ${n} 箇所あります`
-        + " (index.html の構成が変わった可能性があります。目印を updates してください)");
-    }
-  }
-  return html.slice(html.indexOf(START), html.indexOf(END));
-}
-
-// logic.js を先に置くのは、切り出した側が WET_HYPO_WIND_B のような
-// logic.js 側の定数を参照するため(module.exports の行は typeof で素通りする)。
-const EXPOSE = ["timingLabel", "addPrecipNotes", "summarizeDailyWeather", "dayWeatherPhrase",
-                "singleCodePhrase", "wetWarn", "precipPhase", "snowCell", "visTxt"];
-
+// display.js は logic.js の定数(WET_HYPO_WIND_B など)を参照するので、先に読ませる。
+// require ではなくまとめて評価するのは、display.js がブラウザ用の素のスクリプトで、
+// logic.js の値をグローバルとして受け取る前提だから。module を渡してやると
+// display.js 末尾の module.exports が発火するので、公開する名前の一覧は display.js 側に1つだけ置ける。
 function loadApi() {
   const logic = fs.readFileSync(path.join(ROOT, "logic.js"), "utf8");
-  const body = logic + "\n" + slicePureSource()
-    + "\nreturn {" + EXPOSE.join(",") + "};";
-  return new Function(body)();
+  const disp = fs.readFileSync(path.join(ROOT, "display.js"), "utf8");
+  return new Function("module", logic + "\n" + disp + "\nreturn module.exports;")({ exports: {} });
+}
+
+// ---- display.js が唯一の置き場であることの確認 ----
+// (書き方は scripts/test_logic.js の logic.js 版と同じ。ズレたら両方直すこと)
+function checkPages(D) {
+  // ★ find 側は生成物(docs/find.html)ではなく**生成元**を見る(CLAUDE.md 規約6)。
+  //   生成物を見ると、gen_find.py を直し忘れた状態でも通ってしまう。
+  //   生成物が生成元と一致していることは check_mountains.py の [4/8] が別に見ている。
+  const PAGES = [["index.html", /<script src="display\.js\?v=([^"]+)"/],
+                 [path.join("scripts", "gen_find.py"), /<script src="\.\.\/display\.js\?v=([^"]+)"/]];
+  // display.js へ移したもの。ページ側に再定義が残っていたら、そちらが後勝ちで使われる。
+  const MOVED = ["timingLabel", "addPrecipNotes", "summarizeDailyWeather", "dayWeatherPhrase",
+                 "singleCodePhrase", "wetWarn", "precipPhase", "snowCell", "visTxt",
+                 "WMETA", "SAFETY_OVERRIDE", "PRECIP_CATS", "CAT_LABEL", "TOD_ORDER", "timeOfDay"];
+  const fails = [];
+  for (const [rel, re] of PAGES) {
+    const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
+    const m = src.match(re);
+    if (!m) { fails.push(`${rel}: display.js の <script src> が見つかりません`); continue; }
+    if (m[1] !== D.PW_DISPLAY_VER) {
+      fails.push(`${rel}: display.js の ?v=${m[1]} が PW_DISPLAY_VER=${D.PW_DISPLAY_VER} と違います`
+        + " (古い display.js がキャッシュに残り、文言だけ旧版になります)");
+    }
+    for (const n of MOVED) {
+      if (new RegExp("(?:function|const|let|var)\\s+" + n + "\\s*[=({]").test(src)) {
+        fails.push(`${rel}: ${n} が再定義されています (display.js の実装が上書きされます)`);
+      }
+    }
+  }
+  return fails;
 }
 
 // CLI は markdown なのでアイコンを持たない。比較できるよう、フレーズを文字列の列に落とす
@@ -77,6 +86,11 @@ if (!inPath || !outPath) {
 }
 
 const A = loadApi();
+const pageFails = checkPages(A);
+if (pageFails.length) {
+  for (const m of pageFails) console.error("  NG " + m);
+  process.exit(2);
+}
 const cases = JSON.parse(fs.readFileSync(inPath, "utf8"));
 const out = {};
 for (const name of Object.keys(cases)) {

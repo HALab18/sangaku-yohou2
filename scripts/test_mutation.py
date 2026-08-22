@@ -47,6 +47,7 @@ except Exception:
 # 複製する対象。判定と、その検証に要るものだけ(DEVLOG や画像は写さない)。
 COPY = [
     "logic.js",
+    "display.js",
     "index.html",
     "scripts/mountain_weather.py",
     "scripts/test_logic.py",
@@ -71,6 +72,7 @@ COPY = [
 LOGIC = "logic.js"
 CLI = "scripts/mountain_weather.py"
 INDEX = "index.html"
+DISPLAY = "display.js"
 FIND = "scripts/gen_find.py"
 SW = "sw.js"
 GATE = "gate.js"
@@ -130,16 +132,25 @@ MUTATIONS = [
      INDEX, '<script src="logic.js?v=', '<script>function blockIndex(){return["A",""]}</script>\n<script src="logic.js?v='),
     # ---- 表示まわり。CLI と Web に同じものが2重に書かれている範囲 ----
     ("Web 側の「濡れ注意」の気温を境界ちょうどで外す",
-     INDEX, 'return temp<=WET_WARN_TEMP&&', 'return temp<WET_WARN_TEMP&&'),
+     DISPLAY, 'return temp<=WET_WARN_TEMP&&', 'return temp<WET_WARN_TEMP&&'),
     ("CLI 側の「濡れ注意」の気温しきい値を 15 → 14 にずらす",
      CLI, 'WET_WARN_TEMP_C = 15', 'WET_WARN_TEMP_C = 14'),
     ("Web 側の雨雪判別の margin を 100 → 200 にずらす",
-     INDEX, 'if(fl<elev-100)return"雪";', 'if(fl<elev-200)return"雪";'),
+     DISPLAY, 'if(fl<elev-100)return"雪";', 'if(fl<elev-200)return"雪";'),
     ("CLI 側の天気を集約する時間帯窓をずらす",
      CLI, "WX_WINDOW = (4, 17)", "WX_WINDOW = (4, 16)"),
     ("Web 側の安全オーバーライドから雷を外す(悪天が日代表に昇格しなくなる)",
-     INDEX, 'const SAFETY_OVERRIDE=new Set([65,66,67,75,82,85,86,95,96,99]);',
+     DISPLAY, 'const SAFETY_OVERRIDE=new Set([65,66,67,75,82,85,86,95,96,99]);',
      'const SAFETY_OVERRIDE=new Set([65,66,67,75,82,85,86]);'),
+    ("display.js の ?v= を上げ忘れる(古い文言がキャッシュに残っても気づけない)",
+     DISPLAY, 'const PW_DISPLAY_VER = "', 'const PW_DISPLAY_VER = "0'),
+    ("index.html に wetWarn を再定義する(display.js の実装が後勝ちで潰される)",
+     INDEX, '<script src="display.js?v=',
+     '<script>function wetWarn(){return false}</script>\n<script src="display.js?v='),
+    ("find 側に timingLabel を再定義する(display.js の実装が後勝ちで潰される)",
+     FIND, '  var CAT_ICON={', '  function timingLabel(){return "日中"}\n  var CAT_ICON={'),
+    ("CLI 側の整数の丸めを偶数丸めに戻す(視程・積雪がちょうど .5 で Web と1ズレる)",
+     CLI, "return math.floor(v + 0.5)", "return round(v)"),
     # ---- 天気コード → 日本語表現。総当たりでしか出ない性質 ----
     ("CLI 側の安全オーバーライドを空にする(悪天が日代表に昇格しなくなる)",
      CLI, 'SAFETY_OVERRIDE = {65, 66, 67, 75, 82, 85, 86, 95, 96, 99}',

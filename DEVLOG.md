@@ -5,6 +5,133 @@
 
 ---
 
+## ▶ 次の再開ポイント: 丸め差を消し、表示層を display.js に畳んだ（ver 2.46β・2026-08-22）
+
+**現状**: `ver 2.46β`。**判定ロジックは無変更**（`logic.js` を触っていないので `PW_LOGIC_VER` と
+`logic.js?v=` は据え置き）。新規 `display.js`（`PW_DISPLAY_VER = "246"`）を index.html と
+docs/find.html の両方から読む。`sw.js` は `SHELL` に `display.js` を足して `CACHE` を
+`pw-shell-2.46` へ、フッターを `Ver.2.46β` へ。`gen_find.py` を変えたので `docs/find.html` を再生成。
+**master へは未反映**（2.45β まで公開済み）。
+
+**改善事項 09（丸め差）と 13（表示層の2重管理）、それに `.gitattributes` を片付けた。**
+残るは **11 ダークモード（本人の判断で保留）** と、**テスト2本（次のセッション）**。
+
+### ★ 天気の語彙は2箇所ではなく3箇所にあった（レポートの記述が違っていた）
+
+改善事項13 は「CLI と index.html の2重」と書いていたが、着手して数えると
+**`scripts/gen_find.py` にも丸ごと3つ目の写しがあった** ── `WMETA` / `SAFETY_OVERRIDE` /
+`PRECIP_CATS` / `CAT_LABEL` / `TOD_ORDER` / `timeOfDay` / `timingLabel` / `WMO`。
+しかも gen_find.py のコメントには「値を変えるときは index.html:WMETA と
+mountain_weather.py:WMETA も必ず揃えること」と書いてあった ──
+**この3つ目の一致を守っていたのはコメントだけ**で、`test_display` は index.html の写ししか
+突き合わせていなかった。
+
+**そして実際にズレていた。** `WMO` の2エントリが find 側だけ古く、
+`51:"霧雨"` / `80:"にわか雨"`（index・CLI は `"霧雨(弱)"` / `"にわか雨(弱)"`）。
+統合にあたって index・CLI 側（2対1）に寄せた。出るのは「日照が取れず、代表が降水系でない日の
+フォールバック表示」だけなので実害はまず無いが、**コメントで守る取り決めは実際に腐る**という実例。
+`WMETA` / `SAFETY_OVERRIDE` / `PRECIP_CATS` / `CAT_LABEL` / `TOD_ORDER` / `timingLabel` は
+3つとも完全一致していた（移す前に1件ずつ突き合わせた）。
+
+### 13 表示層 → `display.js`
+
+**`logic.js` には寄せられない。** `check_syntax.py` の `ES5_BANNED` が logic.js/gate.js から
+テンプレートリテラル・アロー関数・`const` を機械的に弾く（find.html が ES5 だから、という理由）。
+表示関数はテンプレートリテラルだらけなので、寄せると全面書き直しになる。
+`docs/find.html` 自体は完全な ES5 ではない（465行付近の記録どおり）ので、
+**ES6 の `display.js` を新設して両ページから読ませた**。
+
+移したのは `test_display.js` が既に「CLI と対になる表示面」として扱っている9関数
+（`timingLabel` `addPrecipNotes` `summarizeDailyWeather` `dayWeatherPhrase` `singleCodePhrase`
+`wetWarn` `precipPhase` `snowCell` `visTxt`）とその語彙。
+**HTML やクラス名を組み立てるもの（`wxPhraseHtml` `idxCell` `vhtml` `ltCell` など）は
+index.html に残した** ── CLI の markdown 出力と1対1で比べられる素の値だけを置く、という線引き。
+ここを崩すと `test_display` が空振りする。冒頭コメントにその旨を書いた。
+
+**2箇所が下限**。Python↔JS はどうやっても消せないので、判定と同じく機械で突き合わせて守る。
+
+**テストの作りが1段素直になった:**
+- `test_display.js` の「index.html から目印で切り出す」仕掛けを**削除**。`display.js` を
+  logic.js と一緒に評価するだけになった。**index.html のどこにコードを置けるかという制約も消えた**
+  （2.45β の `scrollBehavior()` で実際にぶつかった制約）。
+- ついでに `test_logic.js` と同じ形で **`display.js?v=` と `PW_DISPLAY_VER` の一致**と
+  **ページ側に再定義が無いこと**を見るようにした。
+  find 側は**生成物ではなく生成元（`scripts/gen_find.py`）を見る**（規約6）── 最初は
+  `docs/find.html` を見ていたが、それだと gen_find.py に再定義を仕込む変異が
+  **素通りした**（サンドボックスは find.html を再生成しない）。ミューテーションが教えてくれた。
+- `test_find_score.js` も `display.js` を読むようにし、切り出し範囲の目印を
+  `var WMO={0:` → `var CAT_ICON={` に付け替えた。
+
+### 09 丸め差
+
+`scripts/mountain_weather.py` に `r0()`（`math.floor(v + 0.5)`）と `fint()` を立て、
+**整数に丸めている表示箇所すべて**を通した ── 視程・積雪・CAPE/CIN・突風・気温幅・降水確率・
+雲量・上空気温の符号付き表記・標高。`fnum()` からは**書式の既定値 `"{:.0f}"` を外した**
+（既定のままだと、次に整数を足した人が黙って偶数丸めに戻る）。
+
+- **`.1f` の側は直していない。** 小数1桁のちょうど中間は `(2k+1)/20` で、`1/20` は2進で
+  表せないため**厳密なタイが原理的に発生しない**。ズレるのは整数の丸めだけ。
+- **ついでに1件バグが見つかった。** CIN の表記が「丸める前に符号を付けて」いたため、
+  `|CIN| = 0.5` のとき Python は `"-0"` を出していた（JS は `-1`）。丸めてから符号を付ける形に直した。
+- `test_display.py` の「既知の丸め差」の節（`ROUNDING_ONLY` / `_halfup`）を**丸ごと削除**して
+  厳密比較に戻した。**6,456ケース全件一致**（以前は532件が例外扱いだった）。
+- 実測: `snow_cell(0.645, 2.5)` は CLI・Web とも `65cm(+3)`、`vis_text(12500)` は
+  とも `13km`（偶数丸めなら `64cm(+2)` / `12km`）。
+
+### `.gitattributes`
+
+全体に `text=auto` は掛けない（`after.md` が UTF-16 で入っており誤検出される）。
+**`references/mountains.csv text eol=crlf` の1行だけ。** これまで作業コピーが CRLF なのは
+Windows の `core.autocrlf` 任せで、**他のOSでは LF** という偶然に頼っていた。
+blob は LF のままなので既存のコミットは書き換わらない（`git status` がクリーンなことを確認済み）。
+
+### ミューテーション 54 → 58
+
+足したのは4件: ①CLI の丸めを偶数丸めに戻す（この範囲を突く変異は**1件も無かった**ので、
+直しても守られない状態だった）②`PW_DISPLAY_VER` の上げ忘れ ③index.html に `wetWarn` を再定義
+④gen_find.py に `timingLabel` を再定義。
+既存の表示3件は対象ファイルを `index.html` → `display.js` に付け替えた。
+`test_mutation.py` の `COPY` に `display.js` を足すのを忘れて全件落ちた（サンドボックスに
+ファイルが無い）ので、対象を増やしたら `COPY` も見ること。
+
+### 検証
+
+- `python scripts/check_mountains.py --offline` → **8段すべて OK / 結果: すべて正常**
+- `python scripts/test_mutation.py` → **58/58**
+- ブラウザ（http://localhost:8765/）:
+  - index.html: `PW_DISPLAY_VER="246"`、9関数すべて `function`、
+    `snowCell(0.645,2.5)="65cm(+3)"` / `visTxt(12500)="13km"` が **CLI と一致**
+  - docs/find.html: `PW_DISPLAY_VER="246"`、`WMETA[65]=["rain",9]`、
+    `SAFETY_OVERRIDE` が **Set** として引ける（find 側はオブジェクトだったので
+    `SAFETY_OVERRIDE[c]` → `.has(c)` に書き換えてある）
+  - 山さがしを1回だけ実行（沖縄県=1座）── 天気列に「雨」＋注記「朝〜昼過ぎに霧雨」が出る
+    （`timingLabel` + `CAT_LABEL` の経路が共有版で動いている）
+  - 詳細予報を1回だけ実行（燕岳）── 週間表8表・天気の文言・視程とも従来どおり
+  - SW キャッシュ `pw-shell-2.46` に `/display.js` が入っている（オフラインのシェルに載る）
+  - コンソールエラー 0件 / 375px で横スクロールなし / コントラスト **808要素・未達0件**
+- `python -c "import mountain_weather"` で `signed_c(-2.5) = -2℃`、`signed_c(2.5) = +3℃`
+  （JS の `Math.round` と同じ向き）
+
+### 次のセッション: テスト2本（アプリは無変更・版は上げない）
+
+**描画のゴールデン比較**と **CLI ⇄ Web の実データ突合**。設計は決めてある:
+- `run()` が触る DOM は `getElementById` 4 / `querySelector` 1 / `classList` 2 /
+  `textContent` 1 / `navigator.onLine` 3 **だけ**（実測）。`test_stubs.js` に小さな
+  `makeDom()` を足せば足りる。**jsdom は入れない**（CI が pip も npm も使わないのが前提）。
+- 実通信は**1回だけ**。1山ぶんの6リクエストを `references/fixture_forecast.json` に固定し、
+  基準時刻も一緒に置いて `makeClock` に食わせる。
+- `scripts/test_render.js`（Web 側で `out.innerHTML` を作る）と
+  `scripts/test_render.py`（同じ fixture を CLI に通し、golden 一致とセル単位の突合）。
+  golden は `references/golden/`。**差分は表の行ごとに読める形で出すこと。**
+- 両方について変異を1件ずつ足す。
+
+### 残っていること
+
+- **11 ダークモード** ── 保留（本人の判断）。色の直書きは index.html に185・全ページで621。
+- 冬の実地確認 / `file://` ブロックの実機確認 / スキップリンクの `:focus` 実機確認。
+
+---
+
 ## ▶ 次の再開ポイント: 支援技術と「動き」の残りを片付けた（ver 2.45β・2026-08-22）
 
 **現状**: `ver 2.45β`。**判定ロジックは無変更**（`logic.js` を触っていないので `PW_LOGIC_VER` と

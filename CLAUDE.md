@@ -26,6 +26,7 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `index.html` | Webアプリ本体（CSS/JS内包。CLIと同じ判定ロジックをJSで実装。ゲートのみ `gate.js` に外出し） |
 | `sw.js` | Service Worker。**画面(HTML/CSS/JS/アイコン)だけ**をネットワーク優先でキャッシュし、圏外でもアプリが開くようにする。気象データは扱わない（予報の保存は index.html の localStorage スナップショット側） |
 | `logic.js` | 登山指数 A/B/C の判定ロジック（`blockIndex`/`seasonTh`/`feelsLike`/`viewScore`/`interpWind`/`sumOrNull` と各しきい値）。**JS側の判定はここが唯一の置き場**。`index.html`・`docs/find.html` が `<script src>` で読む |
+| `display.js` | 天気の文言・濡れ注意・雨雪判別・積雪や視程の表記（`summarizeDailyWeather`/`dayWeatherPhrase`/`singleCodePhrase`/`wetWarn`/`precipPhase`/`snowCell`/`visTxt`/`timingLabel`/`addPrecipNotes` と語彙 `WMO`/`WMETA`/`SAFETY_OVERRIDE`/`CAT_LABEL` 等）。**JS側の表示はここが唯一の置き場**。`index.html`・`docs/find.html` が `<script src>` で読む。ver 2.46β で3箇所の写しを1つに畳んだ |
 | `gate.js` | 規約同意＋認証コードの共通ゲート。**認証定数(AUTH_VER/SALT/HASH)はここが唯一の置き場**。`index.html`・`docs/find.html`・`docs/point.html` が読み込む |
 | `scripts/mountain_weather.py` | CLI本体。`--name`/`--lat --lon --elev` で予報を出力（`--html`でレポート保存） |
 | `references/mountains.csv` | 内蔵山岳DB（**BOM付きUTF-8・CRLF**）。列: name,yomi,pref,lat,lon,elev |
@@ -36,7 +37,7 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `skill/auth-renew/SKILL.md` | 認証コード更新スキル（「認証コードを更新して」で年次ローテーションを自動実行） |
 | `references/logic_cases.json` `scripts/test_logic.py` `scripts/test_logic.js` | 判定ロジックの等価性テスト。同じ入出力表を CLI(Python) と `logic.js`(Node) で回す |
 | `scripts/test_logic_fuzz.py` `scripts/test_logic_fuzz.js` | 同じ9関数を乱数で総当たりし、Python↔JS の一致と**不変条件**（悪化させて指数が良くならない・欠測が好条件に化けない等）を見る。入力表の生成は Python 側の1箇所だけ |
-| `scripts/test_display.py` `scripts/test_display.js` | **表示まわり**の等価性テスト（天気の文言・濡れ注意・雨雪判別・積雪や視程の表記）。判定と違いここは一本化されておらず CLI と index.html に2重に書かれている。index.html は書き換えず、DOM に触らない範囲を目印で切り出して評価する |
+| `scripts/test_display.py` `scripts/test_display.js` | **表示まわり**の等価性テスト（天気の文言・濡れ注意・雨雪判別・積雪や視程の表記）。同じ入出力表を CLI(Python) と `display.js`(Node) で回す。あわせて `display.js?v=` と `PW_DISPLAY_VER` の一致、ページ側に再定義が無いことも見る |
 | `scripts/test_find_score.py` `scripts/test_find_score.js` | 山さがしの日和スコア `score()` のテスト。減点方式ゆえ「材料が無い＝100点＝ランクA」に化ける構造なので、値ではなく**壊れ方の向き**を見る。対象は生成物ではなく生成元の `gen_find.py` |
 | `scripts/test_mutation.py` | わざとバグを仕込んで**テストが落ちること**を確かめる。落ちない変異があれば、その範囲についてテストは書いていないのと同じ |
 | `scripts/test_weather_codes.py` | 天気コード → 日本語表現の**総当たり**。全28コードで文言が出るか・**安全オーバーライドが必ず日代表に昇格するか**・晴れと雷雨が入れ替わらないか・集約の窓(4〜17時)の外の悪天を拾っていないか。`test_display.py` は「一致」しか見ないので、両方とも同じように間違っている場合を捕まえられない |
@@ -143,11 +144,19 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
    `logic.js` の関数を index.html / docs/find.html 側に再定義しないこと（後勝ちで上書きされ、
    `logic.js` を直しても反映されないという壊れ方をする。`test_logic.js` が検出する）。
 
-   **表示まわり（天気の文言・濡れ注意・雨雪判別・積雪や視程の表記）は一本化されておらず、
-   CLI と index.html に2重に書かれている。** 片方だけ直さないこと。突き合わせは
+   **表示まわり（天気の文言・濡れ注意・雨雪判別・積雪や視程の表記）の実装も2箇所だけ** ──
+   `scripts/mountain_weather.py`(CLI) と **`display.js`**(Web)。ver 2.46β まではここに
+   `index.html` と `scripts/gen_find.py` の**2つの写し**があり、find 側の一致は
+   「値を変えるときは揃えること」というコメントだけが守っていた。`display.js` に畳んだので、
+   **index.html / gen_find.py 側に再定義しないこと**（後勝ちで潰れる。`test_display.js` が検出する）。
+   言語をまたぐ Python↔JS の1組は消せないので**2箇所が下限**。片方だけ直さないこと。突き合わせは
    `python scripts/test_display.py`（`check_mountains.py` の `[5/8]` が呼ぶ）。
-   index.html 側は「DOM に触らない範囲」を目印（`const WET_PRECIP=` 〜 `// ---- APIアクセス`）で
-   切り出して評価しているので、この範囲に DOM を触るコードを入れないこと。
+   `display.js` には**素の値を返すものだけ**を置く（HTML やクラス名を組み立てるものは
+   index.html 側に残す）。CLI の markdown 出力と1対1に比べられなくなると、この検査が空振りする。
+
+   **整数の丸めは `r0()`/`fint()` を必ず通す**（CLI 側）。Python の `f"{v:.0f}"` と `round()` は
+   偶数丸めで、JS の `Math.round` と**ちょうど .5 のときだけ1ズレる**（ver 2.46β で解消）。
+   小数1桁の側は、ちょうど中間の値が2進で表せないため厳密なタイが発生せず、揃える必要は無い。
 4. **CLI本体に第三者パッケージを足さない**（依存ゼロを維持）。保守スクリプト側はOK。
 5. **座標変更・DB編集をしたら必ず `python scripts/check_mountains.py` を通す**
    （構文・形式・CLI/Web同期・自動生成ページの同期・判定ロジックの等価性・**圏外や障害時のふるまい**・
@@ -168,6 +177,8 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 8. **`logic.js` を変えたら `PW_LOGIC_VER` と、index.html・`gen_find.py` の `?v=` を同時に上げる。**
    上げないと古い `logic.js` がキャッシュに残り、「画面は新しいのに判定だけ旧版」という
    気づけない状態になる（一致は `test_logic.js` が機械的に見ている）。
+   **`display.js` も同じ形**（`PW_DISPLAY_VER` と2ページの `?v=`。一致は `test_display.js` が見る）。
+   こちらを上げ忘れると「画面は新しいのに文言だけ旧版」になる。
 9. **リリースのたびに `sw.js` の `CACHE` の版を上げる。** 上げないと `activate` の掃除が走らず、
    前版のシェルがキャッシュに残る。ネットワーク優先なのでオンラインでは表面化せず、
    **完全オフラインで開いたときだけ古い画面が出る**という再現困難な状態になる。

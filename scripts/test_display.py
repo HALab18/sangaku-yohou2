@@ -24,7 +24,6 @@ index.html は一切書き換えない。scripts/test_display.js が DOM に触�
 """
 import argparse
 import json
-import math
 import pathlib
 import random
 import subprocess
@@ -54,41 +53,10 @@ def phrase_text(ph):
     return None if ph is None else list(ph)
 
 
-# ---- 既知の差: 丸め方 ------------------------------------------------------
-# Python の f"{v:.0f}" は**偶数丸め**、JS の Math.round は**四捨五入**。ちょうど .5 の
-# ときだけ1ズレる(視程 12km/13km、積雪 64cm/65cm など)。DEVLOG に持ち越しとして
-# 記録があり、直すかどうかは開発者判断のまま。
-#
-# 勝手に直さないが、黙って見逃すのも違う。そこで「Python 側を四捨五入にすれば一致するか」を
-# 実際に計算し、そうであれば**既知の丸め差**として別に数える(不一致件数には入れない)。
-# こうしておくと、丸め以外の新しいズレが混ざった瞬間にはちゃんと落ちる。
-# 直したときは、この節ごと消せば元の厳密比較に戻る。
-def _halfup(v):
-    """四捨五入(JS の Math.round と同じ向き)。DEVLOG が示している直し方でもある。"""
-    return math.floor(v + 0.5)
-
-
-def snow_cell_halfup(depth_m, sf_cm):
-    if depth_m is None and sf_cm is None:
-        return "-"
-    txt = "-" if depth_m is None else "{:.0f}cm".format(_halfup(depth_m * 100))
-    if sf_cm is not None and sf_cm >= 0.5:
-        txt += "(+{:.0f})".format(_halfup(sf_cm))
-    return txt
-
-
-def vis_text_halfup(vis):
-    if vis is None:
-        return None
-    return ("{:.0f}km".format(_halfup(vis / 1000)) if vis >= 1000
-            else "{:.0f}m".format(_halfup(vis)))
-
-
-# 丸めの向きだけが違いうる関数 → 四捨五入版
-ROUNDING_ONLY = {
-    "snowCell": lambda a: snow_cell_halfup(a[0], a[1]),
-    "visTxt": lambda a: vis_text_halfup(a[0]),
-}
+# 丸めの向きは ver 2.46β で揃えた。Python は f"{v:.0f}" / round() が偶数丸め、
+# JS の Math.round は四捨五入で、ちょうど .5 のときだけ1ズレていた(6,456ケース中532件)。
+# CLI 側に r0()/fint() を入れて四捨五入に寄せたので、ここは**厳密比較**に戻してある。
+# 例外扱いを復活させないこと(丸め以外の新しいズレまで飲み込んでしまう)。
 
 
 def py_summarize(times, codes):
@@ -200,16 +168,12 @@ def run_node(cases):
 
 
 def compare(cases, py, js, max_report):
-    """関数ごとに (不一致件数, 既知の丸め差の件数, 全件数, 実例) を返す。"""
+    """関数ごとに (不一致件数, 全件数, 実例) を返す。"""
     report = {}
     for name in cases:
-        fails, rounding, shown = 0, 0, []
-        alt = ROUNDING_ONLY.get(name)
+        fails, shown = 0, []
         for i, args in enumerate(cases[name]):
             if same(py[name][i], js[name][i]):
-                continue
-            if alt is not None and same(alt(args), js[name][i]):
-                rounding += 1          # 丸めの向きだけの差。既知として別に数える
                 continue
             fails += 1
             if len(shown) < max_report:
@@ -217,7 +181,7 @@ def compare(cases, py, js, max_report):
                     json.dumps(args, ensure_ascii=False)[:160],
                     json.dumps(norm(py[name][i]), ensure_ascii=False)[:160],
                     json.dumps(js[name][i], ensure_ascii=False)[:160]))
-        report[name] = (fails, rounding, len(cases[name]), shown)
+        report[name] = (fails, len(cases[name]), shown)
     return report
 
 
@@ -237,23 +201,15 @@ def main():
         return 0
 
     report = compare(cases, py, js, a.max_report)
-    total = sum(v[2] for v in report.values())
+    total = sum(v[1] for v in report.values())
     bad = sum(v[0] for v in report.values())
-    rnd_diff = sum(v[1] for v in report.values())
     print("表示の一致(CLI vs Web): {} ケース中 {}".format(
         total, "不一致 {} 件".format(bad) if bad else "全件一致"))
-    for name, (fails, rounding, n, shown) in report.items():
+    for name, (fails, n, shown) in report.items():
         mark = "OK" if not fails else "NG"
-        note = "" if not rounding else "  (うち既知の丸め差 {} 件)".format(rounding)
-        print("  {} {:<22} {}/{}{}".format(mark, name, n - fails, n, note))
-        for s in shown:
-            print(s)
-    if rnd_diff:
-        print("\n  ⚠ 既知の丸め差 {} 件: Python の f\"{{v:.0f}}\" は偶数丸め、"
-              "JS の Math.round は四捨五入で、ちょうど .5 のときだけ1ズレます。".format(rnd_diff))
-        print("    影響は視程・積雪などの表記だけで判定には及びません。"
-              "直すなら CLI 側を四捨五入に揃えます(DEVLOG の持ち越し。開発者判断)。")
-        print("    直したら scripts/test_display.py の ROUNDING_ONLY を消して厳密比較に戻すこと。")
+        print("  {} {:<22} {}/{}".format(mark, name, n - fails, n))
+        for s2 in shown:
+            print(s2)
     return 1 if bad else 0
 
 

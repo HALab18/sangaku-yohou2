@@ -1,0 +1,8 @@
+# 行末の既定は git のまま(全体に text=auto を掛けない)。
+# after.md が UTF-16 で入っており、text 扱いされると壊れるため。
+
+# 内蔵山岳DB。Excel で開くので作業コピーは CRLF に固定する(規約2)。
+# リポジトリ側は従来どおり LF なので、既存のコミットは書き換わらない。
+# ver 2.46β まではこれが core.autocrlf 任せで、Windows だけ CRLF・他のOSでは LF という
+# 偶然に頼った状態だった(文字化けを防いでいるのは BOM の方だが、行末も固定しておく)。
+references/mountains.csv text eol=crlf

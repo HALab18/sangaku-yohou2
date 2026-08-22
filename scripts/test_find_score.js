@@ -16,10 +16,10 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..");
 
 // 切り出す2つの範囲。間(DOM の組み立てとイベント登録)は挟まないので飛ばす。
-//   A: 天気コードの表と代表天気(repWeather)まで
+//   A: 代表天気(repWeather)と天気列の表示判定まで(語彙は display.js から来る)
 //   B: 稜線風の補間からスコア・足切り・ランクまで
 const SLICES = [
-  ["天気コードの表", "  var WMO={0:", "  var elRegion=document.getElementById"],
+  ["代表天気", "  var CAT_ICON={", "  var elRegion=document.getElementById"],
   ["スコア本体", "  var DEGRADED_LEVEL_IDX=", "  function brkHtml("],
 ];
 
@@ -41,14 +41,19 @@ function slicePureSource() {
   return out;
 }
 
-// logic.js を先に置く。find 側は interpWind / seasonTh / blockIndex / feelsLike / RANK /
-// LEVELS / DEGRADED_LEVELS を logic.js から使う(複製しない約束になっている)。
+// logic.js と display.js を先に置く。find 側は
+//   logic.js   … interpWind / seasonTh / blockIndex / feelsLike / RANK / LEVELS / DEGRADED_LEVELS
+//   display.js … WMO / wcode / WMETA / WCAT / WSEV / SAFETY_OVERRIDE / PRECIP_CATS /
+//                CAT_LABEL / TOD_ORDER / timeOfDay / timingLabel
+// を使う(どちらも複製しない約束。ver 2.46β までは後者の写しが find 側にも丸ごとあった)。
 const EXPOSE = ["score", "formalIndex", "ridgeAt", "repWeather",
                 "rankOf", "isDangerous", "cutWind", "reasonLabel"];
 
 function loadApi() {
   const logic = fs.readFileSync(path.join(ROOT, "logic.js"), "utf8");
-  const body = logic + "\n" + slicePureSource() + "\nreturn {" + EXPOSE.join(",") + "};";
+  const disp = fs.readFileSync(path.join(ROOT, "display.js"), "utf8");
+  const body = logic + "\n" + disp + "\n" + slicePureSource()
+    + "\nreturn {" + EXPOSE.join(",") + "};";
   return new Function(body)();
 }
 
