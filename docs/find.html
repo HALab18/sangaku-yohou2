@@ -10,7 +10,7 @@
 <meta name="theme-color" media="(prefers-color-scheme:light)" content="#1e2d4a">
 <meta name="theme-color" media="(prefers-color-scheme:dark)" content="#101725">
 <!-- 配色(明るい配色と、端末が夜モードのときの暗い配色)。色の値はここが唯一の置き場で、
-     各ページの <style> は var(--◯◯) しか書かない。?v= は theme.css の --pw-theme-ver と
+     各ページのスタイル指定は var(--◯◯) しか書かない。?v= は theme.css の --pw-theme-ver と
      同じ値にする(古い版がキャッシュに残ると「画面は新しいのに配色だけ旧版」になる)。
      一致は scripts/check_contrast.py が機械的に見ている。 -->
 <link rel="stylesheet" href="../theme.css?v=247">
@@ -33,10 +33,6 @@
 
   gtag('config', 'G-B4FYN1EJ2S');
 </script>
-<style> は var(--◯◯) しか書かない。?v= は theme.css の --pw-theme-ver と
-     同じ値にする(古い版がキャッシュに残ると「画面は新しいのに配色だけ旧版」になる)。
-     一致は scripts/check_contrast.py が機械的に見ている。 -->
-<link rel="stylesheet" href="../theme.css?v=247">
 <!-- このファイルは scripts/gen_find.py により index.html から自動生成されます。直接編集しないでください
      (直接編集すると次回の再生成で消えます。修正は必ず scripts/gen_find.py 側に入れること) -->
 <script src="../gate.js?v=2026b"></script>

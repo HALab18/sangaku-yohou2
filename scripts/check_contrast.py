@@ -12,6 +12,11 @@ ver 2.47β で暗い配色(prefers-color-scheme:dark)に対応した。ここで
                          (＝暗い地に暗い文字)。ページは普通に描画されるので落ちない。
   [2] コントラスト比     下の PAIRS(どの文字色がどの面の上に載るか)を両方の配色で計算し、
                          WCAG AA を満たすか。本文は 4.5:1、大きい文字と部品は 3:1。
+  [5] head の作り        <style> と </style> と theme.css の読み込みが各1つずつか。
+                         生成物の <style> ブロックを文字列で切り出して差し替えたとき、
+                         コメントの中の「<style>」に先に当たって範囲がずれ、head に
+                         <!-- の無い <style> と <link> の写しが残った(実際にやった)。
+                         ブラウザは黙って解釈するので、画面はほぼ正常に見える。
   [4] 面と文字の取り違え  --slate / --night は「面」のトークンで、暗い配色でも暗いまま。
                          これを color: に使うと暗い配色で地に沈む(明るい配色では読める)。
                          実際に h3 が 2.06:1 になっていたのをこれで見つけた。
@@ -225,6 +230,28 @@ def check_surface_as_text():
     return errors
 
 
+# ------------------------------------------------------ head の作りの検査
+def check_head():
+    """<style> / </style> / theme.css の読み込みが、各ページに1つずつか。
+
+    数が合わないのは、たいてい「head に壊れた写しが混ざった」とき。ブラウザは
+    閉じていない <style> を黙って解釈して以降を CSS として飲み込むので、
+    画面を見ても(ほぼ)正常に見える ── 機械で数えるしかない。
+    """
+    errors = []
+    targets = ["index.html"]
+    targets += [str(x.relative_to(ROOT)).replace("\\", "/") for x in sorted((ROOT / "docs").glob("*.html"))]
+    for rel in targets:
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        for needle, label in (("<style>", "<style>"), ("</style>", "</style>"),
+                              ("theme.css?v=", "theme.css の読み込み")):
+            n = text.count(needle)
+            if n != 1:
+                errors.append("[5] {}: {} が {} 箇所です (1つであるべき。"
+                              "head に壊れた写しが混ざっていないか見ること)".format(rel, label, n))
+    return errors
+
+
 # ------------------------------------------------------------ 読み込みの版
 def check_version():
     """theme.css の版と、各ページの `?v=` が一致しているか(規約8と同じ形)。"""
@@ -308,6 +335,9 @@ def main():
 
     # [4] 面と文字の取り違え
     errors += check_surface_as_text()
+
+    # [5] head の作り
+    errors += check_head()
 
     # 読み込みの版
     errors += check_version()
