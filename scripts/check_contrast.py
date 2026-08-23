@@ -170,6 +170,7 @@ PAIRS = [
     ("--sky",     "--night",     LARGE, "濃紺の上の補助の青"),
     ("--off-line", "--off-bg",   LARGE, "保存済み予報の帯の左罫"),
     ("--sep-line", "--sep-bg",   DECOR, "区切り行の上罫"),
+    ("--mark",    "--surface",   DECOR, "404 の山マーク / カード"),
 ]
 
 
@@ -198,6 +199,9 @@ ALLOW = {
     "docs/point.html": 0,
     "docs/terms.html": 0,
     "docs/weather-links.html": 0,
+    # 404 は GitHub Pages が任意のパスで返すページ。2.50β で theme.css に寄せた
+    # (それまで色が11個ベタ書きで、暗い配色でも明るいまま出ていた)
+    "404.html": 0,
 }
 
 
@@ -220,7 +224,8 @@ SURFACE_ONLY = ("--slate", "--night", "--night-d", "--bg",
 
 def check_surface_as_text():
     errors = []
-    targets = ["index.html", "gate.js", "scripts/gen_find.py", "scripts/gen_mountain_list.py"]
+    targets = ["index.html", "404.html", "gate.js",
+               "scripts/gen_find.py", "scripts/gen_mountain_list.py"]
     targets += [str(p.relative_to(ROOT)).replace("\\", "/") for p in sorted((ROOT / "docs").glob("*.html"))]
     for rel in targets:
         text = (ROOT / rel).read_text(encoding="utf-8")
@@ -248,7 +253,8 @@ def check_no_media_dark():
     <meta name="theme-color" media="…"> は別物なので対象にしない(theme.js が上書きする)。
     """
     errors = []
-    targets = ["index.html", "scripts/gen_find.py", "scripts/gen_mountain_list.py", "theme.css"]
+    targets = ["index.html", "404.html", "scripts/gen_find.py",
+               "scripts/gen_mountain_list.py", "theme.css"]
     targets += [str(x.relative_to(ROOT)).replace("\\", "/") for x in sorted((ROOT / "docs").glob("*.html"))]
     for rel in targets:
         text = (ROOT / rel).read_text(encoding="utf-8")
@@ -272,7 +278,7 @@ def check_head():
     画面を見ても(ほぼ)正常に見える ── 機械で数えるしかない。
     """
     errors = []
-    targets = ["index.html"]
+    targets = ["index.html", "404.html"]
     targets += [str(x.relative_to(ROOT)).replace("\\", "/") for x in sorted((ROOT / "docs").glob("*.html"))]
     for rel in targets:
         text = (ROOT / rel).read_text(encoding="utf-8")
@@ -299,7 +305,8 @@ def check_version():
     ver = m.group(1)
     errors = []
     # 生成物(find.html / mountains.html)ではなく生成元も見る(規約6)
-    targets = ["index.html", "scripts/gen_find.py", "scripts/gen_mountain_list.py"]
+    targets = ["index.html", "404.html",
+               "scripts/gen_find.py", "scripts/gen_mountain_list.py"]
     targets += [str(p.relative_to(ROOT)).replace("\\", "/") for p in sorted((ROOT / "docs").glob("*.html"))]
     for rel in targets:
         text = (ROOT / rel).read_text(encoding="utf-8")

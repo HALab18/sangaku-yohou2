@@ -78,6 +78,7 @@ COPY = [
     "theme.css",
     "scripts/check_contrast.py",
     "scripts/gen_mountain_list.py",
+    "404.html",
 ] + ["docs/{}.html".format(n) for n in
      ("find", "find-score", "history", "how-it-works", "how-it-works-web",
       "mountains", "point", "terms", "weather-links")]
@@ -91,6 +92,7 @@ SW = "sw.js"
 GATE = "gate.js"
 THEME = "theme.css"
 HOWTO = "docs/how-it-works.html"
+NOTFOUND = "404.html"
 
 # (説明, 対象ファイル, 置換前, 置換後)
 # 置換前は「その時点のコードに1回だけ出てくる文字列」であること。
@@ -250,15 +252,19 @@ MUTATIONS = [
     ("index.html に色をベタ書きで戻す(暗い配色で差し替わらなくなる)",
      INDEX, 'body{margin:0;color:var(--text);', 'body{margin:0;color:#222;'),
     ("theme.css の読み込みを旧版のままにする(配色だけキャッシュに残る)",
-     INDEX, 'theme.css?v=248', 'theme.css?v=247'),
+     INDEX, 'theme.css?v=249', 'theme.css?v=248'),
     (u"theme.js の読み込みを旧版のままにする(切り替えだけキャッシュに残る)",
-     INDEX, 'theme.js?v=248', 'theme.js?v=247'),
+     INDEX, 'theme.js?v=249', 'theme.js?v=248'),
     # 端末の設定ではなく **いま当てている配色** に当てること。メディアクエリに戻すと、
     # 端末は明るいまま画面だけダークに固定した人にだけ当たらない(2.48β で実際に起きた)
     (u"図版の明るい面をメディアクエリに戻す(画面だけ暗くした人に当たらない)",
      HOWTO,
      ':root[data-theme="dark"] figure svg{background:#f4f6f9;border-radius:10px;padding:6px}',
      '@media(prefers-color-scheme:dark){figure svg{background:#f4f6f9;border-radius:10px;padding:6px}}'),
+    # 404 は GitHub Pages が任意のパスで返す。ここだけ色をベタ書きに戻すと、
+    # 暗い配色でも明るいまま出る(2.50β まで実際にそうなっていた)
+    (u"404 の地の色をベタ書きに戻す(暗い配色で差し替わらなくなる)",
+     NOTFOUND, 'background:var(--bg);color:var(--text);', 'background:#f4f6f9;color:#222;'),
 ]
 
 

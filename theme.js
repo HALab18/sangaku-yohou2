@@ -19,7 +19,7 @@
  * ★ 版は theme.css の --pw-theme-ver と同じ値にし、各ページの `theme.js?v=` も揃える
  *   (配色の層としてひとつの版で動かす)。一致は scripts/check_contrast.py が機械的に見ている。
  */
-var PW_THEME_VER = "248";
+var PW_THEME_VER = "249";
 
 (function () {
   var KEY = "pw-theme";                 // 値は "light" / "dark" のみ。自動のときは未保存

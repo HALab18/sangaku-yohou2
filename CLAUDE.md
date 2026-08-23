@@ -27,7 +27,7 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `sw.js` | Service Worker。**画面(HTML/CSS/JS/アイコン)だけ**をネットワーク優先でキャッシュし、圏外でもアプリが開くようにする。気象データは扱わない（予報の保存は index.html の localStorage スナップショット側） |
 | `logic.js` | 登山指数 A/B/C の判定ロジック（`blockIndex`/`seasonTh`/`feelsLike`/`viewScore`/`interpWind`/`sumOrNull` と各しきい値）。**JS側の判定はここが唯一の置き場**。`index.html`・`docs/find.html` が `<script src>` で読む |
 | `display.js` | 天気の文言・濡れ注意・雨雪判別・積雪や視程の表記（`summarizeDailyWeather`/`dayWeatherPhrase`/`singleCodePhrase`/`wetWarn`/`precipPhase`/`snowCell`/`visTxt`/`timingLabel`/`addPrecipNotes` と語彙 `WMO`/`WMETA`/`SAFETY_OVERRIDE`/`CAT_LABEL` 等）。**JS側の表示はここが唯一の置き場**。`index.html`・`docs/find.html` が `<script src>` で読む。ver 2.46β で3箇所の写しを1つに畳んだ |
-| `theme.css` | 配色。**色の値はここが唯一の置き場**で、明るい配色と暗い配色(`:root[data-theme="dark"]`)の両方をトークン(`--◯◯`)で持つ。全9ページと `gate.js` が `var(--◯◯)` だけを書く。ver 2.47β で 657箇所のベタ書きをここに畳んだ |
+| `theme.css` | 配色。**色の値はここが唯一の置き場**で、明るい配色と暗い配色(`:root[data-theme="dark"]`)の両方をトークン(`--◯◯`)で持つ。全10ページ(index・docs 8枚・404)と `gate.js` が `var(--◯◯)` だけを書く。ver 2.47β で 657箇所のベタ書きをここに畳み、2.50β で最後に残っていた `404.html` も入れた |
 | `theme.js` | 配色の切り替え(自動/ライト/ダーク)。**切り替えの実装と保存キーはここが唯一の置き場**。「自動」のとき OS を見て `data-theme` を light/dark に解決して `<html>` に付ける(ver 2.48β) |
 | `gate.js` | 規約同意＋認証コードの共通ゲート。**認証定数(AUTH_VER/SALT/HASH)はここが唯一の置き場**。`index.html`・`docs/find.html`・`docs/point.html` が読み込む |
 | `scripts/mountain_weather.py` | CLI本体。`--name`/`--lat --lon --elev` で予報を出力（`--html`でレポート保存） |
@@ -205,6 +205,8 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
     面の `--slate` と罫の `--rule` も別物（明るい配色では同じ値だが、罫は地から浮かせる）。
 
     `theme.css` を変えたら `--pw-theme-ver` と全ページの `?v=` を同時に上げる（規約8と同じ形）。
+    **`404.html` だけは絶対パス**（`/sangaku-yohou2/theme.css?v=…`）で読む。GitHub Pages は
+    任意の深さの URL でこのファイルを返すので、相対パスだと深い URL のときだけ配色が当たらない。
     `theme.js` も**同じ版**で動かす（`?v=` は theme.css と同値。配色の層としてひとつ）。
     検査は `python scripts/check_contrast.py`（`check_mountains.py` の `[1/8]` が呼ぶ）。
 

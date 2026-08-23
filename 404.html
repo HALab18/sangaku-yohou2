@@ -6,34 +6,45 @@
 <title>ページが見つかりません — PeakWeather</title>
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/png" href="/sangaku-yohou2/icons/favicon-32.png">
-<meta name="theme-color" content="#1e2d4a">
+<meta name="theme-color" media="(prefers-color-scheme:light)" content="#1e2d4a">
+<meta name="theme-color" media="(prefers-color-scheme:dark)" content="#101725">
 <!-- GitHub Pages は存在しないパスでこのファイルを返す。既定の英語404だと利用者が
      行き先を失うため、日本語の案内とトップへの導線だけを置く。
      リンクは絶対パス (/sangaku-yohou2/…) にすること: 404 は任意の深さのURLで
-     表示されるので、相対パスだと階層によってリンク先がずれる。 -->
+     表示されるので、相対パスだと階層によってリンク先がずれる。
+     ★ theme.css / theme.js の src も同じ理由で絶対パスにすること。相対にすると
+       深い URL で 404 になったときだけ配色が当たらない(浅い URL では気づけない)。 -->
+<link rel="stylesheet" href="/sangaku-yohou2/theme.css?v=249">
+<!-- 配色の切り替え(自動/ライト/ダーク)。既定は「自動」＝端末(OS)の設定に従う。
+     ★ defer を付けず、theme.css の直後で **同期実行** すること。遅らせると
+       明るい配色で一度描いてから暗転する(起動時の白い一瞬が戻る)。
+     このページには切り替えのボタンは置かない(出口を示すのが役目のページなので)。
+     端末に記憶された選択には theme.js がそのまま従う。 -->
+<script src="/sangaku-yohou2/theme.js?v=249"></script>
 <style>
 body{margin:0;min-height:100svh;display:flex;align-items:center;justify-content:center;
-  background:#f4f6f9;color:#222;padding:24px;
+  background:var(--bg);color:var(--text);padding:24px;
   font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
   font-size:14px;line-height:1.8}
-.card{max-width:520px;width:100%;background:#fff;border:1px solid #dee4ee;border-radius:14px;
-  padding:28px 22px;text-align:center;box-shadow:0 2px 12px rgba(30,45,74,.08)}
-svg{width:64px;height:44px;margin-bottom:6px}
-h1{margin:6px 0 10px;font-size:1.2em;color:#1e2d4a}
-p{margin:10px 0;color:#44506b;text-align:left}
-.btn{display:inline-block;margin-top:14px;padding:12px 28px;background:#4276b5;color:#fff;
+.card{max-width:520px;width:100%;background:var(--surface);border:1px solid var(--line);border-radius:14px;
+  padding:28px 22px;text-align:center;box-shadow:0 2px 12px var(--shadow)}
+/* 山マークは stroke/fill を currentColor にしてあるので、色はここだけで決まる */
+svg{width:64px;height:44px;margin-bottom:6px;color:var(--mark)}
+h1{margin:6px 0 10px;font-size:1.2em;color:var(--head)}
+p{margin:10px 0;color:var(--head-2);text-align:left}
+.btn{display:inline-block;margin-top:14px;padding:12px 28px;background:var(--btn);color:var(--on-night);
   border-radius:10px;font-weight:700;text-decoration:none}
-.btn:hover{background:#3a68a3}
-.sub{margin-top:16px;font-size:.85em;color:#8a94a8;text-align:center}
-.sub a{color:#2b5fa3}
+.btn:hover{background:var(--btn-d)}
+.sub{margin-top:16px;font-size:.85em;color:var(--muted);text-align:center}
+.sub a{color:var(--link)}
 </style>
 </head>
 <body>
 <div class="card">
   <svg viewBox="0 0 76 52" aria-hidden="true">
-    <path d="M4 48 L28 8 L40 27 L50 14 L72 48 Z" fill="none" stroke="#a9b6cc" stroke-width="5" stroke-linejoin="round"/>
-    <path d="M21.5 19 L28 8 L34.5 19 L31.2 15.6 L28 19.6 L24.8 15.6 Z" fill="#a9b6cc"/>
-    <path d="M45.8 20.5 L50 14 L54.2 20.5 L52 18.2 L50 20.8 L48 18.2 Z" fill="#a9b6cc"/>
+    <path d="M4 48 L28 8 L40 27 L50 14 L72 48 Z" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M21.5 19 L28 8 L34.5 19 L31.2 15.6 L28 19.6 L24.8 15.6 Z" fill="currentColor"/>
+    <path d="M45.8 20.5 L50 14 L54.2 20.5 L52 18.2 L50 20.8 L48 18.2 Z" fill="currentColor"/>
   </svg>
   <h1>ページが見つかりませんでした</h1>
   <p>お探しのページは移動または削除された可能性があります。
