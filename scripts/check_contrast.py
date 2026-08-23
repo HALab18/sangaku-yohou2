@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """配色(theme.css)を**明・暗の両方**で機械的に検査する。
 
-ver 2.47β で暗い配色(prefers-color-scheme:dark)に対応した。ここで守りたいのは、
+ver 2.47β で暗い配色に対応し、2.48β で手動の切り替え(自動/ライト/ダーク)を足した。
+ここで守りたいのは、
 「暗い配色のときだけ読めない」という壊れ方を作らないこと ── これは開発者が
 明るい配色で作業しているかぎり**画面を見ても気づけない**(手元では常に正常に見える)。
 
@@ -72,15 +73,20 @@ def ratio(fg, bg):
 def load_themes():
     """theme.css から明・暗の2つのトークン表を取り出す。
 
-    暗い側は @media(prefers-color-scheme:dark) の中。単純な文字列切り出しで足りるが、
+    暗い側は :root[data-theme="dark"] の中(ver 2.48β で手動の切り替えを足した際に、
+    @media(prefers-color-scheme:dark) から移した。「端末に従う」は theme.js が起動時に
+    light/dark のどちらかに解決して属性を付ける形)。単純な文字列切り出しで足りるが、
     目印がちょうど1つでなければ落とす(黙って空の表を検査して「問題なし」と言わないため)。
     """
     css = (ROOT / "theme.css").read_text(encoding="utf-8")
     css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)      # コメントを落とす
-    mark = "@media(prefers-color-scheme:dark)"
+    mark = ':root[data-theme="dark"]'
     if css.count(mark) != 1:
         raise SystemExit("theme.css の暗い配色の目印が {} 箇所あります".format(css.count(mark)))
     light_src, dark_src = css.split(mark)
+    # 目印の後ろには切り替えスイッチの見た目(.pw-theme …)が続く。トークンの表だけ見たいので
+    # 最初の閉じ括弧までで切る(ここを切らないと var(--…) の参照をトークン定義と読み違える)。
+    dark_src = dark_src.split("}", 1)[0]
 
     def toks(src):
         out = {}
@@ -254,7 +260,11 @@ def check_head():
 
 # ------------------------------------------------------------ 読み込みの版
 def check_version():
-    """theme.css の版と、各ページの `?v=` が一致しているか(規約8と同じ形)。"""
+    """theme.css の版と、各ページの `?v=` が一致しているか(規約8と同じ形)。
+
+    theme.js(切り替え)も同じ版で動かす。片方だけ上げると「配色は新しいが切り替えだけ旧版」
+    (またはその逆)が端末のキャッシュに残り、画面を見ても分からない。
+    """
     css = (ROOT / "theme.css").read_text(encoding="utf-8")
     m = re.search(r'--pw-theme-ver:\s*"([^"]+)"', css)
     if not m:
@@ -266,14 +276,15 @@ def check_version():
     targets += [str(p.relative_to(ROOT)).replace("\\", "/") for p in sorted((ROOT / "docs").glob("*.html"))]
     for rel in targets:
         text = (ROOT / rel).read_text(encoding="utf-8")
-        found = set(re.findall(r'theme\.css\?v=([^"\']+)', text))
-        if not found:
-            errors.append("{}: theme.css を読み込んでいません"
-                          " (このページだけ暗い配色に追従しません)".format(rel))
-            continue
-        for got in found - {ver}:
-            errors.append("{}: theme.css?v={} が --pw-theme-ver={} と違います"
-                          " (旧い配色がキャッシュに残ります)".format(rel, got, ver))
+        for what, why in (("theme.css", "このページだけ暗い配色に追従しません"),
+                          ("theme.js", "このページだけ配色を切り替えられません")):
+            found = set(re.findall(re.escape(what) + r'\?v=([^"\']+)', text))
+            if not found:
+                errors.append("{}: {} を読み込んでいません ({})".format(rel, what, why))
+                continue
+            for got in found - {ver}:
+                errors.append("{}: {}?v={} が --pw-theme-ver={} と違います"
+                              " (旧い版がキャッシュに残ります)".format(rel, what, got, ver))
     return errors
 
 

@@ -8,9 +8,14 @@
  *   そうすると暗い配色は「トークンの値を差し替えるだけ」になり、差し替え漏れは
  *   scripts/check_contrast.py が両方の配色でコントラスト比を計算して機械的に見る。
  *
- * ★ 暗い配色は @media(prefers-color-scheme:dark) だけで切り替える。画面内に切替スイッチは
- *   置いていない。端末(OS)の設定に従うのが利用者の期待どおりで、アプリ側に状態を持たせると
- *   「端末は夜モードなのにアプリだけ昼」という食い違いを利用者が自分で直すことになる。
+ * ★ 暗い配色の当たり先は `:root[data-theme="dark"]` の **1系統だけ**。
+ *   CSS に @media(prefers-color-scheme:dark) のブロックを置かないこと。
+ *   ver 2.48β で画面内の切り替え(自動/ライト/ダーク)を足したため、「端末に従う」は
+ *   theme.js が起動時に OS を見て light / dark の **どちらかに解決して** <html> に
+ *   data-theme を付ける形にした。CSS 側は解決後の1状態だけを相手にすればよい。
+ *   ★ 属性とメディアクエリの二重管理にはしない。両方に暗い配色を書くと、片方だけ直したときに
+ *     「端末が夜モードのときだけ古い色」という、見比べないと分からない食い違いになる。
+ *   既定は従来どおり「自動」＝端末(OS)の設定に従う。手動で固定したときだけ端末に記憶する。
  *
  * ★ 新しい色が要るときは、まずここに用途の名前でトークンを足す。
  *   足したら **明・暗の両方**に書く。片方だけだと、書かなかった側で前の値が残る
@@ -23,12 +28,15 @@
 
 :root{
   /* この配色表の版。読み込み側の `?v=` と一致していることを scripts/check_contrast.py が
-     見る。上げ忘れると「画面は新しいのに配色だけ旧版」がHTTPキャッシュに残る(規約8と同じ形)。 */
-  --pw-theme-ver:"247";
+     見る。上げ忘れると「画面は新しいのに配色だけ旧版」がHTTPキャッシュに残る(規約8と同じ形)。
+     theme.js の `?v=` も同じ値にする(配色の層としてひとつの版で動かす)。 */
+  --pw-theme-ver:"248";
 
   /* 端末側の描画(スクロールバー・フォームの既定枠・入力欄のオートフィル)も
-     配色に合わせる。これを書かないと、暗い配色でもスクロールバーだけ白いままになる。 */
-  color-scheme:light dark;
+     配色に合わせる。これを書かないと、暗い配色でもスクロールバーだけ白いままになる。
+     ★ `light dark` にはしない。手動でどちらかに固定できるようになったので、
+       端末の設定ではなく **いま当てている配色** を宣言する(暗い側は下のブロック)。 */
+  color-scheme:light;
 
   /* ---- 面 ---- */
   --bg:#f4f6f9;            /* ページの地 */
@@ -122,8 +130,9 @@
  * 明るい配色の「濃い文字/淡い面」を、そのまま「淡い文字/濃い面」に反転してはいけない。
  * 暗い地の上では同じ色でも明るく見える(色が張り出す)ので、彩度を落として合わせてある。
  */
-@media(prefers-color-scheme:dark){
-:root{
+:root[data-theme="dark"]{
+  color-scheme:dark;
+
   /* ---- 面 ---- */
   --bg:#101725;
   --surface:#19212f;
@@ -186,4 +195,21 @@
   --skyico:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2076%2052'%3E%3Cpath%20d='M4%2048L28%208%2040%2027%2050%2014%2072%2048Z'%20fill='none'%20stroke='%237ea9e0'%20stroke-width='7'%20stroke-linejoin='round'/%3E%3Cpath%20d='M21.5%2019L28%208l6.5%2011-3.3-3.4-3.2%204-3.2-4Z'%20fill='%237ea9e0'/%3E%3Cpath%20d='M45.8%2020.5L50%2014l4.2%206.5-2.2-2.3-2%202.6-2-2.6Z'%20fill='%237ea9e0'/%3E%3C/svg%3E");
   --errico:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2076%2052'%3E%3Cpath%20d='M4%2048L28%208%2040%2027%2050%2014%2072%2048Z'%20fill='none'%20stroke='%23f4a48f'%20stroke-width='7'%20stroke-linejoin='round'/%3E%3Cpath%20d='M21.5%2019L28%208l6.5%2011-3.3-3.4-3.2%204-3.2-4Z'%20fill='%23f4a48f'/%3E%3Cpath%20d='M45.8%2020.5L50%2014l4.2%206.5-2.2-2.3-2%202.6-2-2.6Z'%20fill='%23f4a48f'/%3E%3C/svg%3E");
 }
-}
+
+/* ============================================================ 切り替えスイッチ ==
+ * theme.js が各ページのフッタの #themeui に組み立てる「自動 / ライト / ダーク」。
+ * 見た目はここだけで決める(ページ側には何も足さない)。
+ *
+ * ★ セレクタに .pw-theme を付けてあるのは、index.html の素の button 指定(青い塗りボタン)より
+ *   詳細度で勝つため。付けないと3つとも塗りボタンになって「どれが選択中か」が読めなくなる。
+ */
+.pw-theme{margin:10px 0 2px;display:flex;justify-content:center}
+.pw-theme .pw-seg{display:inline-flex;border:1px solid var(--field);border-radius:999px;
+  overflow:hidden;background:var(--surface)}
+.pw-theme .pw-seg button{margin:0;border:0;background:none;color:var(--muted);
+  font-family:inherit;font-size:12px;font-weight:600;line-height:1;
+  padding:8px 14px;cursor:pointer;border-radius:0;letter-spacing:.02em}
+.pw-theme .pw-seg button+button{border-left:1px solid var(--field)}
+.pw-theme .pw-seg button:hover{background:var(--hover);color:var(--link)}
+.pw-theme .pw-seg button[aria-pressed="true"]{background:var(--sel);color:var(--sel-fg);font-weight:700}
+.pw-theme .pw-seg button:focus-visible{outline:2px solid var(--link);outline-offset:-3px}

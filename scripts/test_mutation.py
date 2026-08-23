@@ -249,7 +249,9 @@ MUTATIONS = [
     ("index.html に色をベタ書きで戻す(暗い配色で差し替わらなくなる)",
      INDEX, 'body{margin:0;color:var(--text);', 'body{margin:0;color:#222;'),
     ("theme.css の読み込みを旧版のままにする(配色だけキャッシュに残る)",
-     INDEX, 'theme.css?v=247', 'theme.css?v=246'),
+     INDEX, 'theme.css?v=248', 'theme.css?v=247'),
+    (u"theme.js の読み込みを旧版のままにする(切り替えだけキャッシュに残る)",
+     INDEX, 'theme.js?v=248', 'theme.js?v=247'),
 ]
 
 

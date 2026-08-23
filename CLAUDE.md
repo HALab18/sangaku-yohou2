@@ -27,7 +27,8 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `sw.js` | Service Worker。**画面(HTML/CSS/JS/アイコン)だけ**をネットワーク優先でキャッシュし、圏外でもアプリが開くようにする。気象データは扱わない（予報の保存は index.html の localStorage スナップショット側） |
 | `logic.js` | 登山指数 A/B/C の判定ロジック（`blockIndex`/`seasonTh`/`feelsLike`/`viewScore`/`interpWind`/`sumOrNull` と各しきい値）。**JS側の判定はここが唯一の置き場**。`index.html`・`docs/find.html` が `<script src>` で読む |
 | `display.js` | 天気の文言・濡れ注意・雨雪判別・積雪や視程の表記（`summarizeDailyWeather`/`dayWeatherPhrase`/`singleCodePhrase`/`wetWarn`/`precipPhase`/`snowCell`/`visTxt`/`timingLabel`/`addPrecipNotes` と語彙 `WMO`/`WMETA`/`SAFETY_OVERRIDE`/`CAT_LABEL` 等）。**JS側の表示はここが唯一の置き場**。`index.html`・`docs/find.html` が `<script src>` で読む。ver 2.46β で3箇所の写しを1つに畳んだ |
-| `theme.css` | 配色。**色の値はここが唯一の置き場**で、明るい配色と暗い配色(`prefers-color-scheme:dark`)の両方をトークン(`--◯◯`)で持つ。全9ページと `gate.js` が `var(--◯◯)` だけを書く。ver 2.47β で 657箇所のベタ書きをここに畳んだ |
+| `theme.css` | 配色。**色の値はここが唯一の置き場**で、明るい配色と暗い配色(`:root[data-theme="dark"]`)の両方をトークン(`--◯◯`)で持つ。全9ページと `gate.js` が `var(--◯◯)` だけを書く。ver 2.47β で 657箇所のベタ書きをここに畳んだ |
+| `theme.js` | 配色の切り替え(自動/ライト/ダーク)。**切り替えの実装と保存キーはここが唯一の置き場**。「自動」のとき OS を見て `data-theme` を light/dark に解決して `<html>` に付ける(ver 2.48β) |
 | `gate.js` | 規約同意＋認証コードの共通ゲート。**認証定数(AUTH_VER/SALT/HASH)はここが唯一の置き場**。`index.html`・`docs/find.html`・`docs/point.html` が読み込む |
 | `scripts/mountain_weather.py` | CLI本体。`--name`/`--lat --lon --elev` で予報を出力（`--html`でレポート保存） |
 | `references/mountains.csv` | 内蔵山岳DB（**BOM付きUTF-8・CRLF**）。列: name,yomi,pref,lat,lon,elev |
@@ -204,7 +205,16 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
     面の `--slate` と罫の `--rule` も別物（明るい配色では同じ値だが、罫は地から浮かせる）。
 
     `theme.css` を変えたら `--pw-theme-ver` と全ページの `?v=` を同時に上げる（規約8と同じ形）。
+    `theme.js` も**同じ版**で動かす（`?v=` は theme.css と同値。配色の層としてひとつ）。
     検査は `python scripts/check_contrast.py`（`check_mountains.py` の `[1/8]` が呼ぶ）。
+
+    **暗い配色の当たり先は `:root[data-theme="dark"]` の1系統だけ。**
+    `theme.css` に `@media(prefers-color-scheme:dark)` のブロックを足さないこと。
+    「端末に従う」は `theme.js` が起動時に OS を見て light/dark の**どちらかに解決して**
+    `<html>` に `data-theme` を付ける形で実現している（ver 2.48β）。属性とメディアクエリの
+    二重管理にすると、片方だけ直したときに**端末が夜モードのときだけ古い色**になる。
+    `theme.js` は `theme.css` の直後で**同期読み込み**する（`defer` を付けると、明るい配色で
+    一度描いてから暗転する＝2.47β で消した「起動時の白い一瞬」が戻る）。
 
 ## 山岳DB拡張パイプライン
 

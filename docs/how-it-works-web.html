@@ -11,7 +11,11 @@
      各ページのスタイル指定は var(--◯◯) しか書かない。?v= は theme.css の --pw-theme-ver と
      同じ値にする(古い版がキャッシュに残ると「画面は新しいのに配色だけ旧版」になる)。
      一致は scripts/check_contrast.py が機械的に見ている。 -->
-<link rel="stylesheet" href="../theme.css?v=247">
+<link rel="stylesheet" href="../theme.css?v=248">
+<!-- 配色の切り替え(自動/ライト/ダーク)。既定は「自動」＝端末(OS)の設定に従う。
+     ★ defer を付けず、theme.css の直後で **同期実行** すること。遅らせると
+       明るい配色で一度描いてから暗転する(起動時の白い一瞬が戻る)。 -->
+<script src="../theme.js?v=248"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -564,7 +568,9 @@ CAPE が中くらいでも、日中に山の斜面を這い上がる風（谷風
 ⑥ 数字はぜんぶ決まったルール（数式としきい値）の計算
 </div>
 
-<footer><a href="../index.html">← PeakWeather トップへ戻る</a> /
+<footer>
+<div class="pw-theme" id="themeui"></div>
+<a href="../index.html">← PeakWeather トップへ戻る</a> /
 データ: Open-Meteo (CC BY 4.0) / 山岳座標: 国土地理院データ・yamareco で照合 / 2026-07
 </footer>
 
