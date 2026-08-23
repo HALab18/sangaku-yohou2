@@ -236,6 +236,33 @@ def check_surface_as_text():
     return errors
 
 
+# -------------------------------------------- メディアクエリの二重管理の検査
+def check_no_media_dark():
+    """ページの <style> に @media(prefers-color-scheme:dark) を残していないか。
+
+    暗い配色の当たり先は :root[data-theme="dark"] の1系統だけ(規約10)。メディアクエリで
+    書くと **端末の設定** に反応してしまうので、画面側で固定した人と食い違う:
+    「端末は明るいまま画面だけダークに固定」した人には当たらず、「端末が暗いのに画面は
+    ライトに固定」した人には余計に当たる。どちらも、作業している側の端末設定では再現しない。
+    (実際 2.48β で how-it-works の図版の明るい面が取り残され、図の細字が読めなくなった)
+    <meta name="theme-color" media="…"> は別物なので対象にしない(theme.js が上書きする)。
+    """
+    errors = []
+    targets = ["index.html", "scripts/gen_find.py", "scripts/gen_mountain_list.py", "theme.css"]
+    targets += [str(x.relative_to(ROOT)).replace("\\", "/") for x in sorted((ROOT / "docs").glob("*.html"))]
+    for rel in targets:
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        blocks = re.findall(r"<style>(.*?)</style>", text, flags=re.S) \
+            if rel != "theme.css" else [text]
+        for body in blocks:
+            body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
+            if "prefers-color-scheme" in body:
+                errors.append("[6] {}: @media(prefers-color-scheme:…) が残っています"
+                              " (暗い配色の当たり先は :root[data-theme=\"dark\"] の1系統だけ。"
+                              "メディアクエリだと画面側で固定した人と食い違います)".format(rel))
+    return errors
+
+
 # ------------------------------------------------------ head の作りの検査
 def check_head():
     """<style> / </style> / theme.css の読み込みが、各ページに1つずつか。
@@ -349,6 +376,9 @@ def main():
 
     # [5] head の作り
     errors += check_head()
+
+    # [6] メディアクエリの二重管理
+    errors += check_no_media_dark()
 
     # 読み込みの版
     errors += check_version()

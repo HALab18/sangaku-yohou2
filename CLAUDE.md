@@ -209,10 +209,14 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
     検査は `python scripts/check_contrast.py`（`check_mountains.py` の `[1/8]` が呼ぶ）。
 
     **暗い配色の当たり先は `:root[data-theme="dark"]` の1系統だけ。**
-    `theme.css` に `@media(prefers-color-scheme:dark)` のブロックを足さないこと。
-    「端末に従う」は `theme.js` が起動時に OS を見て light/dark の**どちらかに解決して**
-    `<html>` に `data-theme` を付ける形で実現している（ver 2.48β）。属性とメディアクエリの
-    二重管理にすると、片方だけ直したときに**端末が夜モードのときだけ古い色**になる。
+    `theme.css` にも**ページ側の `<style>` にも** `@media(prefers-color-scheme:dark)` を
+    書かないこと。「端末に従う」は `theme.js` が起動時に OS を見て light/dark の
+    **どちらかに解決して** `<html>` に `data-theme` を付ける形で実現している（ver 2.48β）。
+    メディアクエリで書くと**端末の設定**に反応してしまい、画面側で固定した人と食い違う ──
+    「端末は明るいまま画面だけダークに固定」した人には当たらず、「端末が暗いのに画面は
+    ライトに固定」した人には余計に当たる。**どちらも作業している側の端末設定では再現しない。**
+    （実際 2.49β で、解説ページの図版の明るい面がこれで取り残されていたのを直した。
+    図の細字が暗い地に暗い字で載って読めなくなっていた。検査は `check_contrast.py` の `[6]`）
     `theme.js` は `theme.css` の直後で**同期読み込み**する（`defer` を付けると、明るい配色で
     一度描いてから暗転する＝2.47β で消した「起動時の白い一瞬」が戻る）。
 

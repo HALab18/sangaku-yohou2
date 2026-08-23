@@ -58,6 +58,7 @@
 """
 import csv
 import json
+import os
 import re
 import subprocess
 import sys
@@ -68,6 +69,14 @@ import urllib.request
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
+
+# 下請けの検査スクリプトは capture_output で読む。日本語Windowsだと子の stdout は
+# 既定で cp932 になり、encoding='utf-8' だけだと読み取りスレッドが落ちて **出力が
+# 丸ごと空になる** ── 落ちたこと自体は returncode で分かるが「なぜ落ちたか」が消える。
+# そこで子の側を PYTHONIOENCODING で utf-8 に固定して渡す(子のスクリプト自身は
+# 単体で叩いたときコンソールで化けないよう encoding を変えていないため、ここで渡す)。
+# errors='replace' はそれでも化けたときの保険。理由が読めなくなるほうが困る。
+SUBENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 
 ROOT = Path(__file__).resolve().parent.parent
 MOUNTAINS_CSV = ROOT / "references" / "mountains.csv"
@@ -164,13 +173,15 @@ def check_logic():
     """
     errors, notes = [], []
     py = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_logic.py')],
-                        capture_output=True, text=True, encoding='utf-8')
+                        capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', env=SUBENV)
     if py.returncode:
         errors.append('CLI側(test_logic.py)が不一致:' + CRLF_INDENT
                       + (py.stdout or py.stderr).strip().replace('\n', CRLF_INDENT))
     try:
         js = subprocess.run(['node', str(ROOT / 'scripts' / 'test_logic.js')],
-                            capture_output=True, text=True, encoding='utf-8')
+                            capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', env=SUBENV)
     except (FileNotFoundError, OSError):
         # Node はこのチェックのためだけの依存。無くても CLI 本体は動くので落とさない
         notes.append('Node が無いため JS 側(logic.js)は未検証です'
@@ -182,7 +193,8 @@ def check_logic():
 
     # 乱数総当たり + 不変条件。node が無ければ fuzz 側が等価性の比較だけを自動で飛ばす
     fz = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_logic_fuzz.py')],
-                        capture_output=True, text=True, encoding='utf-8')
+                        capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', env=SUBENV)
     if fz.returncode:
         errors.append('乱数総当たり/不変条件(test_logic_fuzz.py)で違反:' + CRLF_INDENT
                       + (fz.stdout or fz.stderr).strip().replace('\n', CRLF_INDENT))
@@ -191,7 +203,8 @@ def check_logic():
     # CLI と index.html に同じものが2重に書かれているので、ここで突き合わせる。
     # node が無ければ test_display.py 側が未検証として自分で飛ばす
     dp = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_display.py')],
-                        capture_output=True, text=True, encoding='utf-8')
+                        capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', env=SUBENV)
     if dp.returncode:
         errors.append('表示まわり(test_display.py)が CLI と Web で不一致:' + CRLF_INDENT
                       + (dp.stdout or dp.stderr).strip().replace('\n', CRLF_INDENT))
@@ -199,7 +212,8 @@ def check_logic():
     # 天気コード → 日本語表現の総当たり。一致だけを見ていると「両方とも同じように
     # 間違っている」を見逃すので、表現そのものが満たすべき性質を全コードで確かめる
     wc = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_weather_codes.py')],
-                        capture_output=True, text=True, encoding='utf-8')
+                        capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', env=SUBENV)
     if wc.returncode:
         errors.append('天気コードの日本語表現(test_weather_codes.py)で違反:' + CRLF_INDENT
                       + (wc.stdout or wc.stderr).strip().replace(chr(10), CRLF_INDENT))
@@ -207,7 +221,8 @@ def check_logic():
     # 山さがしの日和スコア。減点方式なので「材料が無い→100点=ランクA」に化ける構造で、
     # 実際に3回同型の事故を起こしている。生成物ではなく生成元(gen_find.py)を見る
     fs = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_find_score.py')],
-                        capture_output=True, text=True, encoding='utf-8')
+                        capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', env=SUBENV)
     if fs.returncode:
         errors.append('山さがしのスコア(test_find_score.py)で違反:' + CRLF_INDENT
                       + (fs.stdout or fs.stderr).strip().replace('\n', CRLF_INDENT))
@@ -215,7 +230,8 @@ def check_logic():
     # 描画そのもの。固定した1本の応答から CLI と Web が同じ表を出すか(と golden との一致)。
     # 関数単位の突き合わせ(test_display)では、表を組み立てる経路がまるごと抜けていた
     rd = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_render.py')],
-                        capture_output=True, text=True, encoding='utf-8')
+                        capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', env=SUBENV)
     if rd.returncode:
         errors.append('描画(test_render.py)で不一致:' + CRLF_INDENT
                       + (rd.stdout or rd.stderr).strip().replace(chr(10), CRLF_INDENT))
@@ -229,7 +245,8 @@ def check_syntax():
     構文が壊れていれば以下の検査結果は当てにならないので、最初に見る。
     """
     r = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'check_syntax.py')],
-                       capture_output=True, text=True, encoding='utf-8')
+                       capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', env=SUBENV)
     if not r.returncode:
         return []
     # 個々の食い違いは check_syntax.py 側が ✕ 付きで出しているので、その行だけ拾う
@@ -246,7 +263,8 @@ def check_external():
     (貼り付けたコードに広告タグが付いてきた等)。
     """
     r = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'check_csp.py')],
-                       capture_output=True, text=True, encoding='utf-8')
+                       capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', env=SUBENV)
     if not r.returncode:
         return []
     return [x.strip()[1:].strip() for x in (r.stdout or '').splitlines()
@@ -263,7 +281,8 @@ def check_contrast():
     明るい配色で作業しているかぎり画面を見ても気づけない。
     """
     r = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'check_contrast.py')],
-                       capture_output=True, text=True, encoding='utf-8')
+                       capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', env=SUBENV)
     if not r.returncode:
         return []
     return [x.strip()[3:].strip() for x in (r.stdout or '').splitlines()
@@ -284,7 +303,8 @@ def check_offline():
                           ("Service Worker", "test_sw.js")):
         try:
             r = subprocess.run(['node', str(ROOT / 'scripts' / script)],
-                               capture_output=True, text=True, encoding='utf-8')
+                               capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', env=SUBENV)
         except (FileNotFoundError, OSError):
             notes.append(f'Node が無いため{label}({script})は未検証です')
             continue
@@ -302,7 +322,8 @@ def check_mutation():
     テストを触っていなければ結果が変わらないので、--mutation を付けた時だけ回す。
     """
     r = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test_mutation.py')],
-                       capture_output=True, text=True, encoding='utf-8')
+                       capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', env=SUBENV)
     if not r.returncode:
         return []
     return ['仕込んだバグを検出できないテストがあります:' + CRLF_INDENT
@@ -317,7 +338,8 @@ def check_consistency():
     外部通信を伴わないので毎回回す。
     """
     r = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'check_consistency.py')],
-                       capture_output=True, text=True, encoding='utf-8')
+                       capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', env=SUBENV)
     if not r.returncode:
         return []
     body = (r.stdout or r.stderr).strip()

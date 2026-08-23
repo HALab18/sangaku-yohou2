@@ -90,6 +90,7 @@ FIND = "scripts/gen_find.py"
 SW = "sw.js"
 GATE = "gate.js"
 THEME = "theme.css"
+HOWTO = "docs/how-it-works.html"
 
 # (説明, 対象ファイル, 置換前, 置換後)
 # 置換前は「その時点のコードに1回だけ出てくる文字列」であること。
@@ -252,6 +253,12 @@ MUTATIONS = [
      INDEX, 'theme.css?v=248', 'theme.css?v=247'),
     (u"theme.js の読み込みを旧版のままにする(切り替えだけキャッシュに残る)",
      INDEX, 'theme.js?v=248', 'theme.js?v=247'),
+    # 端末の設定ではなく **いま当てている配色** に当てること。メディアクエリに戻すと、
+    # 端末は明るいまま画面だけダークに固定した人にだけ当たらない(2.48β で実際に起きた)
+    (u"図版の明るい面をメディアクエリに戻す(画面だけ暗くした人に当たらない)",
+     HOWTO,
+     ':root[data-theme="dark"] figure svg{background:#f4f6f9;border-radius:10px;padding:6px}',
+     '@media(prefers-color-scheme:dark){figure svg{background:#f4f6f9;border-radius:10px;padding:6px}}'),
 ]
 
 

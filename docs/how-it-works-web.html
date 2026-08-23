@@ -93,10 +93,11 @@ footer a{color:var(--link)}
    **図版として明るい面のまま**置く ── 印刷物の図と同じ扱いにする。
    1つずつ色を差し替えると図の意味(実線/破線・寒色/暖色)が崩れるうえ、
    差し替え漏れが必ず残るので、面ごと明るいままにするほうが確実に読める。
-   角を丸めて余白を付け、地から浮いた「図版」に見えるようにしてある。 */
-@media(prefers-color-scheme:dark){
-  figure svg{background:#f4f6f9;border-radius:10px;padding:6px}
-}
+   角を丸めて余白を付け、地から浮いた「図版」に見えるようにしてある。
+   ★ 当たり先は :root[data-theme="dark"]。@media(prefers-color-scheme:dark) にすると、
+     端末が明るい設定のまま画面だけダークに固定した人に **この面が出ない** ──
+     図の中の細字(気圧面のラベル等)が暗い地に暗い字で載って読めなくなる(2.48β の取りこぼし)。 */
+:root[data-theme="dark"] figure svg{background:#f4f6f9;border-radius:10px;padding:6px}
 </style>
 </head>
 <body>
