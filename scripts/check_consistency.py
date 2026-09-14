@@ -117,6 +117,16 @@ def check_japan_bbox():
     if [float(x) for x in got] != [float(x) for x in want]:
         return ["日本域の範囲が index.html と docs/point.html で違います: "
                 "index={} / point={}".format(want, got)]
+    # 保存した地点(places.js)の読み出し検証。狭いと保存した地点が候補欄から黙って消え、
+    # 広いと域外の座標を「保存した地点」として API に渡す
+    q = re.search(r"var PW_PLACES_LAT = \[([\d.]+), ([\d.]+)\], PW_PLACES_LON = \[([\d.]+), ([\d.]+)\];",
+                  read("places.js"))
+    if not q:
+        return ["places.js から日本域の範囲を読み取れません (コードが動いた可能性があります)"]
+    got = [q.group(i) for i in (1, 2, 3, 4)]
+    if [float(x) for x in got] != [float(x) for x in want]:
+        return ["日本域の範囲が index.html と places.js で違います: "
+                "index={} / places={}".format(want, got)]
     return []
 
 

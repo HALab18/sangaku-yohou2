@@ -290,7 +290,7 @@ def check_contrast():
 
 
 def check_offline():
-    """圏外・障害時のふるまい (scripts/test_offline.js・scripts/test_sw.js)
+    """圏外・障害時のふるまい (scripts/test_offline.js・scripts/test_sw.js・scripts/test_places.js)
 
     通信のタイムアウト・再試行・端末内保存・Service Worker。DEVLOG で最も重い事故が
     出ている領域で、しかも **オンラインでは表面化しない** 壊れ方が多い
@@ -300,7 +300,8 @@ def check_offline():
     """
     errors, notes = [], []
     for label, script in (("通信・保存・ゲート", "test_offline.js"),
-                          ("Service Worker", "test_sw.js")):
+                          ("Service Worker", "test_sw.js"),
+                          ("保存した地点", "test_places.js")):
         try:
             r = subprocess.run(['node', str(ROOT / 'scripts' / script)],
                                capture_output=True, text=True, encoding='utf-8',

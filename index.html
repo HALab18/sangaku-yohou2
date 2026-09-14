@@ -35,6 +35,10 @@
      ?v= は display.js の PW_DISPLAY_VER と同じ値にする(古い版が残ると「画面は新しいのに
      文言だけ旧版」になる。一致は scripts/test_display.js が機械的に見ている)。 -->
 <script src="display.js?v=246"></script>
+<!-- 保存した地点(座標指定で名前を付けて残した地点)。docs/point.html と共有する唯一の置き場。
+     gate.js の後に読む。?v= は places.js の PW_PLACES_VER と同じ値にする
+     (一致は scripts/check_consistency.py が見る)。 -->
+<script src="places.js?v=251"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -276,6 +280,11 @@ button:disabled{background:var(--btn-off);cursor:wait}
 #sugg .rc.pinned .rcp{opacity:1;filter:none}
 #sugg .rcp:hover{opacity:.75}
 #sugg .rc.pinned .rcp:hover{opacity:.75}
+/* 保存した地点 (places.js)。管理(追加・削除)は座標指定ページに寄せ、ここは呼び出し専用 */
+#sugg .rc.pl small{margin-left:auto}
+#sugg .rc.pllast{border-bottom:1px solid var(--line)}
+#sugg a.plmanage{display:block;padding:6px 12px;font-size:12px;text-align:right;color:var(--link);
+  background:var(--surface);border-bottom:1px solid var(--line)}
 
 #status{margin:12px auto;font-size:.95em;color:var(--muted);font-weight:600}
 #status.err{color:var(--bad-fg);font-weight:600}
@@ -739,7 +748,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <footer>
 <div class="pw-theme" id="themeui"></div>
 
-<p>PeakWeather Ver.2.50β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.51β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -1284,7 +1293,7 @@ async function run(mt,opts){
   const sid=snapId(mt);
   // 圏外だと分かっているなら通信は試さない。試すと apiJson の3回リトライで
   // 約4.5秒待たされたうえで、結局スナップショットに落ちることになる。
-  let snap=(sid&&!navigator.onLine)?snapLoad(sid):null;
+  let snap=(sid&&!navigator.onLine)?snapLoadFor(sid,mt):null;
   // 行クリックからの再描画で、同じ地点の取得結果がまだ新しければそれを使う(lastFetch 参照)。
   // 保存済み予報の再生(snap)が先に決まっている時は触らない。
   const cached=(reuse&&!snap&&lastFetch&&lastFetch.key===fetchKey(mt)
@@ -1388,7 +1397,7 @@ async function run(mt,opts){
     catch(e){
       // 通信できないだけなら保存済みの予報に落ちる。無ければ従来どおりエラーで抜ける
       // (offlineErr は圏外のときだけ文面を差し替える)。
-      snap=sid?snapLoad(sid):null;
+      snap=sid?snapLoadFor(sid,mt):null;
       if(!snap)throw offlineErr(e);
     }
   }
@@ -2057,9 +2066,27 @@ async function locateCoordAndGo(lat,lon,elevManual){
   if(!pwGateOk())return; // inert 非対応ブラウザ対策の多重防御
   const status=document.getElementById("status");
   document.getElementById("cands").innerHTML="";document.getElementById("out").innerHTML="";
+  // 地点名は1回きり。先に受け取っておく(保存した地点かどうかの判定と、圏外の経路で使う)
+  const customLabel=pwSLoad("pw-coord-label");
+  pwSDrop("pw-coord-label");
   // 共有URLのハッシュから直接呼ばれる経路なので、point.html 側の検証を通っていない
   // 座標も届きうる。API を叩く前にここで止める。
   if(!inJapan(lat,lon)){status.className="err";status.textContent=OUT_OF_JP;return}
+  // 保存した地点(places.js)か。名前・緯度・経度・標高の指定が全部一致したときだけ。
+  // 一致しない座標指定は従来どおり圏外用にも保存しない(位置情報を黙って残さない)。
+  const place=!!customLabel&&typeof placesLoad==="function"&&placesLoad().some(p=>
+    p.n===customLabel&&p.la===lat&&p.lo===lon&&p.e===(elevManual==null?null:elevManual));
+  const sid=place?"p:"+customLabel:null;
+  // 保存した地点の、圏外で見るための予報。本体の mt から描き直す(標高も保存時の値)
+  const replay=async()=>{
+    const snap=sid?snapLoadFor(sid,{lat,lon,elev:elevManual}):null;
+    if(!snap)return false;
+    await go({...snap.mt,name:customLabel,pref:"",coord:true,elevManual:elevManual!=null,place:true});
+    return true;
+  };
+  // 圏外だと分かっているなら標高・市町村名は取りに行かない。行けば約4.5秒待たされたうえで
+  // 失敗する(山名の圏外経路 onsubmit の snapLoad("n:"+name) と同じ考え方)
+  if(place&&!navigator.onLine&&await replay())return;
   runBtns().forEach(b=>b.disabled=true);
   status.className="";status.textContent="標高を取得中…";
   try{
@@ -2071,14 +2098,24 @@ async function locateCoordAndGo(lat,lon,elevManual){
       if(!Number.isFinite(elev))throw new Error("指定地点の標高を取得できませんでした");
     }
     const muni=await muniP;
-    const customLabel=pwSLoad("pw-coord-label");
-    pwSDrop("pw-coord-label");
     const name=customLabel||(muni?`指定地点（${muni}）`:"指定地点");
-    await go({name,pref:"",lat,lon,elev,coord:true,elevManual:elevManual!=null});
+    await go({name,pref:"",lat,lon,elev,coord:true,elevManual:elevManual!=null,place});
   }catch(e){
-    status.className="err";status.textContent=e.message;
+    // 電波表示はあるのに通じない(onLine=true の圏外)ときも、保存した地点なら予報に落ちる
+    if(place&&await replay())return;
+    status.className="err";status.textContent=offlineErr(e).message;
     trackSearch("(座標指定)","error"); // 座標そのものは送らない
   }finally{runBtns().forEach(b=>b.disabled=false)}
+}
+
+// ---- 保存した地点から開く (places.js。山名欄の候補から呼ばれる) ----
+// 座標指定と同じ経路(locateCoordAndGo)を通す。地点名は docs/point.html から来たときと同じく
+// sessionStorage で1回だけ渡す。日付・表示間隔は本体フォームの現在値(既定は今日・3時間ごと)。
+function placeGo(p){
+  if(!pwGateOk())return; // inert 非対応ブラウザ対策の多重防御
+  ENTRY="place";FROM_FIND=false;pendingDateNote="";
+  pwSSave("pw-coord-label",p.n);
+  locateCoordAndGo(p.la,p.lo,p.e);
 }
 
 // ---- 利用規約への同意ゲート ----
@@ -2205,7 +2242,14 @@ const SNAP_KEY="pw-snap-v1",SNAP_AUTO_MAX=3,SNAP_KEEP_MAX=3;
 // 索引: [{id,n,p,t,l,keep?}] 新しい順 / 本体: SNAP_KEY+":"+id に1件ずつ
 // GPS現在地・座標指定は保存しない。recentAdd() が「個人の居場所に当たるので端末内でも
 // 残さない」として除外しているのと同じ扱いに揃える(圏外では再取得もできないので実害も薄い)。
-const snapId=mt=>(!mt||mt.here||mt.coord||!mt.name)?null:"n:"+mt.name;
+// 例外は **保存した地点(places.js)** だけ。利用者が名前を付けて残すと選んだ座標なので、
+// 沢の中など圏外で見返せるよう最後に見た予報を残す。id は "p:" で山("n:")と名前空間を分ける
+// (同名の山と地点が衝突しない)。mt.place は locateCoordAndGo() が places.js と照合して立てる。
+const snapId=mt=>(!mt||!mt.name)?null:(mt.coord&&mt.place===true)?"p:"+mt.name
+  :(mt.here||mt.coord)?null:"n:"+mt.name;
+const snapIsPlace=id=>typeof id==="string"&&id.slice(0,2)==="p:";
+// 保存した地点の枠。地点ごとに1件なので、上限は地点の上限と同じ
+const SNAP_PLACE_MAX=typeof PW_PLACES_MAX==="number"?PW_PLACES_MAX:5;
 const snapBodyKey=id=>SNAP_KEY+":"+id;
 function snapRead(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function snapDrop(k){try{localStorage.removeItem(k)}catch(e){}}
@@ -2221,9 +2265,15 @@ function snapIndex(){
   const now=Date.now(),today=iso(jstToday());
   const ok=a.filter(x=>x&&typeof x.id==="string"&&typeof x.n==="string"
     &&typeof x.p==="string"&&typeof x.t==="number"&&x.t<=now
-    &&typeof x.l==="string"&&(x.keep===undefined||x.keep===true));
-  const live=ok.filter(x=>x.l>=today);
-  ok.filter(x=>x.l<today).forEach(x=>snapDrop(snapBodyKey(x.id)));
+    &&typeof x.l==="string"&&(x.keep===undefined||x.keep===true)
+    &&(x.la===undefined||typeof x.la==="number")&&(x.lo===undefined||typeof x.lo==="number"));
+  // 保存した地点の予報は、その地点が削除された・座標を上書きされたら本体ごと捨てる
+  // (位置を含むデータを残さない/別の座標の予報を出さない)。places.js が読めないときは
+  // 判断できないので捨てない。
+  const pl=typeof placesLoad==="function"?placesLoad():null;
+  const gone=x=>!!pl&&snapIsPlace(x.id)&&!pl.some(p=>"p:"+p.n===x.id&&p.la===x.la&&p.lo===x.lo);
+  const live=ok.filter(x=>x.l>=today&&!gone(x));
+  ok.filter(x=>x.l<today||gone(x)).forEach(x=>snapDrop(snapBodyKey(x.id)));
   if(live.length!==a.length)snapIndexSave(live);
   return live;
 }
@@ -2232,11 +2282,15 @@ function snapIndexSave(a){
 }
 // 上限を超えた分の始末。固定が溢れたら **消さずに自動枠へ戻す**(押した操作を黙って
 // 無効にせず、かつデータも捨てない)。自動枠から溢れた分だけ本体を消す。
+// 保存した地点(p:)は自動枠・固定枠のどちらにも数えない別枠。山を何座見ても押し出されない。
 function snapPrune(a){
+  a.forEach(x=>{if(snapIsPlace(x.id))delete x.keep});
   a.filter(x=>x.keep===true).slice(SNAP_KEEP_MAX).forEach(x=>{delete x.keep});
-  const keeps=a.filter(x=>x.keep===true),autos=a.filter(x=>x.keep!==true);
+  const places=a.filter(x=>snapIsPlace(x.id)),keeps=a.filter(x=>x.keep===true),
+        autos=a.filter(x=>x.keep!==true&&!snapIsPlace(x.id));
   autos.slice(SNAP_AUTO_MAX).forEach(x=>snapDrop(snapBodyKey(x.id)));
-  const kept=keeps.concat(autos.slice(0,SNAP_AUTO_MAX));
+  places.slice(SNAP_PLACE_MAX).forEach(x=>snapDrop(snapBodyKey(x.id)));
+  const kept=keeps.concat(autos.slice(0,SNAP_AUTO_MAX),places.slice(0,SNAP_PLACE_MAX));
   return a.filter(x=>kept.includes(x)); // 並び(新しい順)は保つ
 }
 // 本体の読み出し。ここも型を見る。data の中身までは見きれないが、hourly.time さえ
@@ -2259,6 +2313,15 @@ function snapLoad(id){
 // 呼び出し側で1回だけ作って行ごとは has() で引く(サジェストは1キーストロークごとに
 // 再描画されるため、行ごとに呼ぶと入力のたびに最大12回 localStorage を触ることになる)。
 const snapNameSet=()=>new Set(snapIndex().map(x=>x.id));
+// run() と locateCoordAndGo() が使う読み出し。保存した地点(p:)は、いま開こうとしている
+// 緯度・経度(と標高を指定しているならその値)が保存時と一致するときだけ採用する。
+// 名前だけで引くと、座標を上書きした地点で **前の座標の予報** を描いてしまう。
+function snapLoadFor(id,mt){
+  const s=snapLoad(id);
+  if(!s||!snapIsPlace(id))return s;
+  const m=s.mt;
+  return (m.lat===mt.lat&&m.lon===mt.lon&&(mt.elev==null||m.elev===mt.elev))?s:null;
+}
 const snapEntry=id=>snapIndex().find(x=>x.id===id)||null;
 // 保存。失敗しても予報の表示自体は成功しているので、呼び出し側は false を受けて
 // 「保存しました」の案内を出さないだけにする(エラーにはしない)。
@@ -2269,10 +2332,13 @@ function snapSave(mt,payload){
   const prev=a.find(x=>x.id===id);
   const dl=payload.data.daily.time;
   const rec={id,n:mt.name,p:mt.pref||"",t:Date.now(),l:dl[dl.length-1]||iso(jstToday())};
-  if(prev&&prev.keep===true)rec.keep=true; // 再検索で固定が外れないようにする
+  const isPl=snapIsPlace(id);
+  if(isPl){rec.la=mt.lat;rec.lo=mt.lon} // 地点の削除・上書きを snapIndex() が照合するため
+  else if(prev&&prev.keep===true)rec.keep=true; // 再検索で固定が外れないようにする
   a=snapPrune([rec].concat(a.filter(x=>x.id!==id)));
   const body=JSON.stringify({t:rec.t,
-    mt:{name:mt.name,pref:mt.pref||"",lat:mt.lat,lon:mt.lon,elev:mt.elev,geo:!!mt.geo},
+    mt:{name:mt.name,pref:mt.pref||"",lat:mt.lat,lon:mt.lon,elev:mt.elev,geo:!!mt.geo,
+      ...(isPl?{coord:true,elevManual:mt.elevManual===true,place:true}:{})},
     ...payload});
   for(let i=0;i<2;i++){
     try{localStorage.setItem(snapBodyKey(id),body);snapIndexSave(a);return true}catch(e){
@@ -2290,6 +2356,7 @@ function snapSave(mt,payload){
 // 状態では「いま押した山」が最古扱いで真っ先に外れ、押しても何も起きないように見える
 // (recentPin() に同じ注意書きがある)。戻り値は入れ替えで固定が外れた山の名前。
 function snapKeep(id){
+  if(snapIsPlace(id))return null; // 保存した地点は別枠で押し出されないので、固定は無い
   const a=snapIndex(),i=a.findIndex(x=>x.id===id);
   if(i<0)return null;
   const x=a[i];x.keep=true;a.splice(i,1);a.unshift(x);
@@ -2316,6 +2383,9 @@ function snapUnkeep(id){
 // なので「実際に残す価値のあるデータができた瞬間」と「固定を押した瞬間」だけで呼ぶ。
 // 自動の試行は端末につき1回だけ(断った利用者に予報のたび出し直さない)。
 // 永続化は保険であって前提ではない(失敗しても保存自体は効く)ので、結果は画面に出さない。
+// 起動時に1回だけ索引を読んで、削除済みの地点・期限切れの予報を掃除しておく
+// (座標指定ページで地点を削除しても、そのページからはここの保存に触れないため)
+try{snapIndex()}catch(e){}
 const SNAP_PERSIST_KEY="pw-persist-asked";
 async function snapRequestPersist(force){
   try{
@@ -2334,6 +2404,9 @@ function snapRowHtml(id,msg){
   const e=id?snapEntry(id):null;
   if(!e)return ""; // 保存できていない回は何も出さない
   const t=new Date(e.t),pinned=e.keep===true;
+  // 保存した地点は別枠(押し出されない)なので固定ボタンは出さない
+  if(snapIsPlace(id))return `<p class="snaprow"><span>📴 この予報を端末に保存しました`
+    +`（${JST_MD.format(t)} ${JST_HM.format(t)} 取得 / 保存した地点は最後に見た予報を残します）</span></p>`;
   const n=snapIndex().filter(x=>x.keep===true).length;
   return `<p class="snaprow"><span>📴 `
     +(pinned?`<b>圏外用に固定中</b>`:`この予報を端末に保存しました`)
@@ -2446,10 +2519,26 @@ function recentRemove(name){
   // Esc で閉じた直後だけは、入力欄へフォーカスを戻しても開き直さない
   // (戻すと focus ハンドラの update() が走って即座に再表示されてしまう)
   let escaped=false;
-  function render(list,recents){
-    if(!list.length&&!recents.length){setOpen(false);sugg.innerHTML="";return}
+  function render(list,recents,places){
+    places=places||[];
+    if(!list.length&&!recents.length&&!places.length){setOpen(false);sugg.innerHTML="";return}
     // 📴印の判定材料。行ごとに引き直すと localStorage を最大12回触るのでここで1回だけ作る
-    const saved=recents.length?snapNameSet():null;
+    // (保存した地点の行でも使うので、行を組み立てる前に作ること)
+    const saved=(recents.length||places.length)?snapNameSet():null;
+    // 保存した地点(座標)。行を選ぶと入力欄には入れず、その座標の予報をすぐ開く(placeGo)。
+    // data-n も持たせるのは、矢印キー移動とローミング tabindex を山名の行と共用するため。
+    // 削除ボタンは置かない ── 意図して残した地点なので、管理は docs/point.html の確認付きの×に寄せる
+    const plHead=places.length?`<div class="rcheadrow" role="row">`
+      +`<span role="gridcell" aria-colindex="1" class="rchead">保存した地点（座標）</span></div>`
+      +places.map((p,i)=>
+      `<div data-n="${esc(p.n)}" data-pl="${esc(p.n)}" role="row" class="rc pl`
+      +`${i===places.length-1?" pllast":""}" tabindex="-1">`
+      +`<span role="gridcell" aria-colindex="1">📍${esc(p.n)}`
+      +`${saved.has("p:"+p.n)?`<span class="rcoff" title="保存済み: 圏外でも表示できます" aria-label="圏外でも表示できます">📴</span>`:""}</span>`
+      +`<small role="gridcell" aria-colindex="2">${p.e==null?"座標":esc(Math.round(p.e))+"m"}</small></div>`).join("")
+      // 入力中(絞り込み)のときは管理リンクを出さない。候補の邪魔になるので未入力時だけ
+      +(inp.value.trim()?"":`<div class="rcheadrow" role="row"><a role="gridcell" aria-colindex="1" `
+      +`class="plmanage" href="docs/point.html">地点の追加・削除 ▸</a></div>`):"";
     // 見出しは1本のまま。ドロップダウンは max-height:min(280px,45vh) しかないので、
     // ピン用にもう1本見出しを立てると行数を食いすぎる。文言で📌の所在を示す
     const head=recents.length?`<div class="rcheadrow" role="row">`
@@ -2476,7 +2565,7 @@ function recentRemove(name){
       +`<span role="gridcell" aria-colindex="4" style="display:contents">`
       +`<button type="button" class="rcx" data-x="${esc(r.n)}" `
       +`aria-label="${esc(r.n)}を履歴から削除">×</button></span></div>`}).join(""):"";
-    sugg.innerHTML=head+list.map(m=>
+    sugg.innerHTML=plHead+head+list.map(m=>
       `<div data-n="${esc(m[0])}" role="row" tabindex="-1"><span role="gridcell" aria-colindex="1">${esc(m[0])}</span>`
       +`<small role="gridcell" aria-colindex="2">${esc(m[2])} ${m[5]}m</small></div>`).join("");
     // ローミング tabindex: Tab で入れるのは先頭行だけ。以前は全行 tabindex="0" で、
@@ -2491,9 +2580,12 @@ function recentRemove(name){
     const q=inp.value.trim();
     // 入力中は従来どおり全一致のみ。未入力時だけ履歴を先頭に固定し、
     // その下は先頭50件(全件は対応山リストページへ)。履歴と同名は50件側から除いて重複を避ける
-    if(q)return render(MOUNTAINS.filter(m=>m[0].includes(q)||m[1].includes(q)),[]);
+    // 保存した地点は未入力時は全件、入力中は地点名の部分一致だけを山名候補の上に出す。
+    // places.js が読めなかった(404・通信断)ときは、この群だけを出さずに山名検索は動かす
+    const pl=typeof placesLoad==="function"?placesLoad():[];
+    if(q)return render(MOUNTAINS.filter(m=>m[0].includes(q)||m[1].includes(q)),[],pl.filter(p=>p.n.includes(q)));
     const r=recentLoad();
-    render(MOUNTAINS.filter(m=>!r.some(x=>x.n===m[0])).slice(0,50),r);
+    render(MOUNTAINS.filter(m=>!r.some(x=>x.n===m[0])).slice(0,50),r,pl);
   }
   inp.addEventListener("input",()=>{escaped=false;update()});
   inp.addEventListener("focus",update);
@@ -2513,6 +2605,14 @@ function recentRemove(name){
     }
     const x=el.closest("[data-x]");
     if(x){recentRemove(x.dataset.x);update();return}
+    // 保存した地点: 入力欄には入れず、その座標の予報をすぐ開く(div[data-n] より先に見ること)
+    const pl=el.closest("[data-pl]");
+    if(pl){
+      const hit=placesLoad().find(y=>y.n===pl.dataset.pl);
+      setOpen(false);sugg.innerHTML="";inp.blur();
+      if(hit)placeGo(hit);
+      return;
+    }
     const d=el.closest("div[data-n]");if(!d)return;
     inp.value=d.dataset.n;mclear.hidden=!inp.value;setOpen(false);sugg.innerHTML="";
     inp.blur(); // スマホのキーボードを閉じる

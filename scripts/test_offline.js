@@ -36,19 +36,22 @@ function slicePureSource() {
 function loadApi(env) {
   const logic = fs.readFileSync(path.join(ROOT, "logic.js"), "utf8");
   const gate = fs.readFileSync(path.join(ROOT, "gate.js"), "utf8");
+  // 保存した地点(places.js)。スナップショットは削除・上書きされた地点の予報を捨てるのに読む
+  const places = fs.readFileSync(path.join(ROOT, "places.js"), "utf8");
   const EXPOSE = ["splitModels", "mergeSeries", "normalizeSeries", "iso", "jstToday", "addDays",
     "agoTxt", "apiJson", "apiError", "offlineErr", "modelInit", "initTxt",
     "API_TIMEOUT_MS", "META_TIMEOUT_MS", "META_KEY",
     "snapId", "snapIndex", "snapIndexSave", "snapPrune", "snapLoad", "snapSave",
     "snapKeep", "snapUnkeep", "snapEntry", "snapNameSet", "SNAP_KEY", "snapBodyKey",
     "SNAP_AUTO_MAX", "SNAP_KEEP_MAX", "DAILY_KEYS", "CMP_MODELS",
+    "snapLoadFor", "snapIsPlace", "SNAP_PLACE_MAX", "placesPut", "placesRemove",
     "pwGateOk", "pwIsAgreed", "pwIsAuthed", "pwIsLocalFile", "pwLoad", "pwSave", "pwDrop",
     "pwTrack", "PW_AGREE_KEY", "PW_AUTH_KEY", "PW_AUTH_VER"];
   const body =
     "var localStorage=__env.localStorage, sessionStorage=__env.sessionStorage,"
     + " navigator=__env.navigator, fetch=__env.fetch, location=__env.location,"
     + " setTimeout=__env.setTimeout, clearTimeout=__env.clearTimeout;\n"
-    + logic + "\n" + gate + "\n" + slicePureSource()
+    + logic + "\n" + gate + "\n" + places + "\n" + slicePureSource()
     + "\nreturn {" + EXPOSE.join(",") + "};";
   return new Function("__env", body)(env);
 }
@@ -586,6 +589,77 @@ function testSnapshot() {
   }
 }
 
+/* ================= 保存した地点の圏外用予報 (p:) ================= */
+// 保存した地点(places.js)だけは、座標指定でも最後に見た予報を残す。
+// 壊れ方として怖いのは (1) 保存していない座標まで残す (2) 山を見ているうちに地点の予報が消える
+// (3) 地点を削除・上書きしたのに前の座標の予報が残る/描かれる、の3つ。
+function testPlaceSnapshot() {
+  const PT = (name, extra) => Object.assign(
+    { name, pref: "", lat: 36.24, lon: 137.64, elev: 1450, coord: true, place: true }, extra || {});
+  const savePlace = (api, n, la, lo) => api.placesPut({ n, la: la || 36.24, lo: lo || 137.64, e: null });
+
+  // 38. id は "p:"。保存していない座標指定・GPS は従来どおり null
+  {
+    const { api } = newEnv();
+    eq(api.snapId(PT("入渓点")), "p:入渓点", "保存した地点の id");
+    eq(api.snapId(PT("入渓点", { place: undefined })), null, "保存していない座標指定を保存対象にしている");
+    eq(api.snapId(MT("現在地", { here: true, place: true })), null, "GPS現在地を保存対象にしている");
+    ok(api.snapId(MT("入渓点")) !== api.snapId(PT("入渓点")), "同名の山と地点の id が衝突している");
+  }
+
+  // 39. ★ 山を何座見ても、地点の予報は押し出されない(自動枠に数えない)
+  {
+    const { api } = newEnv();
+    savePlace(api, "入渓点");
+    ok(api.snapSave(PT("入渓点"), payloadFor(api)) === true, "地点の予報を保存できない");
+    for (const n of ["A", "B", "C", "D", "E"]) api.snapSave(MT(n), payloadFor(api));
+    const ids = api.snapIndex().map(x => x.id);
+    ok(ids.includes("p:入渓点"), `山を見ているうちに地点の予報が押し出された: ${ids}`);
+    eq(ids.filter(x => x.startsWith("n:")).length, api.SNAP_AUTO_MAX, "地点の予報が山の自動枠を食っている");
+    const body = api.snapLoad("p:入渓点");
+    ok(body, "地点の予報の本体が消えている");
+    eq(body && body.mt.place, true, "本体の mt に place が残っていない(再生時に地点として扱えない)");
+    eq(body && body.mt.coord, true, "本体の mt に coord が残っていない(注記・URLが山名扱いになる)");
+  }
+
+  // 40. ★ 地点を削除したら本体ごと消える(位置を含むデータを残さない)
+  {
+    const { api, env } = newEnv();
+    savePlace(api, "入渓点");
+    api.snapSave(PT("入渓点"), payloadFor(api));
+    api.placesRemove("入渓点");
+    eq(api.snapIndex().map(x => x.id), [], "削除した地点の予報が索引に残っている");
+    ok(env.localStorage.getItem(api.snapBodyKey("p:入渓点")) === null, "削除した地点の予報の本体が残っている");
+  }
+
+  // 41. ★ 座標を上書きしたら、前の座標の予報は捨てる/描かない
+  {
+    const { api } = newEnv();
+    savePlace(api, "入渓点", 36.24, 137.64);
+    api.snapSave(PT("入渓点"), payloadFor(api));
+    eq(api.snapLoadFor("p:入渓点", { lat: 36.3, lon: 137.64, elev: null }), null,
+      "座標の違う地点に前の座標の予報を出している");
+    eq(api.snapLoadFor("p:入渓点", { lat: 36.24, lon: 137.64, elev: 2000 }), null,
+      "標高の指定が違うのに前の予報を出している");
+    ok(api.snapLoadFor("p:入渓点", { lat: 36.24, lon: 137.64, elev: null }), "座標が一致するのに読めない");
+    savePlace(api, "入渓点", 36.3, 137.7);   // 同名で上書き
+    eq(api.snapIndex().map(x => x.id), [], "座標を上書きした地点の古い予報が残っている");
+  }
+
+  // 42. 固定の対象外 / 地点の枠の上限
+  {
+    const { api } = newEnv();
+    savePlace(api, "入渓点");
+    api.snapSave(PT("入渓点"), payloadFor(api));
+    eq(api.snapKeep("p:入渓点"), null, "保存した地点を固定しようとしている");
+    eq(api.snapIndex().filter(x => x.keep === true).length, 0, "保存した地点に固定の印が付いた(固定枠を食う)");
+    const many = [];
+    for (let i = 0; i < api.SNAP_PLACE_MAX + 2; i++)
+      many.push({ id: "p:x" + i, n: "x" + i, p: "", t: 1, l: "2999-01-01", la: 36, lo: 138 });
+    eq(api.snapPrune(many).length, api.SNAP_PLACE_MAX, "地点の枠の上限が効いていない");
+  }
+}
+
 /* ================= ゲート (gate.js) ================= */
 function testGate() {
   const agreedAuthed = api => { api.pwSave(api.PW_AGREE_KEY, "1"); api.pwSave(api.PW_AUTH_KEY, api.PW_AUTH_VER); };
@@ -670,6 +744,7 @@ function testAgo(api) {
   testMerge(api);
   testSplitModels(api);
   testSnapshot();
+  testPlaceSnapshot();
   testGate();
   testAgo(api);
 

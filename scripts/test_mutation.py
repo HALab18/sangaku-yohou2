@@ -23,6 +23,7 @@
   山さがし … 日和スコアの性質 (test_find_score.py)
   障害   … 通信・保存・ゲートの異常系 (test_offline.js)
   SW     … Service Worker (test_sw.js)
+  地点   … 保存した地点 (test_places.js)
   配色   … 明・暗2つの配色とコントラスト比 (check_contrast.py)
 両方が捕まえるなら表だけでも足りているし、片方しか捕まえない変異があるなら
 その層が実際に守備範囲を広げているということになる。
@@ -75,6 +76,8 @@ COPY = [
     "references/golden/render_web.html",
     "scripts/test_offline.js",
     "scripts/test_sw.js",
+    "places.js",
+    "scripts/test_places.js",
     "theme.css",
     "scripts/check_contrast.py",
     "scripts/gen_mountain_list.py",
@@ -93,6 +96,8 @@ GATE = "gate.js"
 THEME = "theme.css"
 HOWTO = "docs/how-it-works.html"
 NOTFOUND = "404.html"
+PLACES = "places.js"
+POINT = "docs/point.html"
 
 # (説明, 対象ファイル, 置換前, 置換後)
 # 置換前は「その時点のコードに1回だけ出てくる文字列」であること。
@@ -223,7 +228,7 @@ MUTATIONS = [
      INDEX, '&&typeof x.p==="string"&&typeof x.t==="number"&&x.t<=now',
      '&&typeof x.p==="string"&&typeof x.t==="number"'),
     ("期限切れスナップショットの本体を消さない(領域を食い続ける)",
-     INDEX, 'ok.filter(x=>x.l<today).forEach(x=>snapDrop(snapBodyKey(x.id)));', ''),
+     INDEX, 'ok.filter(x=>x.l<today||gone(x)).forEach(x=>snapDrop(snapBodyKey(x.id)));', ''),
     ("保存に失敗したときの残骸を消さない(圏外で開くと空の表になる)",
      INDEX, 'snapDrop(snapBodyKey(id)); // 半端な残骸を索引に載せない', ''),
     ("固定を「切ってから先頭へ移す」順に戻す(押しても何も起きないように見える)",
@@ -265,6 +270,27 @@ MUTATIONS = [
     # 暗い配色でも明るいまま出る(2.50β まで実際にそうなっていた)
     (u"404 の地の色をベタ書きに戻す(暗い配色で差し替わらなくなる)",
      NOTFOUND, 'background:var(--bg);color:var(--text);', 'background:#f4f6f9;color:#222;'),
+    # 意図して保存した地点が、6件目の保存で黙って押し出されて消える
+    (u"保存した地点の上限で断らずに押し出す",
+     PLACES, 'if (a.length >= PW_PLACES_MAX) return "full";',
+     'if (a.length >= PW_PLACES_MAX) a.shift();'),
+    # 読み出しの域外チェックを外す(書き換えられた保存値の座標をそのまま API に渡す)
+    (u"保存した地点の読み出しで緯度の範囲を見ない",
+     PLACES, '&& typeof x.la === "number" && x.la >= PW_PLACES_LAT[0] && x.la <= PW_PLACES_LAT[1]',
+     '&& typeof x.la === "number"'),
+    # 「この地点を保存する」を選ばなくても座標を端末に残す(利用規約 第6条に反する)
+    (u"座標指定で、保存のチェックが無くても地点を保存する",
+     POINT, 'if(PLACES_OK&&document.getElementById("keep").checked){',
+     'if(PLACES_OK&&(document.getElementById("keep").checked||true)){'),
+    # 山を4座見たら、沢の入渓点の予報が押し出されて圏外で見られなくなる
+    (u"保存した地点の圏外用予報を山の自動枠に数える",
+     INDEX, 'autos=a.filter(x=>x.keep!==true&&!snapIsPlace(x.id));', 'autos=a.filter(x=>x.keep!==true);'),
+    # 地点を削除しても、その座標を含む予報が端末に残り続ける
+    (u"削除した地点の圏外用予報を掃除しない",
+     INDEX, 'const live=ok.filter(x=>x.l>=today&&!gone(x));', 'const live=ok.filter(x=>x.l>=today);'),
+    # 座標を上書きした地点で、前の座標の予報を圏外表示してしまう
+    (u"保存した地点の圏外用予報を座標を照合せずに使う",
+     INDEX, 'return (m.lat===mt.lat&&m.lon===mt.lon&&(mt.elev==null||m.elev===mt.elev))?s:null;', 'return s;'),
 ]
 
 
@@ -309,6 +335,8 @@ def check_layers(work, have_node):
         caught.append("障害")
     if have_node and run(["node", "scripts/test_sw.js"], work) not in (0, None):
         caught.append("SW")
+    if have_node and run(["node", "scripts/test_places.js"], work) not in (0, None):
+        caught.append("地点")
     if run([py, "scripts/check_contrast.py"], work) not in (0, None):
         caught.append("配色")
     return caught

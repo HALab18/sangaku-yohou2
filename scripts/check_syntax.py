@@ -45,7 +45,7 @@ except Exception:
 
 # ES5 に留めると明記してあるファイル。index.html / gen_find.py 側は対象外
 # (index.html の本体スクリプトはアロー関数もテンプレートリテラルも使っている)。
-ES5_FILES = ["logic.js", "gate.js"]
+ES5_FILES = ["logic.js", "gate.js", "places.js"]
 
 # (説明, 正規表現)。コメントと文字列を落としてから当てる。
 ES5_BANNED = [
@@ -239,7 +239,7 @@ def main():
         ("Python の構文", (check_python(), [])),
         ("JavaScript の構文", check_js(have_node)),
         ("HTML 内のスクリプトの構文", check_html_scripts(have_node)),
-        ("logic.js / gate.js が ES5 の範囲か", (check_es5(), [])),
+        ("logic.js / gate.js / places.js が ES5 の範囲か", (check_es5(), [])),
         ("公開物 (.nojekyll・JSON・アイコン)", (check_publish(), [])),
     ]:
         print("  {}: {}".format(label, "OK" if not errs else "{}件".format(len(errs))))

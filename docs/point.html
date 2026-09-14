@@ -18,6 +18,9 @@
        明るい配色で一度描いてから暗転する(起動時の白い一瞬が戻る)。 -->
 <script src="../theme.js?v=249"></script>
 <script src="../gate.js?v=2026b"></script>
+<!-- 保存した地点(名前付きの座標)。キー名・上限・検証の唯一の置き場。gate.js の後に読む。
+     ?v= は places.js の PW_PLACES_VER と同じ値にする(一致は check_consistency.py が見る)。 -->
+<script src="../places.js?v=251"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B4FYN1EJ2S"></script>
 <script>
@@ -91,6 +94,20 @@ button{font-size:16px;padding:14px;border:0;border-radius:12px;background:var(--
 button:hover{background:var(--btn-d)}
 button:disabled{background:var(--btn-off);cursor:wait}
 
+/* 保存した地点。行は「名前・座標」と「予報を見る」「×」。狭い幅では名前側を省略で縮める */
+.places h2{margin:0 0 8px}
+.plist{list-style:none;margin:0;padding:0}
+.plist li{display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--line)}
+.plist li:first-child{border-top:0}
+.plist .pn{flex:1;min-width:0}
+.plist .pn b{display:block;color:var(--head);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plist .pn small{display:block;color:var(--muted);font-size:.8em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plist button{width:auto;flex:0 0 auto;letter-spacing:0;box-shadow:none}
+.plist .pgo{font-size:14px;padding:9px 14px;border-radius:10px}
+.plist .pdel{font-size:18px;line-height:1;padding:8px 10px;background:none;color:var(--muted)}
+.plist .pdel:hover{background:none;color:var(--bad-fg)}
+.chk{flex-direction:row;align-items:center;gap:8px;font-size:.9em;color:var(--head-2)}
+.chk input{width:22px;height:22px;margin:0;flex:0 0 auto;accent-color:var(--btn)}
 #status{margin:4px 2px 0;font-size:.92em;color:var(--muted);font-weight:600;min-height:1.4em}
 #status.err{color:var(--bad-fg)}
 
@@ -110,6 +127,14 @@ footer a{color:var(--link)}
 </header>
 
 <main>
+
+<!-- 保存した地点。0件のときは出さない(中身は places.js から描く)。
+     何日も続けて同じ地点を見る使い方のためのものなので、説明より上に置く -->
+<div class="formcard places" id="places" hidden>
+  <h2>保存した地点</h2>
+  <ul class="plist" id="plist"></ul>
+  <p class="hint">開始日・表示間隔は下のフォームの指定で開きます（既定は今日・3時間ごと）</p>
+</div>
 
 <p>山名で見つからない場所（登山道の途中・幕営地・沢の出合など）でも、緯度・経度さえ分かれば
 山名検索やGPS現在地と同じ精度の予報を表示できます。</p>
@@ -138,7 +163,11 @@ footer a{color:var(--link)}
   </label>
   <label class="f">
     地点名（任意）
-    <input id="label" placeholder="空欄なら現在地取得と同じ方式で市町村名を表示" autocomplete="off">
+    <input id="label" placeholder="空欄なら現在地取得と同じ方式で市町村名を表示" autocomplete="off" maxlength="40">
+  </label>
+  <label class="f chk">
+    <input id="keep" type="checkbox">
+    この地点を保存する（端末内・最大5件）
   </label>
   <div class="frow">
     <label class="f">開始日（詳細表示）
@@ -226,6 +255,56 @@ function extractLatLon(raw){
   return null;
 }
 
+// 予報ページへ遷移する(フォーム送信と保存済み地点の両方がここを通る)
+function openForecast(hashKey,label){
+  // sessionStorage は Cookie を全ブロックした端末では例外を投げるため、
+  // gate.js のラッパ(保存できなければメモリへ倒す)を必ず通す
+  if(label)pwSSave("pw-coord-label",label);
+  else pwSDrop("pw-coord-label");
+  // 遷移先(index.html)に「座標指定から来た」ことを1回だけ伝える。
+  // 戻り導線の出し分けとアクセス解析の入口集計に使う(index.html側で読んだら即削除される)
+  pwSSave("pw_entry","point");
+  const date=document.getElementById("mdate").value;
+  const step=document.querySelector('input[name="mstep"]:checked').value;
+  location.href=`../index.html#${hashKey}/${date}${step==="1"?"/1h":""}`;
+}
+
+// ---- 保存した地点 (places.js) ----
+// 地点名は利用者の入力なので textContent で入れる(innerHTML に文字列で組み立てない)
+// places.js が読めなかった(404・通信断)ときは保存機能だけを畳み、座標指定そのものは動かす
+const PLACES_OK=typeof placesLoad==="function";
+if(!PLACES_OK)document.getElementById("keep").closest("label").hidden=true;
+function renderPlaces(){
+  if(!PLACES_OK)return;
+  const box=document.getElementById("places"),ul=document.getElementById("plist");
+  const a=placesLoad();
+  ul.textContent="";
+  box.hidden=!a.length;
+  a.forEach(p=>{
+    const li=document.createElement("li");
+    const pn=document.createElement("span");pn.className="pn";
+    const b=document.createElement("b");b.textContent=p.n;
+    const sm=document.createElement("small");
+    sm.textContent=`${p.la}, ${p.lo} ／ ${p.e!=null?"標高"+p.e+"m":"標高は自動取得"}`;
+    pn.append(b,sm);
+    const go=document.createElement("button");
+    go.type="button";go.className="pgo";go.textContent="予報を見る";
+    go.setAttribute("aria-label",`${p.n}の予報を見る`);
+    go.addEventListener("click",()=>openForecast(placeHashKey(p),p.n));
+    const del=document.createElement("button");
+    del.type="button";del.className="pdel";del.textContent="×";
+    del.setAttribute("aria-label",`${p.n}を保存した地点から削除`);
+    // 意図して残した地点なので、誤タップで消えないよう確認を挟む
+    del.addEventListener("click",()=>{
+      if(!confirm(`「${p.n}」を保存した地点から削除しますか？`))return;
+      placesRemove(p.n);renderPlaces();
+    });
+    li.append(pn,go,del);
+    ul.appendChild(li);
+  });
+}
+renderPlaces();
+
 document.getElementById("f").addEventListener("submit",e=>{
   e.preventDefault();
   const status=document.getElementById("status");
@@ -250,20 +329,24 @@ document.getElementById("f").addEventListener("submit",e=>{
       status.className="err";status.textContent="標高の値が範囲外です。空欄にすると自動取得します";return}
   }
 
-  // sessionStorage は Cookie を全ブロックした端末では例外を投げるため、
-  // gate.js のラッパ(保存できなければメモリへ倒す)を必ず通す
   const label=document.getElementById("label").value.trim();
-  if(label)pwSSave("pw-coord-label",label);
-  else pwSDrop("pw-coord-label");
 
-  // 遷移先(index.html)に「座標指定から来た」ことを1回だけ伝える。
-  // 戻り導線の出し分けとアクセス解析の入口集計に使う(index.html側で読んだら即削除される)
-  pwSSave("pw_entry","point");
+  // 保存は「この地点を保存する」を選んだときだけ(位置情報は既定では端末内にも残さない)。
+  // 満杯のときは遷移しない ── 遷移すると保存されなかったことに気づけない
+  if(PLACES_OK&&document.getElementById("keep").checked){
+    if(!label){
+      status.className="err";status.textContent="保存するには地点名を入力してください";
+      document.getElementById("label").focus();return}
+    const r=placesPut({n:label,la:lat,lo:lon,e:elev});
+    if(r==="full"){
+      status.className="err";
+      status.textContent=`保存できる地点は${PW_PLACES_MAX}件までです。上の「保存した地点」から不要なものを削除してください`;
+      renderPlaces();return}
+    if(r==="invalid"){
+      status.className="err";status.textContent="この地点は保存できませんでした（地点名は40文字まで）";return}
+  }
 
-  const date=document.getElementById("mdate").value;
-  const step=document.querySelector('input[name="mstep"]:checked').value;
-  const hash=`${lat},${lon}${elev!=null?","+elev:""}/${date}${step==="1"?"/1h":""}`;
-  location.href=`../index.html#${hash}`;
+  openForecast(`${lat},${lon}${elev!=null?","+elev:""}`,label);
 });
 })();
 </script>

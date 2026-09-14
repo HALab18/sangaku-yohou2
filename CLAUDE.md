@@ -30,6 +30,7 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `theme.css` | 配色。**色の値はここが唯一の置き場**で、明るい配色と暗い配色(`:root[data-theme="dark"]`)の両方をトークン(`--◯◯`)で持つ。全10ページ(index・docs 8枚・404)と `gate.js` が `var(--◯◯)` だけを書く。ver 2.47β で 657箇所のベタ書きをここに畳み、2.50β で最後に残っていた `404.html` も入れた |
 | `theme.js` | 配色の切り替え(自動/ライト/ダーク)。**切り替えの実装と保存キーはここが唯一の置き場**。「自動」のとき OS を見て `data-theme` を light/dark に解決して `<html>` に付ける(ver 2.48β) |
 | `gate.js` | 規約同意＋認証コードの共通ゲート。**認証定数(AUTH_VER/SALT/HASH)はここが唯一の置き場**。`index.html`・`docs/find.html`・`docs/point.html` が読み込む |
+| `places.js` | 保存した地点（座標指定で名前を付けて残す地点・最大5件・端末内のみ）。**キー名・上限・検証はここが唯一の置き場**。`docs/point.html`（保存・削除）と `index.html`（山名欄の候補から呼び出し）が gate.js の後に読む。**保存は point.html の「この地点を保存する」チェックの内側だけ**（位置情報は既定では端末内にも残さない。利用規約 第6条）。圏外用の予報は index.html の `pw-snap-v1` に **`p:地点名`** の別枠で残し、地点の削除・座標の上書きで捨てる（`snapIndex()` が places.js と照合）。ver 2.51β |
 | `scripts/mountain_weather.py` | CLI本体。`--name`/`--lat --lon --elev` で予報を出力（`--html`でレポート保存） |
 | `references/mountains.csv` | 内蔵山岳DB（**BOM付きUTF-8・CRLF**）。列: name,yomi,pref,lat,lon,elev |
 | `references/criteria.md` | 登山指数A/B/Cの判定基準（閾値の根拠） |
@@ -46,6 +47,7 @@ python scripts/mountain_weather.py --name 富士山   # 動作確認(依存ゼ�
 | `scripts/test_weather_codes.py` | 天気コード → 日本語表現の**総当たり**。全28コードで文言が出るか・**安全オーバーライドが必ず日代表に昇格するか**・晴れと雷雨が入れ替わらないか・集約の窓(4〜17時)の外の悪天を拾っていないか。`test_display.py` は「一致」しか見ないので、両方とも同じように間違っている場合を捕まえられない |
 | `scripts/test_offline.js` | **圏外・障害時**のふるまい（通信のタイムアウト・再試行・`end_date` クランプ・応答の正規化・スナップショット保存・ゲートの fail-closed）。index.html の DOM に触らない範囲を目印で切り出し、`fetch`・`localStorage`・時間を身代わりに差し替えて回す |
 | `scripts/test_sw.js` | `sw.js` のふるまい。**API 応答をキャッシュしていないこと**（規約9）・フラグメント除去・前版キャッシュの掃除・遅い回線での退避。オンラインでは表面化しない壊れ方なので機械で見る |
+| `scripts/test_places.js` | `places.js` のふるまい。不正・域外の保存値を捨てる／**満杯で押し出さずに断る**／同名上書き／保存できない端末／保存した座標が `applyHash()` で読めるか／2ページの `?v=` と再定義の有無／保存がチェックの内側だけか。`check_mountains.py` の `[6/8]` が呼ぶ |
 | `scripts/test_stubs.js` | 上の各テストが共有する身代わりの環境（仮想時計・localStorage・**DOM**・目印での切り出し）。時間を差し替えるので 20秒のタイムアウトも 6秒の待ちも即座に検査できる。`makeDom()` は本物の DOM を真似ない ── 要素は「innerHTML を覚える箱」で、見た目ではなく**組み立てた文字列**を見るためのもの |
 | `scripts/check_syntax.py` | 構文と公開物の静的検査。Python / JavaScript / **HTML に直接書かれた `<script>`**（index.html の本体2,000行超はここ）の構文、`logic.js`・`gate.js` が **ES5 の範囲**に留まっているか、`.nojekyll`・manifest のアイコンが揃っているか。`check_mountains.py` の `[1/8]` が呼ぶ |
 | `.github/workflows/check.yml` | push / PR ごとに `check_mountains.py --offline` とミューテーションを回す。手元で通し忘れたときの網。通信を伴う DEM 照合だけ外してある |
