@@ -291,6 +291,18 @@ MUTATIONS = [
     # 座標を上書きした地点で、前の座標の予報を圏外表示してしまう
     (u"保存した地点の圏外用予報を座標を照合せずに使う",
      INDEX, 'return (m.lat===mt.lat&&m.lon===mt.lon&&(mt.elev==null||m.elev===mt.elev))?s:null;', 'return s;'),
+    # 候補から地点を選んでも山名欄が空のまま = どの地点を見ているのか画面から分からない
+    (u"保存した地点を開いても山名欄に地点名を入れない",
+     INDEX, 'document.getElementById("mname").value=customLabel;', ''),
+    # 山名欄に地点名が入ったまま日付を変えて押すと「見つかりません」になる
+    (u"山名欄の地点名で送信されたときに地点として扱わない",
+     INDEX, 'if(p)return placeGo(p);', ''),
+    # 候補を選んだ瞬間に走ると、開始日・表示間隔を選べない
+    (u"候補の地点を選んだ時点で予報を開いてしまう",
+     INDEX, '    const d=el.closest("div[data-n]");if(!d)return;\n    inp.value=d.dataset.n;',
+     '    const d=el.closest("div[data-n]");if(!d)return;\n'
+     '    if(d.dataset.pl)placeGo(placesLoad().find(y=>y.n===d.dataset.pl));\n'
+     '    inp.value=d.dataset.n;'),
 ]
 
 

@@ -748,7 +748,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <footer>
 <div class="pw-theme" id="themeui"></div>
 
-<p>PeakWeather Ver.2.51β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.52β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -1959,6 +1959,13 @@ document.getElementById("f").onsubmit=async e=>{
   let hits=resolveLocal(name).map(m=>({name:m[0],pref:m[2],lat:m[3],lon:m[4],elev:m[5]}));
   if(hits.length===1)return go(hits[0]);
   if(hits.length>1)return showCandidates(hits);
+  // 保存した地点(places.js)の名前がそのまま入っている場合。候補欄から選ぶと山名欄に
+  // 地点名が入るので、日付を変えてもう一度押す操作がここに来る。内蔵DBの山を先に見るので、
+  // 同名の山があれば従来どおり山が優先される。
+  if(typeof placesLoad==="function"){
+    const p=placesLoad().find(x=>x.n===name);
+    if(p)return placeGo(p);
+  }
   // 圏外では地名検索(Open-Meteo)も通らない。内蔵DBに無い山でも、以前見て保存してあれば
   // そのときの座標で予報を描ける(保存済みの座標を使うのはこの経路だけ)。
   if(!navigator.onLine){
@@ -2067,16 +2074,29 @@ async function locateCoordAndGo(lat,lon,elevManual){
   const status=document.getElementById("status");
   document.getElementById("cands").innerHTML="";document.getElementById("out").innerHTML="";
   // 地点名は1回きり。先に受け取っておく(保存した地点かどうかの判定と、圏外の経路で使う)
-  const customLabel=pwSLoad("pw-coord-label");
+  const labelIn=pwSLoad("pw-coord-label");
   pwSDrop("pw-coord-label");
   // 共有URLのハッシュから直接呼ばれる経路なので、point.html 側の検証を通っていない
   // 座標も届きうる。API を叩く前にここで止める。
   if(!inJapan(lat,lon)){status.className="err";status.textContent=OUT_OF_JP;return}
   // 保存した地点(places.js)か。名前・緯度・経度・標高の指定が全部一致したときだけ。
   // 一致しない座標指定は従来どおり圏外用にも保存しない(位置情報を黙って残さない)。
-  const place=!!customLabel&&typeof placesLoad==="function"&&placesLoad().some(p=>
-    p.n===customLabel&&p.la===lat&&p.lo===lon&&p.e===(elevManual==null?null:elevManual));
+  // ★ ラベルが無いとき(共有URL・リロード・ホーム画面からの再起動では sessionStorage が空)は
+  //   座標で照合する。しないと同じ地点なのに「指定地点（市町村）」に落ち、名前も圏外用の
+  //   保存予報も使えない ── リロードしただけで圏外で開けなくなる。
+  const saved=typeof placesLoad==="function"?placesLoad():[];
+  const samePoint=p=>p.la===lat&&p.lo===lon&&p.e===(elevManual==null?null:elevManual);
+  const hit=saved.find(p=>labelIn?(p.n===labelIn&&samePoint(p)):samePoint(p));
+  const place=!!hit;
+  const customLabel=place?hit.n:labelIn;
   const sid=place?"p:"+customLabel:null;
+  // 山名欄にも地点名を入れる。空のままだと「本当にこの地点で調べているのか」が分からない。
+  // 保存していない座標指定では入れないこと: "指定地点（松本市）" を欄に残すと、そのまま
+  // 検索ボタンを押したときに山名として地名検索へ流れて「見つかりません」になる。
+  if(place){
+    document.getElementById("mname").value=customLabel;
+    document.getElementById("mnameClear").hidden=false;
+  }
   // 保存した地点の、圏外で見るための予報。本体の mt から描き直す(標高も保存時の値)
   const replay=async()=>{
     const snap=sid?snapLoadFor(sid,{lat,lon,elev:elevManual}):null;
@@ -2605,14 +2625,9 @@ function recentRemove(name){
     }
     const x=el.closest("[data-x]");
     if(x){recentRemove(x.dataset.x);update();return}
-    // 保存した地点: 入力欄には入れず、その座標の予報をすぐ開く(div[data-n] より先に見ること)
-    const pl=el.closest("[data-pl]");
-    if(pl){
-      const hit=placesLoad().find(y=>y.n===pl.dataset.pl);
-      setOpen(false);sugg.innerHTML="";inp.blur();
-      if(hit)placeGo(hit);
-      return;
-    }
+    // ★ 保存した地点の行も、山の候補と同じく **入力欄に入れるだけ**。ここで予報を開くと
+    //   開始日・表示間隔を選ぶ前に走ってしまう(行を選ぶ = 検索の実行、ではない)。
+    //   欄に入った地点名で送信されたときは onsubmit 側が地点として扱う。
     const d=el.closest("div[data-n]");if(!d)return;
     inp.value=d.dataset.n;mclear.hidden=!inp.value;setOpen(false);sugg.innerHTML="";
     inp.blur(); // スマホのキーボードを閉じる

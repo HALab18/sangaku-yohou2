@@ -196,4 +196,36 @@ const P = (n, la, lo, e) => ({ n, la: la == null ? 36.4 : la, lo: lo == null ? 1
   }
 }
 
+/* 9. 候補欄から選んだ地点が、山名欄にも入って検索し直せること
+      (DOM を持たないテストなので、置き場所と順序だけを見る) */
+{
+  const ix = read("index.html");
+  ok(/if\(place\)\{\s*\n\s*document\.getElementById\("mname"\)\.value=customLabel;/.test(ix),
+    "index.html: 保存した地点のときに山名欄へ地点名を入れていない (どの地点を見ているか分からない)");
+  // 保存していない座標指定("指定地点（松本市）")を欄に入れると、そのまま押したとき
+  // 地名検索に流れて失敗する。名前を入れるのは place のときだけ
+  ok(!/const name=customLabel\|\|[\s\S]{0,200}getElementById\("mname"\)\.value=name/.test(ix),
+    "index.html: 保存していない座標指定でも山名欄に名前を入れている");
+  const db = ix.indexOf("let hits=resolveLocal(name)"),
+        pl = ix.indexOf("if(p)return placeGo(p);"),
+        geo = ix.indexOf("内蔵DBに無いため地名検索中…");
+  ok(pl >= 0, "index.html: 山名欄に地点名が入ったまま送信されたときの分岐が無い"
+    + " (候補から選んだあと日付を変えて押すと「見つかりません」になる)");
+  ok(db >= 0 && geo >= 0 && db < pl && pl < geo,
+    "index.html: 保存した地点の分岐が内蔵DB照合の前、または地名検索の後にある"
+    + " (同名の山が地点に食われる/圏外で地名検索に流れる)");
+}
+
+/* 10. 候補を選んだ瞬間には検索しない(開始日・表示間隔を選べなくなる)。
+      行の選択は入力欄に入れるだけで、実行は送信側の分岐に任せる */
+{
+  const ix = read("index.html");
+  const a = ix.indexOf("function activate(el){"), b = ix.indexOf("// 消去ボタン: 空にして候補欄を");
+  ok(a >= 0 && b > a, "index.html: 候補行の選択処理(activate)を切り出せません (コードが動いた可能性があります)");
+  if (a >= 0 && b > a) {
+    ok(!/placeGo\(/.test(ix.slice(a, b)),
+      "index.html: 候補行を選んだ時点で予報を開いている (開始日・表示間隔を選ぶ前に走る)");
+  }
+}
+
 C.report("保存した地点 (places.js)");
