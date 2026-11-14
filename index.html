@@ -748,7 +748,7 @@ footer a{color:var(--link);display:inline-block;padding:6px 10px}
 <footer>
 <div class="pw-theme" id="themeui"></div>
 
-<p>PeakWeather Ver.2.52β ・ <a href="docs/history.html">改訂履歴</a></p>
+<p>PeakWeather Ver.2.53β ・ <a href="docs/history.html">改訂履歴</a></p>
 <p>© 2026 HALab18</p>
 </footer>
 
@@ -2589,7 +2589,7 @@ function recentRemove(name){
       `<div data-n="${esc(m[0])}" role="row" tabindex="-1"><span role="gridcell" aria-colindex="1">${esc(m[0])}</span>`
       +`<small role="gridcell" aria-colindex="2">${esc(m[2])} ${m[5]}m</small></div>`).join("");
     // ローミング tabindex: Tab で入れるのは先頭行だけ。以前は全行 tabindex="0" で、
-    // 候補が50件あると候補欄を抜けるのに50回 Tab を押すことになっていた
+    // 候補の件数ぶん Tab を押さないと候補欄を抜けられなかった(いまは未入力時に全件が並ぶ)
     const first=sugg.querySelector("div[data-n]");
     if(first)first.tabIndex=0;
     setOpen(true);sugg.scrollTop=0;
@@ -2599,13 +2599,16 @@ function recentRemove(name){
     if(escaped)return;   // Esc で閉じたまま。次の入力(input)で escaped が解ける
     const q=inp.value.trim();
     // 入力中は従来どおり全一致のみ。未入力時だけ履歴を先頭に固定し、
-    // その下は先頭50件(全件は対応山リストページへ)。履歴と同名は50件側から除いて重複を避ける
+    // その下に内蔵DBの全件を並べる。履歴と同名は全件側から除いて重複を避ける。
+    // ★ 件数で切らないこと。以前は先頭50件で切っており、DBの並び(百名山の北→南)のせいで
+    //   北海道〜北アルプスの途中で終わっていた ── スクロールしても西日本の山が1つも出ず、
+    //   「対応していない」ように見えた(西日本の最初の山は63番目)
     // 保存した地点は未入力時は全件、入力中は地点名の部分一致だけを山名候補の上に出す。
     // places.js が読めなかった(404・通信断)ときは、この群だけを出さずに山名検索は動かす
     const pl=typeof placesLoad==="function"?placesLoad():[];
     if(q)return render(MOUNTAINS.filter(m=>m[0].includes(q)||m[1].includes(q)),[],pl.filter(p=>p.n.includes(q)));
     const r=recentLoad();
-    render(MOUNTAINS.filter(m=>!r.some(x=>x.n===m[0])).slice(0,50),r,pl);
+    render(MOUNTAINS.filter(m=>!r.some(x=>x.n===m[0])),r,pl);
   }
   inp.addEventListener("input",()=>{escaped=false;update()});
   inp.addEventListener("focus",update);
